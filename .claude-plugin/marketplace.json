@@ -1,0 +1,16 @@
+{
+  "name": "assetforge",
+  "description": "Agent-driven terrain and hard-surface asset pipeline for a city builder.",
+  "owner": {
+    "name": "yanick",
+    "email": "yanick.salzmann@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "assetforge",
+      "source": ".",
+      "description": "Agent-driven terrain and hard-surface asset pipeline for a city builder - run /assetforge-setup first to provision the backend, then use the terrain-new, terrain-tune, asset-building, asset-prop and asset-vehicle skills.",
+      "defaultEnabled": false
+    }
+  ]
+}
