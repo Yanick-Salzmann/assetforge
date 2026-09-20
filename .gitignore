@@ -1,6 +1,45 @@
-
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# Generated output
+out/*
+!out/terrain
+!out/assets
+out/terrain/*
+out/assets/*
+!out/terrain/.gitkeep
+!out/assets/.gitkeep
+
+# Downloaded asset library binaries; library/*.lock.json is tracked
+library/materials/*/
+library/asset_materials/*/
+library/kits/*/
+
+# Library indexes rebuilt from the downloads by library/materials.py and library/kits.py
+library/materials.json
+library/asset_materials.json
+library/kits.json
+
+# Manually staged zips for pullers that can't be scraped (e.g. library/quaternius.py)
+library/_staging/*
+!library/_staging/.gitkeep
+
+# PolyHaven texture catalog cache (library/polyhaven.py:fetch_texture_catalog)
+library/.texture_catalog_cache.json
+
+# OS
+.DS_Store
+Thumbs.db

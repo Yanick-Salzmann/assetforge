@@ -1,0 +1,260 @@
+{
+  "materials": {
+    "brick_cc0": {
+      "categories": [
+        "brick",
+        "dirty",
+        "man made",
+        "outdoor",
+        "wall"
+      ],
+      "dimensions_mm": [
+        500.0,
+        500.0
+      ],
+      "files": {
+        "albedo": {
+          "map": "Diffuse",
+          "md5": "367a1196b68efa3bbb40ca1404d7ac34",
+          "path": "brick_cc0/albedo.jpg",
+          "sha256": "372740c306520ddc317fd4d3fc4c2fc89c3d23f62ccb8aa1e0aefc4cab3fd17b",
+          "size": 1317342,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brick_4/brick_4_diff_2k.jpg"
+        },
+        "ao": {
+          "map": "AO",
+          "md5": "12dccc0b54d8151f20d23f2ae0344f89",
+          "path": "brick_cc0/ao.jpg",
+          "sha256": "290e49a1926b5e612d201e489eafff9681e2f3d6cc0e900174aa8ba5e45b0aa9",
+          "size": 759056,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brick_4/brick_4_ao_2k.jpg"
+        },
+        "normal": {
+          "map": "nor_gl",
+          "md5": "63ddf407d2a3c41a51b56f70cf45431d",
+          "path": "brick_cc0/normal.jpg",
+          "sha256": "d23d401ab7d62537f4e4c0463ca40a9dc56053fc821bb988cbb9018649591028",
+          "size": 1322757,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brick_4/brick_4_nor_gl_2k.jpg"
+        },
+        "roughness": {
+          "map": "Rough",
+          "md5": "730905c771f0ed64b431fa57197efd10",
+          "path": "brick_cc0/roughness.jpg",
+          "sha256": "00fa4bb8822daaf0531c539d1d67d7947ed4bfe4e12726ae775691c62410bf2b",
+          "size": 1353007,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brick_4/brick_4_rough_2k.jpg"
+        }
+      },
+      "format": "jpg",
+      "license": "CC0",
+      "resolution": "2k",
+      "slug": "brick_4",
+      "source": "https://polyhaven.com/a/brick_4"
+    },
+    "concrete_cc0": {
+      "categories": [
+        "collection: the_shed",
+        "concrete",
+        "man made",
+        "outdoor",
+        "plaster",
+        "plaster-concrete",
+        "wall"
+      ],
+      "dimensions_mm": [
+        1500.0001192092896,
+        1500.0
+      ],
+      "files": {
+        "albedo": {
+          "map": "Diffuse",
+          "md5": "d707f4f0e15b8c7ef0b62558d1e48c0f",
+          "path": "concrete_cc0/albedo.jpg",
+          "sha256": "6a96c2babde7b65aa11a72e06ea3cc37a76cecc274dfef1125ba33e41d13dd9f",
+          "size": 381518,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/concrete_wall_001/concrete_wall_001_diff_2k.jpg"
+        },
+        "ao": {
+          "map": "AO",
+          "md5": "b2605710ca65252f558d32cb2cfab748",
+          "path": "concrete_cc0/ao.jpg",
+          "sha256": "1e9949de9667b6d40ef4d466b070f00db7986ecb5656682df728676d7d016298",
+          "size": 495943,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/concrete_wall_001/concrete_wall_001_ao_2k.jpg"
+        },
+        "normal": {
+          "map": "nor_gl",
+          "md5": "ad481f22e10c580fd34125ce8eedabf7",
+          "path": "concrete_cc0/normal.jpg",
+          "sha256": "75346f4a19c1cd08f2d4ba02843d325b4c6e6dfa9acc9c022273cba72b7ba124",
+          "size": 835989,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/concrete_wall_001/concrete_wall_001_nor_gl_2k.jpg"
+        },
+        "roughness": {
+          "map": "Rough",
+          "md5": "90e6ae403e40b77fe5ff373c39b6916c",
+          "path": "concrete_cc0/roughness.jpg",
+          "sha256": "00a1c63d928e7d80413f497ffc51efdffd82f7fed73bd66e7d87351107b12922",
+          "size": 666082,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/concrete_wall_001/concrete_wall_001_rough_2k.jpg"
+        }
+      },
+      "format": "jpg",
+      "license": "CC0",
+      "resolution": "2k",
+      "slug": "concrete_wall_001",
+      "source": "https://polyhaven.com/a/concrete_wall_001"
+    },
+    "metal_cc0": {
+      "categories": [
+        "dirty",
+        "floor",
+        "indoor",
+        "man made",
+        "metal",
+        "outdoor"
+      ],
+      "dimensions_mm": [
+        500.0,
+        500.0
+      ],
+      "files": {
+        "albedo": {
+          "map": "Diffuse",
+          "md5": "91b841e7e619e55588f0183a703fb644",
+          "path": "metal_cc0/albedo.jpg",
+          "sha256": "864c9a653acd1f5034c9bbe7f955b18cc9687a81bbdfa805e7a2319939676910",
+          "size": 2670774,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/metal_plate/metal_plate_diff_2k.jpg"
+        },
+        "ao": {
+          "map": "AO",
+          "md5": "00a18906f3bebaa10813d3d0e2356047",
+          "path": "metal_cc0/ao.jpg",
+          "sha256": "31e586f0bde9f28331077b30495f0f324aa9f91a9d656205d03242d1d3e2e439",
+          "size": 2392031,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/metal_plate/metal_plate_ao_2k.jpg"
+        },
+        "normal": {
+          "map": "nor_gl",
+          "md5": "797c3f3de91da0c03f44f493576e158e",
+          "path": "metal_cc0/normal.jpg",
+          "sha256": "146f8c00874a584bcc4a184643e72f160da2a7568d469198e02b26c9ff93cf43",
+          "size": 2516654,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/metal_plate/metal_plate_nor_gl_2k.jpg"
+        },
+        "roughness": {
+          "map": "Rough",
+          "md5": "b2c2bfc0a5e46c1a8bdfddd236daa200",
+          "path": "metal_cc0/roughness.jpg",
+          "sha256": "3cdc139df4ec5b304dd986278c1fb026c67c42e6623f0ee5caa7f373d51c7bef",
+          "size": 3045988,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/metal_plate/metal_plate_rough_2k.jpg"
+        }
+      },
+      "format": "jpg",
+      "license": "CC0",
+      "resolution": "2k",
+      "slug": "metal_plate",
+      "source": "https://polyhaven.com/a/metal_plate"
+    },
+    "roofing_cc0": {
+      "categories": [
+        "roofing"
+      ],
+      "dimensions_mm": [
+        4000.0,
+        4000.0
+      ],
+      "files": {
+        "albedo": {
+          "map": "Diffuse",
+          "md5": "db3af307862135184ddc5d3ac186e56d",
+          "path": "roofing_cc0/albedo.jpg",
+          "sha256": "6a8b6e747b2ee5131225990fc0d62e0898f787697916c85f4fd01b32fbbf91d2",
+          "size": 3143097,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/clay_roof_tiles/clay_roof_tiles_diff_2k.jpg"
+        },
+        "ao": {
+          "map": "AO",
+          "md5": "0e246d5a8d02ef1faf03db32390d61ca",
+          "path": "roofing_cc0/ao.jpg",
+          "sha256": "6e47d948bf3952344ed1277d277674ee31bef0893e6eed796f7602529425dd61",
+          "size": 2313391,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/clay_roof_tiles/clay_roof_tiles_ao_2k.jpg"
+        },
+        "normal": {
+          "map": "nor_gl",
+          "md5": "110745728e8fd93ac6f3d2c746876f2b",
+          "path": "roofing_cc0/normal.jpg",
+          "sha256": "63a8afb8cad6e49f7fc670c42cf0d4e1a711f264b41f0074285a41b1b850cb58",
+          "size": 4068632,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/clay_roof_tiles/clay_roof_tiles_nor_gl_2k.jpg"
+        },
+        "roughness": {
+          "map": "Rough",
+          "md5": "bf45289acbfc5737ad39ad58910596a5",
+          "path": "roofing_cc0/roughness.jpg",
+          "sha256": "8937368fd22aca6ce4b7dfb27286a44e8e5b1eca43fc1b93b098586fe67c1206",
+          "size": 1055124,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/clay_roof_tiles/clay_roof_tiles_rough_2k.jpg"
+        }
+      },
+      "format": "jpg",
+      "license": "CC0",
+      "resolution": "2k",
+      "slug": "clay_roof_tiles",
+      "source": "https://polyhaven.com/a/clay_roof_tiles"
+    },
+    "wood_cc0": {
+      "categories": [
+        "wood"
+      ],
+      "dimensions_mm": [
+        1200.0000476837158,
+        1200.0000476837158
+      ],
+      "files": {
+        "albedo": {
+          "map": "Diffuse",
+          "md5": "740160778f1c4b78bac74d96fe3c06ea",
+          "path": "wood_cc0/albedo.jpg",
+          "sha256": "ec3d2deb1fe21150ede5f987b48c691b3c7dbffe4183850a9b8717e904917a46",
+          "size": 2736142,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/oak_wood_planks/oak_wood_planks_diff_2k.jpg"
+        },
+        "ao": {
+          "map": "AO",
+          "md5": "0e569be92a83ed7ad6c77125b8d06fd1",
+          "path": "wood_cc0/ao.jpg",
+          "sha256": "576633bf0b497cfa39f799d92318b5e57d33c5ad6083abb1a0f69bdc9c13ba89",
+          "size": 2745574,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/oak_wood_planks/oak_wood_planks_ao_2k.jpg"
+        },
+        "normal": {
+          "map": "nor_gl",
+          "md5": "7291b28d1aa5e0002d93b4d419268e98",
+          "path": "wood_cc0/normal.jpg",
+          "sha256": "340a51d81e5ec2ead28a1c864637375becb00a1e11861e47a72dde4c03950968",
+          "size": 2125233,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/oak_wood_planks/oak_wood_planks_nor_gl_2k.jpg"
+        },
+        "roughness": {
+          "map": "Rough",
+          "md5": "d7533fb12d5c296917ff6fb169bb282b",
+          "path": "wood_cc0/roughness.jpg",
+          "sha256": "18b2a97f44b18e1a794652dbb2ec4bbdfc35869e2f028e4bbb85441258da1018",
+          "size": 3396426,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/oak_wood_planks/oak_wood_planks_rough_2k.jpg"
+        }
+      },
+      "format": "jpg",
+      "license": "CC0",
+      "resolution": "2k",
+      "slug": "oak_wood_planks",
+      "source": "https://polyhaven.com/a/oak_wood_planks"
+    }
+  },
+  "version": 1
+}

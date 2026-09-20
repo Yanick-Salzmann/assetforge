@@ -1,0 +1,52 @@
+[project]
+name = "assetforge"
+version = "0.1.0"
+description = "Agent-driven terrain and asset pipeline for a city builder"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "numpy>=2.1",
+    "torch>=2.6",
+    "pillow>=11.0",
+    "fastmcp>=2.0",
+    "requests>=2.32",
+    "tomli-w>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+]
+
+[tool.uv]
+package = false
+default-groups = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "slow: tests that take more than a second",
+    "gpu: tests that require an MPS or CUDA device",
+    "blender: tests that require a Blender executable",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu130", marker = "sys_platform == 'win32'" },
+    { index = "pytorch-cu130", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

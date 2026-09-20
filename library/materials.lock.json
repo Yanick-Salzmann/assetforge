@@ -1,0 +1,588 @@
+{
+  "materials": {
+    "cliff_rock": {
+      "categories": [
+        "natural",
+        "outdoor",
+        "rock"
+      ],
+      "dimensions_mm": [
+        2421.1976528167725,
+        2421.199083328247
+      ],
+      "files": {
+        "albedo": {
+          "map": "Diffuse",
+          "md5": "980167324d1d407197227619a80cfb71",
+          "path": "cliff_rock/albedo.jpg",
+          "sha256": "0f01bfec36ec4546e23576a10c52ef073f9eb815826c5fce2a1cdb08cd8188b8",
+          "size": 2159653,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock/dark_rock_diff_2k.jpg"
+        },
+        "ao": {
+          "map": "AO",
+          "md5": "4b177914921e1330f99ca37dc1de4510",
+          "path": "cliff_rock/ao.jpg",
+          "sha256": "ab74e7bd4d52bbc66bcf6955430f88b5bc34525cb570873897e20237504090c2",
+          "size": 2284209,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock/dark_rock_ao_2k.jpg"
+        },
+        "height": {
+          "map": "Displacement",
+          "md5": "cc8215577da08ea453fbff28bf48e35c",
+          "path": "cliff_rock/height.jpg",
+          "sha256": "b72e529899ee15361d5b3ca14a75d6bbfecb7164388a4bf76a70809bbd978b77",
+          "size": 693929,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock/dark_rock_disp_2k.jpg"
+        },
+        "normal": {
+          "map": "nor_gl",
+          "md5": "498cbe6f8ba1a5e08c3ea2f0ace3843c",
+          "path": "cliff_rock/normal.jpg",
+          "sha256": "abb3c5f1f932693537333a6d467c3e79bb810afa84416d0deaa10ead9fb4f628",
+          "size": 3811444,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock/dark_rock_nor_gl_2k.jpg"
+        },
+        "roughness": {
+          "map": "Rough",
+          "md5": "375269be32375407880ab60ac0154ea5",
+          "path": "cliff_rock/roughness.jpg",
+          "sha256": "de4dc9e276ea769f0eb58faae8c3bc04b512ad62ca49301a0287efe35d26b058",
+          "size": 2312590,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock/dark_rock_rough_2k.jpg"
+        }
+      },
+      "format": "jpg",
+      "license": "CC0",
+      "resolution": "2k",
+      "slug": "dark_rock",
+      "source": "https://polyhaven.com/a/dark_rock"
+    },
+    "dry_grass": {
+      "categories": [
+        "floor",
+        "natural",
+        "outdoor"
+      ],
+      "dimensions_mm": [
+        1999.9996423721313,
+        1999.9996423721313
+      ],
+      "files": {
+        "albedo": {
+          "map": "Diffuse",
+          "md5": "503d5c7262c46351e5b0acdcc90dd30b",
+          "path": "dry_grass/albedo.jpg",
+          "sha256": "0cf0fca68cbf4277199a2b9b7b3a8013357e4087247b1367f86d4a53b4fafa7e",
+          "size": 4632786,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/withered_grass/withered_grass_diff_2k.jpg"
+        },
+        "ao": {
+          "map": "AO",
+          "md5": "5f0f60dcecda00183009c16ea1f3fdf6",
+          "path": "dry_grass/ao.jpg",
+          "sha256": "b91ec4cab6fdd8034c928647a4ad9a09a5b99744db8d18c0743ead407c8d1b93",
+          "size": 4031915,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/withered_grass/withered_grass_ao_2k.jpg"
+        },
+        "height": {
+          "map": "Displacement",
+          "md5": "79a099429fb43c8557d223ba4fed887b",
+          "path": "dry_grass/height.jpg",
+          "sha256": "2e9ade0a66c6d6b9990ce19ead20b155e1aed7969e4e86f8210fc7595dd2983d",
+          "size": 2432965,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/withered_grass/withered_grass_disp_2k.jpg"
+        },
+        "normal": {
+          "map": "nor_gl",
+          "md5": "dd239e55b44c9b9bb0e9f1e145bf3a22",
+          "path": "dry_grass/normal.jpg",
+          "sha256": "5fd42baf06224086cb9afcb2f7a3b9f26feddd719bf1f9aed65ec49c586e7ff9",
+          "size": 6194953,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/withered_grass/withered_grass_nor_gl_2k.jpg"
+        },
+        "roughness": {
+          "map": "Rough",
+          "md5": "5c065d1438f6d74ec9c67bf8051430fd",
+          "path": "dry_grass/roughness.jpg",
+          "sha256": "86adb8d6f24d0a38eb96c6b625f2dd027b805f59af46fe2a05ffe29f633e33c8",
+          "size": 3666367,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/withered_grass/withered_grass_rough_2k.jpg"
+        }
+      },
+      "format": "jpg",
+      "license": "CC0",
+      "resolution": "2k",
+      "slug": "withered_grass",
+      "source": "https://polyhaven.com/a/withered_grass"
+    },
+    "forest_floor": {
+      "categories": [
+        "natural",
+        "outdoor",
+        "terrain"
+      ],
+      "dimensions_mm": [
+        2139.9996280670166,
+        2139.9996280670166
+      ],
+      "files": {
+        "albedo": {
+          "map": "Diffuse",
+          "md5": "a93f845fca105e6cabc82853161ff7b6",
+          "path": "forest_floor/albedo.jpg",
+          "sha256": "308bc5f916dcc113bf276cbfdc411bed48b6a9ce5e3bc0c228faa3d54acf125d",
+          "size": 5452936,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forest_floor/forest_floor_diff_2k.jpg"
+        },
+        "ao": {
+          "map": "AO",
+          "md5": "387e168f68b204dd627df124c048b196",
+          "path": "forest_floor/ao.jpg",
+          "sha256": "5cdbe664088d2ad569a7ec02c7daea33bd84935f8abae270a089768dc7e68f1d",
+          "size": 2929991,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forest_floor/forest_floor_ao_2k.jpg"
+        },
+        "height": {
+          "map": "Displacement",
+          "md5": "2882f21e8b3f3aad8b89a1ec26014e25",
+          "path": "forest_floor/height.jpg",
+          "sha256": "8f28f7e6ca4f409429c2d6d079543471a48f0d5c9504ef9d0ffa69df0c788e7e",
+          "size": 1935809,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forest_floor/forest_floor_disp_2k.jpg"
+        },
+        "normal": {
+          "map": "nor_gl",
+          "md5": "41e49ec58f74a749e325f59290266e9d",
+          "path": "forest_floor/normal.jpg",
+          "sha256": "27ea9cf7778fd3f5eacc24159d2cfc040878125c2289c3bccc49be5806e87bd1",
+          "size": 5367757,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forest_floor/forest_floor_nor_gl_2k.jpg"
+        },
+        "roughness": {
+          "map": "Rough",
+          "md5": "4d8070c33b0daf195fd2a054faa2a491",
+          "path": "forest_floor/roughness.jpg",
+          "sha256": "fcc6b3ed06b2b60912c626554f5738417f8ac129ddfae8e0610d47c82a899d7f",
+          "size": 3242269,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forest_floor/forest_floor_rough_2k.jpg"
+        }
+      },
+      "format": "jpg",
+      "license": "CC0",
+      "resolution": "2k",
+      "slug": "forest_floor",
+      "source": "https://polyhaven.com/a/forest_floor"
+    },
+    "gravel": {
+      "categories": [
+        "floor",
+        "outdoor"
+      ],
+      "dimensions_mm": [
+        2000.0,
+        2000.0
+      ],
+      "files": {
+        "albedo": {
+          "map": "Diffuse",
+          "md5": "c25fcfa295eb101fc887cdb4ad36ad15",
+          "path": "gravel/albedo.jpg",
+          "sha256": "5eb5eec5af1fb33aa572279ad2aafb4ac31f15bd8222b4e2b1361bd9a1007d76",
+          "size": 3449100,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/gravel/gravel_diff_2k.jpg"
+        },
+        "ao": {
+          "map": "AO",
+          "md5": "a62b1e7a36210bc0fc8dfcb64a4761a8",
+          "path": "gravel/ao.jpg",
+          "sha256": "3f9790c46300de121573211957de354ad657683b2691a63c7877f1061bc376d0",
+          "size": 3429847,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/gravel/gravel_ao_2k.jpg"
+        },
+        "height": {
+          "map": "Displacement",
+          "md5": "08cd13eaa6f0dd56bed5e0853bf8d80e",
+          "path": "gravel/height.jpg",
+          "sha256": "7922b964723dbe8cfc884bcc35bbba06927e606117f9e097ddb96353495385e7",
+          "size": 2115919,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/gravel/gravel_disp_2k.jpg"
+        },
+        "normal": {
+          "map": "nor_gl",
+          "md5": "8dd64bbc303bc935e94b6b5f7e9fa878",
+          "path": "gravel/normal.jpg",
+          "sha256": "a6d6155ed388c45833c021f91c59b05c2a1364d195f619263c4561d71e03fb98",
+          "size": 5709278,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/gravel/gravel_nor_gl_2k.jpg"
+        },
+        "roughness": {
+          "map": "Rough",
+          "md5": "43d2a8da72508ce081b2455325c1a8a8",
+          "path": "gravel/roughness.jpg",
+          "sha256": "4eccc78b23ebd9af83f276b90bcc7b8b9e40f2153ebc0106ea48fac8e062e978",
+          "size": 1706183,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/gravel/gravel_rough_2k.jpg"
+        }
+      },
+      "format": "jpg",
+      "license": "CC0",
+      "resolution": "2k",
+      "slug": "gravel",
+      "source": "https://polyhaven.com/a/gravel"
+    },
+    "lush_grass": {
+      "categories": [
+        "floor",
+        "outdoor"
+      ],
+      "dimensions_mm": [
+        2000.0,
+        2000.0
+      ],
+      "files": {
+        "albedo": {
+          "map": "Diffuse",
+          "md5": "8014f4dace676a62ed71b3dd76119dae",
+          "path": "lush_grass/albedo.jpg",
+          "sha256": "8e1c6d21365d4b89bc5a35ab664da98a78dbc3ab9ba6100474881c8619a5b113",
+          "size": 4766204,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_diff_2k.jpg"
+        },
+        "ao": {
+          "map": "AO",
+          "md5": "f25065162a26693b29a10587582df688",
+          "path": "lush_grass/ao.jpg",
+          "sha256": "bcce4368f6a1affe11b4a643e14cfed7dfb46abf6bb9e6a28a3b87c2de2ddb11",
+          "size": 4175463,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_ao_2k.jpg"
+        },
+        "height": {
+          "map": "Displacement",
+          "md5": "9c0a5f6c375be590bda0c28e2c1dfa2a",
+          "path": "lush_grass/height.jpg",
+          "sha256": "de34be0f135a3c92fe6e55cca9501a4cc40e02e84de9cc4c7fefded1da5bd3f3",
+          "size": 2545281,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_disp_2k.jpg"
+        },
+        "normal": {
+          "map": "nor_gl",
+          "md5": "ea5e91abe01dc5e5d7028c68c3bc9194",
+          "path": "lush_grass/normal.jpg",
+          "sha256": "df0cf0ce96e653f033e5b934d5b12995464bda027aa53bd12e329be889aa9f45",
+          "size": 6047262,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_nor_gl_2k.jpg"
+        },
+        "roughness": {
+          "map": "Rough",
+          "md5": "b5c551ed91162aab5afbfb03b73ae3f5",
+          "path": "lush_grass/roughness.jpg",
+          "sha256": "34e1733bf4064b6950a575ff57e78c8b7ff71b63749eb48a49221bd65de6fb4f",
+          "size": 2274652,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_rough_2k.jpg"
+        }
+      },
+      "format": "jpg",
+      "license": "CC0",
+      "resolution": "2k",
+      "slug": "leafy_grass",
+      "source": "https://polyhaven.com/a/leafy_grass"
+    },
+    "mud": {
+      "categories": [
+        "natural",
+        "outdoor",
+        "terrain"
+      ],
+      "dimensions_mm": [
+        1299.996018409729,
+        1299.996018409729
+      ],
+      "files": {
+        "albedo": {
+          "map": "Diffuse",
+          "md5": "d0c4ee4434b871483e28ad9caecdc54c",
+          "path": "mud/albedo.jpg",
+          "sha256": "726a0f5222fdf8b2bcdbec56fee8ea55150c217eab35a893ad5831f28cee3a5f",
+          "size": 2093509,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brown_mud/brown_mud_diff_2k.jpg"
+        },
+        "ao": {
+          "map": "AO",
+          "md5": "88daa192efab7826c993c94c15b928f1",
+          "path": "mud/ao.jpg",
+          "sha256": "a4a261f00bb6b2fd7816cf4762c3e614d624830c0ff19e28f8bdcdea45ae7db6",
+          "size": 1567892,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brown_mud/brown_mud_ao_2k.jpg"
+        },
+        "height": {
+          "map": "Displacement",
+          "md5": "26b697b6d04429978ce27171f27fdc15",
+          "path": "mud/height.jpg",
+          "sha256": "cd42cf5e42a77ce272c4d5a1ec32fc67008854664c072f1206a6a4946d0e754d",
+          "size": 656319,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brown_mud/brown_mud_disp_2k.jpg"
+        },
+        "normal": {
+          "map": "nor_gl",
+          "md5": "8aae228fc929498090cd61613533828e",
+          "path": "mud/normal.jpg",
+          "sha256": "a3df5f6f7493a1762626c6d0d47872d969744a49931de50fe79f71a5eae8f857",
+          "size": 3073051,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brown_mud/brown_mud_nor_gl_2k.jpg"
+        },
+        "roughness": {
+          "map": "Rough",
+          "md5": "21ecf37d5f307626d7b3fee3af4d9d08",
+          "path": "mud/roughness.jpg",
+          "sha256": "7f37ed5a6d6d6206ea263df37393715883b491a2dff1c8cfa67239922db29ee4",
+          "size": 1425213,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brown_mud/brown_mud_rough_2k.jpg"
+        }
+      },
+      "format": "jpg",
+      "license": "CC0",
+      "resolution": "2k",
+      "slug": "brown_mud",
+      "source": "https://polyhaven.com/a/brown_mud"
+    },
+    "river_rock": {
+      "categories": [
+        "floor",
+        "natural",
+        "outdoor",
+        "rock",
+        "terrain"
+      ],
+      "dimensions_mm": [
+        2000.0,
+        2000.0
+      ],
+      "files": {
+        "albedo": {
+          "map": "Diffuse",
+          "md5": "de1a2a7dea03f8a741ac899e0b2ea7fb",
+          "path": "river_rock/albedo.jpg",
+          "sha256": "8db12446cefecf667f21b0c039bff6ceea6dd5e4ced676d13d545eee4603e67c",
+          "size": 4334972,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dry_riverbed_rock/dry_riverbed_rock_diff_2k.jpg"
+        },
+        "ao": {
+          "map": "AO",
+          "md5": "87192ea9fa9aaf9e4106a2f9c09b6f21",
+          "path": "river_rock/ao.jpg",
+          "sha256": "7d3a8405e462cec6f420f20b77b527979773a9f477c210d40b305ab639d7677c",
+          "size": 2522325,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dry_riverbed_rock/dry_riverbed_rock_ao_2k.jpg"
+        },
+        "height": {
+          "map": "Displacement",
+          "md5": "d68e971d9451851645a0cc2cc11b88db",
+          "path": "river_rock/height.jpg",
+          "sha256": "0e0471dadf3d0aab7e740a899ea11821974a486f47896d079852ca9bddcc3b5f",
+          "size": 806175,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dry_riverbed_rock/dry_riverbed_rock_disp_2k.jpg"
+        },
+        "normal": {
+          "map": "nor_gl",
+          "md5": "7001f96d411834c52e0cdaacef18036f",
+          "path": "river_rock/normal.jpg",
+          "sha256": "a4981b72e406759bd971fe5070979d40999ab8bf48173143c0b82660a1e0139c",
+          "size": 3831261,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dry_riverbed_rock/dry_riverbed_rock_nor_gl_2k.jpg"
+        },
+        "roughness": {
+          "map": "Rough",
+          "md5": "e93fc027a65c1c04d24602668e79d4b6",
+          "path": "river_rock/roughness.jpg",
+          "sha256": "196554446c2c0189f912349c39f03bd004a75654071b0db42dac79319eee0667",
+          "size": 2578360,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dry_riverbed_rock/dry_riverbed_rock_rough_2k.jpg"
+        }
+      },
+      "format": "jpg",
+      "license": "CC0",
+      "resolution": "2k",
+      "slug": "dry_riverbed_rock",
+      "source": "https://polyhaven.com/a/dry_riverbed_rock"
+    },
+    "sand": {
+      "categories": [
+        "aerial",
+        "natural",
+        "outdoor",
+        "sand",
+        "terrain"
+      ],
+      "dimensions_mm": [
+        15000.0,
+        15000.0
+      ],
+      "files": {
+        "albedo": {
+          "map": "Diffuse",
+          "md5": "5071857be3645fec2f85b49e4112199f",
+          "path": "sand/albedo.jpg",
+          "sha256": "98eddd01834e996cda3fa20dbc769ae38e87277ad0c62650604572fb2e646cd1",
+          "size": 1790070,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_sand/aerial_sand_diff_2k.jpg"
+        },
+        "ao": {
+          "map": "AO",
+          "md5": "78c6b9b5e6282ff4f7613630091d180b",
+          "path": "sand/ao.jpg",
+          "sha256": "3a042eac5d03461c56c673f9afe7a4980386259d6439e3da87418ba687db176b",
+          "size": 1960685,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_sand/aerial_sand_ao_2k.jpg"
+        },
+        "height": {
+          "map": "Displacement",
+          "md5": "d62a5c140be9c45fa3e75f0abe825444",
+          "path": "sand/height.jpg",
+          "sha256": "ab83dc2d950a37ecf56bdc8c56b28196dfb79acbfb45f49d0fb6468d4604548b",
+          "size": 603813,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_sand/aerial_sand_disp_2k.jpg"
+        },
+        "normal": {
+          "map": "nor_gl",
+          "md5": "3e1b2d9ef1628fb5e0db05c69147cd06",
+          "path": "sand/normal.jpg",
+          "sha256": "d4ce3a47379acd398c657adf89611df3843872a76dd3bd9e76f62ee1fb0363ef",
+          "size": 2679057,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_sand/aerial_sand_nor_gl_2k.jpg"
+        },
+        "roughness": {
+          "map": "Rough",
+          "md5": "f8fe99fa041fbd9e8d76769da05f3a72",
+          "path": "sand/roughness.jpg",
+          "sha256": "d6b80e523363c7960f3dc59d02e8ca902e4b9ea642353cc01c3b39eb1a5063c5",
+          "size": 756532,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_sand/aerial_sand_rough_2k.jpg"
+        }
+      },
+      "format": "jpg",
+      "license": "CC0",
+      "resolution": "2k",
+      "slug": "aerial_sand",
+      "source": "https://polyhaven.com/a/aerial_sand"
+    },
+    "silt": {
+      "categories": [
+        "natural",
+        "outdoor",
+        "terrain"
+      ],
+      "dimensions_mm": [
+        3000.0,
+        3000.000238418579
+      ],
+      "files": {
+        "albedo": {
+          "map": "Diffuse",
+          "md5": "e24815195475758e9a7f83c01d64031f",
+          "path": "silt/albedo.jpg",
+          "sha256": "5e4cf51f8ce858a04e19228dc6e1f4956a47e0ee92efa684bd0079e326715b4c",
+          "size": 1375586,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dry_mud_field_001/dry_mud_field_001_diff_2k.jpg"
+        },
+        "ao": {
+          "map": "AO",
+          "md5": "8aa0b58d4b5e738babfa4081f7103485",
+          "path": "silt/ao.jpg",
+          "sha256": "a3fe4239b16fed9bbdfcd15d2f13b2567314fbe68eeaa41ceb1321f2b8e8ecdb",
+          "size": 1579239,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dry_mud_field_001/dry_mud_field_001_ao_2k.jpg"
+        },
+        "height": {
+          "map": "Displacement",
+          "md5": "1131587ebb288e6167330eed46a56f35",
+          "path": "silt/height.jpg",
+          "sha256": "529087a53139d0c512a91ef26e995555ee377321bde6805adfce2c4974064761",
+          "size": 400745,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dry_mud_field_001/dry_mud_field_001_disp_2k.jpg"
+        },
+        "normal": {
+          "map": "nor_gl",
+          "md5": "670bd292f47dd16c5eeafec5449bb0f9",
+          "path": "silt/normal.jpg",
+          "sha256": "2aa8f6415e900a1b5c5e0b8b75eed0f51013902d5511220dcc6e9b45e70239a4",
+          "size": 2344766,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dry_mud_field_001/dry_mud_field_001_nor_gl_2k.jpg"
+        },
+        "roughness": {
+          "map": "Rough",
+          "md5": "0cffecc5dd88ceefcb59e3c9f302375d",
+          "path": "silt/roughness.jpg",
+          "sha256": "749d475320fa440a16d87a639e2fad41ef1b28cc268cdcd4e41557fb5870d005",
+          "size": 1066381,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dry_mud_field_001/dry_mud_field_001_rough_2k.jpg"
+        }
+      },
+      "format": "jpg",
+      "license": "CC0",
+      "resolution": "2k",
+      "slug": "dry_mud_field_001",
+      "source": "https://polyhaven.com/a/dry_mud_field_001"
+    },
+    "snow": {
+      "categories": [
+        "natural",
+        "outdoor",
+        "snow",
+        "terrain"
+      ],
+      "dimensions_mm": [
+        2000.0,
+        2000.0
+      ],
+      "files": {
+        "albedo": {
+          "map": "Diffuse",
+          "md5": "5541e5601951b071691238ddc70632c0",
+          "path": "snow/albedo.jpg",
+          "sha256": "d185c2853c7e674161789db4eed1c5708d85e4f6e3dcb5698209568adf02aa98",
+          "size": 1314409,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/snow_02/snow_02_diff_2k.jpg"
+        },
+        "ao": {
+          "map": "AO",
+          "md5": "7d41f091dd46e66d6023804d030e682c",
+          "path": "snow/ao.jpg",
+          "sha256": "3bb1a13af0ce8d5b8a0cc80e1d5b4f36a36b0d612b65b3dc16ebc4b7ea36f4cb",
+          "size": 1356103,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/snow_02/snow_02_ao_2k.jpg"
+        },
+        "height": {
+          "map": "Displacement",
+          "md5": "c7c8e7848b76819012cbac660a90a61c",
+          "path": "snow/height.jpg",
+          "sha256": "c3fe9fe26907138e23e685c53c43152858f27042b802931e0f71bc0c62286fdd",
+          "size": 432399,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/snow_02/snow_02_disp_2k.jpg"
+        },
+        "normal": {
+          "map": "nor_gl",
+          "md5": "ef128fbdf1b31932c792eb6472c84574",
+          "path": "snow/normal.jpg",
+          "sha256": "288539ee33387e91035be4dc8d10da574bf6a95c8374d33b6b1dc465c6949e8f",
+          "size": 4761595,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/snow_02/snow_02_nor_gl_2k.jpg"
+        },
+        "roughness": {
+          "map": "Rough",
+          "md5": "8b9787b4c7b1d7390a4b4a1ae67728b1",
+          "path": "snow/roughness.jpg",
+          "sha256": "9cfa994318ef190d4540875a166c7c745184c1a166e82271bca7c0a628f8820f",
+          "size": 628467,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/snow_02/snow_02_rough_2k.jpg"
+        }
+      },
+      "format": "jpg",
+      "license": "CC0",
+      "resolution": "2k",
+      "slug": "snow_02",
+      "source": "https://polyhaven.com/a/snow_02"
+    }
+  },
+  "version": 1
+}

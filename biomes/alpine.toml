@@ -1,0 +1,40 @@
+[biome]
+name = "alpine"
+description = "High mountain: talus and bare rock above the treeline, tundra and meadow turf below it, permanent snow on the coldest ground."
+sharpness = 3.0
+
+[layer.glacial_wash]
+material = "river_rock"
+weight = "smoothstep(flow, 0.55, 0.78) * step(slope < 0.4)"
+
+[layer.glacial_silt]
+material = "silt"
+weight = "smoothstep(deposition, 0.45, 0.8) * step(slope < 0.15) * (1 - smoothstep(flow, 0.55, 0.8))"
+variation = 0.2
+variation_m = 450.0
+
+[layer.tundra_turf]
+material = "dry_grass"
+weight = "(1 - smoothstep(slope, 0.28, 0.45)) * (1 - smoothstep(moisture, 0.36, 0.54)) * smoothstep(temperature, 0.28, 0.42) * patchiness_mid"
+variation = 0.3
+variation_m = 700.0
+
+[layer.alpine_meadow]
+material = "lush_grass"
+weight = "(1 - smoothstep(slope, 0.28, 0.45)) * smoothstep(moisture, 0.36, 0.54) * smoothstep(temperature, 0.34, 0.5) * patchiness_mid"
+variation = 0.3
+variation_m = 650.0
+
+[layer.talus_scree]
+material = "gravel"
+weight = "smoothstep(slope, 0.28, 0.45) * (1 - smoothstep(temperature, 0.4, 0.56))"
+variation = 0.25
+variation_m = 600.0
+
+[layer.exposed_rock]
+material = "cliff_rock"
+weight = "smoothstep(slope, 0.28, 0.45) * smoothstep(temperature, 0.4, 0.56)"
+
+[layer.snowfield]
+material = "snow"
+weight = "1 - smoothstep(temperature, 0.28, 0.42)"

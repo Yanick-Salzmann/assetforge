@@ -1,0 +1,34 @@
+[defaults]
+resolution = "2k"
+format = "jpg"
+maps = ["Diffuse", "nor_gl", "Rough", "AO", "Displacement"]
+
+[material.lush_grass]
+slug = "leafy_grass"
+
+[material.dry_grass]
+slug = "withered_grass"
+
+[material.forest_floor]
+slug = "forest_floor"
+
+[material.mud]
+slug = "brown_mud"
+
+[material.silt]
+slug = "dry_mud_field_001"
+
+[material.gravel]
+slug = "gravel"
+
+[material.river_rock]
+slug = "dry_riverbed_rock"
+
+[material.cliff_rock]
+slug = "dark_rock"
+
+[material.sand]
+slug = "aerial_sand"
+
+[material.snow]
+slug = "snow_02"

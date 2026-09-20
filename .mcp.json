@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "terrain-forge": {
+      "command": "uv",
+      "args": ["run", "--frozen", "python", "-m", "terrain.server"]
+    },
+    "asset-forge": {
+      "command": "uv",
+      "args": ["run", "--frozen", "python", "-m", "assets.server"]
+    },
+    "blender-mcp": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://projects.blender.org/lab/blender_mcp.git#subdirectory=mcp",
+        "blender-mcp"
+      ]
+    }
+  }
+}

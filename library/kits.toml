@@ -1,0 +1,32 @@
+[defaults]
+category = "prop"
+
+[pack.city_kit_commercial]
+source = "kenney"
+slug = "city-kit-commercial"
+category = "building"
+
+[pack.city_kit_suburban]
+source = "kenney"
+slug = "city-kit-suburban"
+category = "building"
+
+[pack.city_kit_industrial]
+source = "kenney"
+slug = "city-kit-industrial"
+category = "building"
+
+[pack.city_kit_roads]
+source = "kenney"
+slug = "city-kit-roads"
+category = "road"
+
+[pack.nature]
+source = "kenney"
+slug = "nature-kit"
+category = "vegetation"
+
+[pack.graveyard]
+source = "kenney"
+slug = "graveyard-kit"
+category = "prop"

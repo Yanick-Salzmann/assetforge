@@ -1,0 +1,24 @@
+[defaults]
+resolution = "2k"
+format = "jpg"
+maps = [
+    "Diffuse",
+    "nor_gl",
+    "Rough",
+    "AO",
+]
+
+[material.concrete_cc0]
+slug = "concrete_wall_001"
+
+[material.brick_cc0]
+slug = "brick_4"
+
+[material.metal_cc0]
+slug = "metal_plate"
+
+[material.wood_cc0]
+slug = "oak_wood_planks"
+
+[material.roofing_cc0]
+slug = "clay_roof_tiles"
