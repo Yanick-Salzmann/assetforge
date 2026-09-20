@@ -43,3 +43,6 @@ library/.texture_catalog_cache.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Mirrored from plugin/skills/ by scripts/sync_dev_skills.py (af-37k.2)
+.claude/skills/

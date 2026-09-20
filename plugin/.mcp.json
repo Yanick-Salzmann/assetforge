@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "terrain-forge": {
+      "command": "${ASSETFORGE_PYTHON}",
+      "args": ["-m", "terrain.server"],
+      "env": {
+        "ASSETFORGE_WORKSPACE": "${ASSETFORGE_WORKSPACE}"
+      }
+    },
+    "asset-forge": {
+      "command": "${ASSETFORGE_PYTHON}",
+      "args": ["-m", "assets.server"],
+      "env": {
+        "ASSETFORGE_WORKSPACE": "${ASSETFORGE_WORKSPACE}"
+      }
+    },
+    "blender-mcp": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://projects.blender.org/lab/blender_mcp.git#subdirectory=mcp",
+        "blender-mcp"
+      ]
+    }
+  }
+}

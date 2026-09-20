@@ -69,7 +69,8 @@ setup — a server that is built but never registered is a server that never run
     kits/                   CC0 prop kits (Kenney, Quaternius), indexed
   out/terrain/<name>/       height.png splat_0.png ... scatter_*.png preview_*.png terrain.json
   out/assets/<name>/        <name>.glb asset.json recipe.py contact_sheet.png textures/
-  .claude/skills/           terrain-new, terrain-tune, asset-building, asset-prop
+  plugin/skills/            terrain-new, terrain-tune, asset-building, asset-prop, asset-vehicle
+  plugin/.mcp.json          shared MCP server config for both .claude-plugin and .codex-plugin
 ```
 
 ---
