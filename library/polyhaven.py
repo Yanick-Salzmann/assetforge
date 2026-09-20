@@ -9,12 +9,12 @@ from pathlib import Path
 
 import requests
 
+from terrain.config import LIBRARY_DIR, MATERIALS_DIR, PACKAGE_LIBRARY_DIR
+
 API_ROOT = "https://api.polyhaven.com"
 ASSET_PAGE = "https://polyhaven.com/a"
-LIBRARY_DIR = Path(__file__).resolve().parent
-MATERIALS_DIR = LIBRARY_DIR / "materials"
-SET_FILE = LIBRARY_DIR / "materials.toml"
-LOCK_FILE = LIBRARY_DIR / "materials.lock.json"
+SET_FILE = PACKAGE_LIBRARY_DIR / "materials.toml"
+LOCK_FILE = PACKAGE_LIBRARY_DIR / "materials.lock.json"
 CHUNK = 1 << 20
 
 TEXTURE_CATALOG_CACHE = LIBRARY_DIR / ".texture_catalog_cache.json"

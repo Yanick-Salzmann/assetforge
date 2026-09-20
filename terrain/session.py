@@ -270,11 +270,16 @@ def material_index() -> material_library.MaterialIndex:
 
 
 def resolve_biome(biome_file: str, index: material_library.MaterialIndex) -> splat_mod.Biome:
-    """A biome by path if biome_file names a file on disk, else by name from biomes/."""
+    """A biome by path if biome_file names a file on disk, else by name: a workspace override
+    first, then the packaged preset (config.resolve_biome_path)."""
     direct = Path(biome_file)
     if direct.is_file():
         return splat_mod.load_biome(direct, index)
-    return splat_mod.biome(direct.stem, index=index)
+    path = config.resolve_biome_path(direct.stem)
+    if not path.is_file():
+        known = ", ".join(config.available_biome_names()) or "none"
+        raise splat_mod.SplatRuleError(f"unknown biome {direct.stem!r}; known biomes: {known}")
+    return splat_mod.load_biome(path, index)
 
 
 def create(

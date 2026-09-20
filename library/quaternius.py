@@ -17,7 +17,8 @@ import zipfile
 from pathlib import Path
 
 from library import gltf
-from library.kenney import KITS_DIR, LIBRARY_DIR, LOCK_FILE, PackSpec, load_lock, load_set, save_lock
+from library.kenney import KITS_DIR, LOCK_FILE, PackSpec, load_lock, load_set, save_lock
+from terrain.config import LIBRARY_DIR
 
 STAGING_DIR = LIBRARY_DIR / "_staging"
 MODEL_SUFFIXES = (".glb", ".gltf")

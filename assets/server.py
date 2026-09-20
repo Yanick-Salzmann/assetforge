@@ -29,6 +29,7 @@ def asset_status() -> dict:
         "server": "asset-forge",
         "platform": platform.platform(),
         "repo_root": str(config.REPO_ROOT),
+        "workspace_dir": str(config.WORKSPACE_DIR),
         "output_dir": str(config.ASSET_OUT_DIR),
         "kits_dir": str(config.KITS_DIR),
         "blender_executable": blender.find_blender(),

@@ -12,12 +12,11 @@ from pathlib import Path
 import requests
 
 from library import gltf
+from terrain.config import KITS_DIR, PACKAGE_LIBRARY_DIR
 
 ASSET_PAGE = "https://kenney.nl/assets"
-LIBRARY_DIR = Path(__file__).resolve().parent
-KITS_DIR = LIBRARY_DIR / "kits"
-SET_FILE = LIBRARY_DIR / "kits.toml"
-LOCK_FILE = LIBRARY_DIR / "kits.lock.json"
+SET_FILE = PACKAGE_LIBRARY_DIR / "kits.toml"
+LOCK_FILE = PACKAGE_LIBRARY_DIR / "kits.lock.json"
 MODEL_PREFIXES = ("Models/GLB format/", "Models/GLTF format/")
 MODEL_SUFFIXES = (".glb", ".gltf")
 ZIP_HREF = re.compile(r'href=[\'"]([^\'"]+\.zip)[\'"]')

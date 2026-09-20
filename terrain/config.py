@@ -2,21 +2,62 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping
 
 from terrain.device import resolve as resolve_device
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+PACKAGE_DIR = Path(__file__).resolve().parent.parent
+REPO_ROOT = PACKAGE_DIR
 
-BIOMES_DIR = REPO_ROOT / "biomes"
-LIBRARY_DIR = REPO_ROOT / "library"
+BIOMES_DIR = PACKAGE_DIR / "biomes"
+PACKAGE_LIBRARY_DIR = PACKAGE_DIR / "library"
+
+WORKSPACE_ENV_VAR = "ASSETFORGE_WORKSPACE"
+
+
+def resolve_workspace(override: str | None = None) -> Path:
+    """Resolve the user workspace: an override, else ASSETFORGE_WORKSPACE, else cwd.
+
+    Packaged defaults (biome presets, library pin/lock files, blender_scripts/) stay
+    relative to PACKAGE_DIR regardless of the workspace - only user-owned data (out/,
+    downloaded library binaries, biome overrides) lives under it.
+    """
+    requested = override if override is not None else os.environ.get(WORKSPACE_ENV_VAR)
+    if requested is not None and not requested.strip():
+        requested = None
+    return Path(requested).resolve() if requested is not None else Path.cwd()
+
+
+WORKSPACE_DIR = resolve_workspace()
+
+LIBRARY_DIR = WORKSPACE_DIR / "library"
 MATERIALS_DIR = LIBRARY_DIR / "materials"
 KITS_DIR = LIBRARY_DIR / "kits"
-OUT_DIR = REPO_ROOT / "out"
+OUT_DIR = WORKSPACE_DIR / "out"
 TERRAIN_OUT_DIR = OUT_DIR / "terrain"
 ASSET_OUT_DIR = OUT_DIR / "assets"
+
+WORKSPACE_BIOMES_DIR = WORKSPACE_DIR / "biomes"
+
+
+def resolve_biome_path(name: str) -> Path:
+    """A biome rule file by name: a workspace override first, else the packaged preset."""
+    override = WORKSPACE_BIOMES_DIR / f"{name}.toml"
+    if override.is_file():
+        return override
+    return BIOMES_DIR / f"{name}.toml"
+
+
+def available_biome_names() -> tuple[str, ...]:
+    names: set[str] = set()
+    if BIOMES_DIR.is_dir():
+        names.update(path.stem for path in BIOMES_DIR.glob("*.toml"))
+    if WORKSPACE_BIOMES_DIR.is_dir():
+        names.update(path.stem for path in WORKSPACE_BIOMES_DIR.glob("*.toml"))
+    return tuple(sorted(names))
 
 HEIGHTMAP_BIT_DEPTH = 16
 HEIGHTMAP_MAX = (1 << HEIGHTMAP_BIT_DEPTH) - 1

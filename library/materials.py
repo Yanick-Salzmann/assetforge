@@ -9,14 +9,15 @@ from typing import Iterator, Mapping
 import tomli_w
 
 from library import polyhaven
+from terrain.config import PACKAGE_LIBRARY_DIR
 
 LIBRARY_DIR = polyhaven.LIBRARY_DIR
 MATERIALS_DIR = polyhaven.MATERIALS_DIR
 INDEX_FILE = LIBRARY_DIR / "materials.json"
 
-ASSET_SET_FILE = LIBRARY_DIR / "asset_materials.toml"
+ASSET_SET_FILE = PACKAGE_LIBRARY_DIR / "asset_materials.toml"
 ASSET_MATERIALS_DIR = LIBRARY_DIR / "asset_materials"
-ASSET_LOCK_FILE = LIBRARY_DIR / "asset_materials.lock.json"
+ASSET_LOCK_FILE = PACKAGE_LIBRARY_DIR / "asset_materials.lock.json"
 ASSET_INDEX_FILE = LIBRARY_DIR / "asset_materials.json"
 
 INDEX_VERSION = 1

@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Iterator, Mapping
 
 from library import kenney
+from terrain.config import LIBRARY_DIR
 
-LIBRARY_DIR = kenney.LIBRARY_DIR
 KITS_DIR = kenney.KITS_DIR
 INDEX_FILE = LIBRARY_DIR / "kits.json"
 

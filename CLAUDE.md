@@ -57,6 +57,13 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 - If a required sync or push is blocked, stop and report the exact command and error.
 <!-- END BEADS INTEGRATION -->
 
+## Git Policy Override
+
+Overrides the Conservative default above: after closing a bead (`bd close`), commit the
+resulting changes and push, without waiting for separate approval each time. Still subordinate
+to any explicit in-session "don't commit" / "don't push" instruction, and still never force-push,
+skip hooks, or push to a branch other than the one currently checked out.
+
 ## Build & Test
 
 `uv` is the only entry point. On Windows `uv` may not be on PATH; it lives at

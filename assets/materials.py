@@ -19,9 +19,10 @@ from typing import Callable, Iterable, Mapping
 
 import bpy
 
+from terrain.config import LIBRARY_DIR
+
 Color = tuple[float, float, float, float]
 
-LIBRARY_DIR = Path(__file__).resolve().parent.parent / "library"
 CC0_INDEX_FILE = LIBRARY_DIR / "asset_materials.json"
 
 

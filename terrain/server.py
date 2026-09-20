@@ -29,6 +29,7 @@ def terrain_status() -> dict:
         "device": resolve_device().as_dict(),
         "platform": platform.platform(),
         "repo_root": str(config.REPO_ROOT),
+        "workspace_dir": str(config.WORKSPACE_DIR),
         "output_dir": str(config.TERRAIN_OUT_DIR),
         "materials_dir": str(config.MATERIALS_DIR),
         "default_resolution": config.MapConfig(name="_").resolution,
