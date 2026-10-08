@@ -119,8 +119,9 @@ def _protect_small_parts(
     ratio: float,
     min_diagonal_ratio: float = MIN_PROTECTED_PART_DIAGONAL_RATIO,
     min_closed_shape_triangles: int = MIN_CLOSED_SHAPE_TRIANGLES,
-) -> str | None:
-    """Vertex group naming every vertex safe to hand the Decimate modifier.
+) -> tuple[str | None, int]:
+    """Vertex group naming every vertex safe to hand the Decimate modifier, plus the triangle
+    count of the parts left out of it.
 
     A single flat COLLAPSE ratio applied to a whole joined multi-part mesh punches real holes
     through parts that are small or thin relative to the object as a whole - hinges, finials,
@@ -136,36 +137,48 @@ def _protect_small_parts(
     triangle count is already under min_closed_shape_triangles, or would be decimated under it by
     this ratio, is protected too.
 
-    Returns None when every part clears both thresholds, so the modifier runs unconstrained
+    Returns (None, 0) when every part clears both thresholds, so the modifier runs unconstrained
     exactly as it did before this existed.
     """
     mesh = obj.data
     parts = _connected_parts(mesh)
     if len(parts) <= 1:
-        return None
+        return None, 0
     overall_diagonal = _bound_box_diagonal(obj)
     diagonal_threshold = overall_diagonal * min_diagonal_ratio
-    protected = {
-        index
-        for indices in parts
-        if _part_diagonal(mesh, indices) < diagonal_threshold
-        or _part_triangle_count(mesh, indices) * ratio < min_closed_shape_triangles
-        for index in indices
-    }
+    protected: set[int] = set()
+    protected_triangles = 0
+    for indices in parts:
+        part_triangles = _part_triangle_count(mesh, indices)
+        if _part_diagonal(mesh, indices) < diagonal_threshold or part_triangles * ratio < min_closed_shape_triangles:
+            protected.update(indices)
+            protected_triangles += part_triangles
     if not protected:
-        return None
+        return None, 0
     eligible = obj.vertex_groups.new(name="lod_decimate_eligible")
     eligible.add(
         [vert.index for vert in mesh.vertices if vert.index not in protected], 1.0, "REPLACE"
     )
-    return eligible.name
+    return eligible.name, protected_triangles
+
+
+def _whole_mesh_ratio(ratio: float, total_triangles: int, protected_triangles: int) -> float:
+    """Decimate's ratio targets the whole mesh even when a vertex group pins part of it, so the
+    pinned triangles' share of the cut lands on the eligible parts instead. When small protected
+    parts (quoins, trim, hardware) hold most of a building's triangles, a raw 0.5 asks the walls
+    and roofs to give up more triangles than they have and they collapse to nothing. Scaling the
+    target so only the eligible triangles shrink by ratio keeps every part present."""
+    if total_triangles <= 0:
+        return ratio
+    eligible_triangles = total_triangles - protected_triangles
+    return (eligible_triangles * ratio + protected_triangles) / total_triangles
 
 
 def _decimate(obj: bpy.types.Object, ratio: float) -> None:
     modifier = obj.modifiers.new(name="lod_decimate", type="DECIMATE")
-    modifier.ratio = ratio
     modifier.use_collapse_triangulate = True
-    group_name = _protect_small_parts(obj, ratio)
+    group_name, protected_triangles = _protect_small_parts(obj, ratio)
+    modifier.ratio = _whole_mesh_ratio(ratio, _triangle_count(obj), protected_triangles)
     if group_name is not None:
         modifier.vertex_group = group_name
     _select_only([obj])

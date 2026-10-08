@@ -426,7 +426,7 @@ function orbitTo(degrees) {
   controls.update();
 }
 
-window.viewerApi = { orbitTo, frameCamera, groundCamera, camera, controls };
+window.viewerApi = { orbitTo, frameCamera, groundCamera, camera, controls, scene };
 
 tick();
 start();

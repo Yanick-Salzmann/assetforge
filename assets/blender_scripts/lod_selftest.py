@@ -121,6 +121,36 @@ def _mid_part_kit(material: "bpy.types.Material") -> "bpy.types.Object":
     return obj
 
 
+def _trim_heavy_kit(material: "bpy.types.Material") -> "bpy.types.Object":
+    """One large subdivided plate plus sixty small subdivided boxes that hold most of the
+    triangles - the shape of a building whose quoins and trim outnumber its walls. A whole-mesh
+    Decimate ratio pins the boxes and takes the entire cut out of the plate, deleting it."""
+    mesh = bpy.data.meshes.new("trim_heavy_mesh")
+    bm = bmesh.new()
+    bmesh.ops.create_grid(bm, x_segments=6, y_segments=6, size=10.0)
+    bmesh.ops.solidify(bm, geom=bm.faces[:], thickness=0.2)
+    for i in range(60):
+        cube = bmesh.ops.create_cube(bm, size=0.3)
+        cube_verts = cube["verts"]
+        bmesh.ops.translate(bm, vec=(-9.0 + (i % 10) * 2.0, -9.0 + (i // 10) * 3.0, 0.6), verts=cube_verts)
+        cube_edges = list({edge for vert in cube_verts for edge in vert.link_edges})
+        bmesh.ops.subdivide_edges(bm, edges=cube_edges, cuts=1, use_grid_fill=True)
+    bmesh.ops.triangulate(bm, faces=bm.faces[:])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.update()
+    obj = bpy.data.objects.new("trim_heavy", mesh)
+    bpy.context.collection.objects.link(obj)
+    obj.data.materials.append(material)
+    return obj
+
+
+def _largest_part_diagonal(obj: "bpy.types.Object", lod_module) -> float:
+    parts = lod_module._connected_parts(obj.data)
+    return max(lod_module._part_diagonal(obj.data, indices) for indices in parts)
+
+
 def _small_part_sizes(obj: "bpy.types.Object", lod_module, count: int) -> list:
     """Vertex counts of the `count` smallest loose parts, expected to still be intact."""
     sizes = sorted(len(part) for part in lod_module._connected_parts(obj.data))
@@ -210,6 +240,11 @@ def main() -> None:
         kit = _mid_part_kit(material)
         game_ready.uv_unwrap_and_pack([kit])
         kit_counts = lod.generate_lods(kit, ratios=(1.0, 0.5, 0.15), normal_map_size=64).triangle_counts
+        trim_heavy = _trim_heavy_kit(material)
+        game_ready.uv_unwrap_and_pack([trim_heavy])
+        trim_set = lod.generate_lods(trim_heavy, ratios=(1.0, 0.5, 0.15), normal_map_size=64)
+        trim_counts = trim_set.triangle_counts
+        plate_diagonals = [_largest_part_diagonal(obj, lod) for obj in trim_set.objects]
         image_stats = {
             image_name: _image_stats(bpy.data.images[image_name])
             for image_name in lod_set.normal_maps
@@ -219,6 +254,8 @@ def main() -> None:
         ok = (
             triangle_counts[0] > triangle_counts[1] > triangle_counts[2] > 0
             and kit_counts[0] > kit_counts[1] > kit_counts[2] > 0
+            and trim_counts[0] > trim_counts[1] > trim_counts[2] > 0
+            and all(diagonal >= plate_diagonals[0] * 0.9 for diagonal in plate_diagonals)
             and len(lod_set.objects) == 3
             and lod_set.objects[0].data.materials[0].name == material.name
             and lod_set.objects[1].data.materials[0].name != material.name
@@ -234,6 +271,8 @@ def main() -> None:
             "ok": ok,
             "report": lod_set.as_dict(),
             "kit_triangle_counts": kit_counts,
+            "trim_heavy_triangle_counts": trim_counts,
+            "trim_heavy_plate_diagonals": plate_diagonals,
             "image_stats": image_stats,
             "boundary_edges": boundary_edges,
             "hinge_sizes": hinge_sizes,
