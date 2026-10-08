@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
 const EYE_HEIGHT_M = 1.7;
 const HUMAN_HEIGHT_M = 1.8;
@@ -29,7 +30,11 @@ const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
 controls.autoRotateSpeed = 1.5;
 
-scene.add(new THREE.HemisphereLight(0xf2f4ff, 0x6b665c, 1.4));
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.8;
+pmrem.dispose();
+scene.add(new THREE.HemisphereLight(0xf2f4ff, 0x6b665c, 0.6));
 const sun = new THREE.DirectionalLight(0xffffff, 2.2);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
@@ -39,7 +44,7 @@ scene.add(sun.target);
 
 const ground = new THREE.Mesh(
   new THREE.PlaneGeometry(1, 1),
-  new THREE.MeshStandardMaterial({ color: 0x8f9188, roughness: 1 }),
+  new THREE.MeshStandardMaterial({ color: 0x8f9188, roughness: 1, envMapIntensity: 0.35 }),
 );
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
