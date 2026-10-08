@@ -7,11 +7,14 @@ Invoked as: blender --background --factory-startup --python contact_sheet_render
 
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
 import bpy
 from mathutils import Vector
+
+LOWER_LOD_SUFFIX = re.compile(r"_LOD[1-9]\d*$")
 
 VIEW_DIRECTIONS = {
     "front": Vector((0.0, 1.0, 0.0)),
@@ -70,6 +73,9 @@ def _build_world() -> None:
 
 def _import_asset(glb_path: str) -> list:
     bpy.ops.import_scene.gltf(filepath=glb_path)
+    for obj in list(bpy.data.objects):
+        if obj.type == "MESH" and LOWER_LOD_SUFFIX.search(obj.name):
+            bpy.data.objects.remove(obj, do_unlink=True)
     bpy.context.view_layer.update()
     return [obj for obj in bpy.data.objects if obj.type == "MESH"]
 
