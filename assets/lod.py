@@ -28,7 +28,7 @@ import bmesh
 import bpy
 
 from assets.game_ready import TRIANGLE_UV_SHRINK, triangulate
-from assets.uv_islands import axis_key, face_islands, project_point
+from assets.uv_islands import axis_key, face_islands, project_point, shapes_overlap
 
 LOD_RATIOS: tuple[float, float, float] = (1.0, 0.5, 0.15)
 DEFAULT_NORMAL_MAP_SIZE = 1024
@@ -172,6 +172,46 @@ def _decimate(obj: bpy.types.Object, ratio: float) -> None:
     bpy.ops.object.modifier_apply(modifier=modifier.name)
 
 
+DEGENERATE_ISLAND_DIAGONAL_RATIO = 0.05
+
+
+def _remove_decimate_debris(obj: bpy.types.Object) -> int:
+    """Delete any post-Decimate connected component that is a single free-floating triangle
+    spanning a large fraction of the object's own bounds - a rare COLLAPSE_TRIANGULATE artifact
+    at the boundary between _protect_small_parts's protected and unprotected vertex groups, where
+    the modifier bridges two unrelated collapsed vertices into one degenerate face instead of
+    touching a real part. Confirmed on medieval_tavern: three orphan triangles, each its own
+    3-vertex connected component with a bbox diagonal of several metres (spanning unrelated parts
+    of the building), reported as 9 boundary edges (holes) by validate_asset's watertight check -
+    real geometry never produces a lone triangle disconnected from everything else. A genuine tiny
+    part (a bolt head, a sliver of trim) has vertices close together, so a bbox-diagonal threshold
+    tells the two apart without needing to know which case produced a given 3-vertex island.
+    Returns the number of triangles removed."""
+    mesh = obj.data
+    parts = _connected_parts(mesh)
+    if len(parts) <= 1:
+        return 0
+    threshold = _bound_box_diagonal(obj) * DEGENERATE_ISLAND_DIAGONAL_RATIO
+    debris_verts: set[int] = {
+        index
+        for indices in parts
+        if len(indices) == 3 and _part_diagonal(mesh, indices) >= threshold
+        for index in indices
+    }
+    if not debris_verts:
+        return 0
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bm.verts.ensure_lookup_table()
+    doomed = [bm.verts[i] for i in debris_verts]
+    removed = sum(len(v.link_faces) for v in doomed)
+    bmesh.ops.delete(bm, geom=doomed, context="VERTS")
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.update()
+    return removed
+
+
 def _part_centers(mesh: bpy.types.Mesh, parts: list[list[int]]) -> list[tuple[float, float, float]]:
     centers = []
     for indices in parts:
@@ -214,6 +254,39 @@ def _lod0_island_rects(lod0: bpy.types.Object) -> tuple[list[dict], list[tuple[f
         )
     bm.free()
     return rects, _part_centers(lod0.data, parts)
+
+
+def _split_overlap_free_layers(
+    faces: list[bmesh.types.BMFace], axis: int
+) -> list[list[bmesh.types.BMFace]]:
+    """Split a rect's assigned faces into the fewest groups whose projected footprints (under
+    axis) never overlap within a group, greedily: a face joins the first existing layer it
+    doesn't overlap any member of, or seeds a new layer.
+
+    Faces are matched to a target rect by nearest 3D centre only (see the bucketing loop above),
+    which is a good approximation of lod0 island membership but not a guarantee - a decimated
+    face whose collapse pulled it away from its true island can land in the same bucket as faces
+    from a different, non-adjacent part of the same (axis, sign, lod0 part) that happens to
+    project onto an overlapping 2D footprint (e.g. two arms of a corner-joined timber ring, both
+    facing +X at different depths). The bucket's later per-axis bbox-to-rect fit is a single
+    affine map and therefore preserves whatever overlap already exists in its input, so an
+    overlapping bucket produces overlapping UVs downstream (the actual mechanism behind af-3b4's
+    residual failures after the first re-fit landed). Layering first and fitting each layer into
+    its own horizontal strip of the rect keeps every strip's own affine fit collision-free without
+    needing to know which faces truly belong together."""
+    layers: list[list[bmesh.types.BMFace]] = []
+    layer_shapes: list[list[list[tuple[float, float]]]] = []
+    for face in faces:
+        shape = [project_point(v.co, axis) for v in face.verts]
+        for layer, shapes in zip(layers, layer_shapes):
+            if not any(shapes_overlap(shape, other) for other in shapes):
+                layer.append(face)
+                shapes.append(shape)
+                break
+        else:
+            layers.append([face])
+            layer_shapes.append([shape])
+    return layers
 
 
 def _refit_uvs_to_lod0_islands(
@@ -281,30 +354,38 @@ def _refit_uvs_to_lod0_islands(
     for index, faces in buckets.items():
         rect = rects[index]
         axis = rect["axis"]
-        points_by_face = {face.index: [project_point(v.co, axis) for v in face.verts] for face in faces}
-        xs = [p[0] for pts in points_by_face.values() for p in pts]
-        ys = [p[1] for pts in points_by_face.values() for p in pts]
-        bbox_min_x, bbox_min_y = min(xs), min(ys)
-        bbox_width = max(max(xs) - bbox_min_x, 1e-6)
-        bbox_height = max(max(ys) - bbox_min_y, 1e-6)
         uv_min_x, uv_min_y = rect["uv_min"]
         uv_width, uv_height = rect["uv_size"]
 
-        for face in faces:
-            corners = [
-                (
-                    uv_min_x + (px - bbox_min_x) / bbox_width * uv_width,
-                    uv_min_y + (py - bbox_min_y) / bbox_height * uv_height,
-                )
-                for px, py in points_by_face[face.index]
-            ]
-            centroid_x = sum(u for u, _ in corners) / len(corners)
-            centroid_y = sum(v for _, v in corners) / len(corners)
-            for loop, (u, v) in zip(face.loops, corners):
-                loop[uv_layer].uv = (
-                    centroid_x + (u - centroid_x) * (1.0 - TRIANGLE_UV_SHRINK),
-                    centroid_y + (v - centroid_y) * (1.0 - TRIANGLE_UV_SHRINK),
-                )
+        layers = _split_overlap_free_layers(faces, axis)
+        layer_height = uv_height / len(layers)
+
+        for layer_index, layer_faces in enumerate(layers):
+            points_by_face = {
+                face.index: [project_point(v.co, axis) for v in face.verts] for face in layer_faces
+            }
+            xs = [p[0] for pts in points_by_face.values() for p in pts]
+            ys = [p[1] for pts in points_by_face.values() for p in pts]
+            bbox_min_x, bbox_min_y = min(xs), min(ys)
+            bbox_width = max(max(xs) - bbox_min_x, 1e-6)
+            bbox_height = max(max(ys) - bbox_min_y, 1e-6)
+            layer_uv_min_y = uv_min_y + layer_index * layer_height
+
+            for face in layer_faces:
+                corners = [
+                    (
+                        uv_min_x + (px - bbox_min_x) / bbox_width * uv_width,
+                        layer_uv_min_y + (py - bbox_min_y) / bbox_height * layer_height,
+                    )
+                    for px, py in points_by_face[face.index]
+                ]
+                centroid_x = sum(u for u, _ in corners) / len(corners)
+                centroid_y = sum(v for _, v in corners) / len(corners)
+                for loop, (u, v) in zip(face.loops, corners):
+                    loop[uv_layer].uv = (
+                        centroid_x + (u - centroid_x) * (1.0 - TRIANGLE_UV_SHRINK),
+                        centroid_y + (v - centroid_y) * (1.0 - TRIANGLE_UV_SHRINK),
+                    )
 
     bm.to_mesh(obj.data)
     bm.free()
@@ -404,6 +485,7 @@ def generate_lods(
     for index, ratio in enumerate(ratios[1:], start=1):
         lod = _duplicate(lod0, f"{base_name}_LOD{index}")
         _decimate(lod, ratio)
+        _remove_decimate_debris(lod)
         _refit_uvs_to_lod0_islands(lod, lod0_rects, lod0_part_centers)
         image = bake_normal_map(lod0, lod, base_material, image_size=normal_map_size)
         objects.append(lod)
