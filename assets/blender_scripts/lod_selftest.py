@@ -201,6 +201,28 @@ def _uv_overlap_triangle_count(obj: "bpy.types.Object") -> int:
     return len(overlapping)
 
 
+def _dark_face_fraction(obj: "bpy.types.Object", image: "bpy.types.Image") -> float:
+    """Fraction of obj's triangles whose UV centroid samples a near-black texel of image. LOD0's
+    albedo here is a flat light grey, so any dark texel under a face means that face's UVs point
+    at texels the bake never filled - the black wall patches of af-4ir.9."""
+    width, height = image.size
+    pixels = list(image.pixels)
+    channels = image.channels
+    mesh = obj.data
+    mesh.calc_loop_triangles()
+    uv_layer = mesh.uv_layers.active.data
+    dark = 0
+    for tri in mesh.loop_triangles:
+        u = sum(uv_layer[li].uv[0] for li in tri.loops) / 3.0
+        v = sum(uv_layer[li].uv[1] for li in tri.loops) / 3.0
+        x = min(max(int(u * width), 0), width - 1)
+        y = min(max(int(v * height), 0), height - 1)
+        offset = (y * width + x) * channels
+        if max(pixels[offset:offset + 3]) < 0.2:
+            dark += 1
+    return dark / max(len(mesh.loop_triangles), 1)
+
+
 def _image_stats(image: "bpy.types.Image") -> dict:
     pixels = list(image.pixels)
     channel_count = image.channels
@@ -227,10 +249,12 @@ def main() -> None:
             )
         ]
         beam = _thin_beam("beam", (0.0, 0.0, 0.0))
+        for part in hinges + [beam]:
+            part.data.materials.append(material)
         _join_loose_parts(lod0, hinges + [beam])
         game_ready.uv_unwrap_and_pack([lod0])
 
-        lod_set = lod.generate_lods(lod0, ratios=(1.0, 0.5, 0.15), normal_map_size=128)
+        lod_set = lod.generate_lods(lod0, ratios=(1.0, 0.5, 0.15), texture_size=512)
         boundary_edges = {obj.name: _boundary_edge_count(obj) for obj in lod_set.objects}
         hinge_sizes = {obj.name: _small_part_sizes(obj, lod, 5) for obj in lod_set.objects}
         uv_overlap_counts = {obj.name: _uv_overlap_triangle_count(obj) for obj in lod_set.objects}
@@ -239,16 +263,21 @@ def main() -> None:
 
         kit = _mid_part_kit(material)
         game_ready.uv_unwrap_and_pack([kit])
-        kit_counts = lod.generate_lods(kit, ratios=(1.0, 0.5, 0.15), normal_map_size=64).triangle_counts
+        kit_counts = lod.generate_lods(kit, ratios=(1.0, 0.5, 0.15), texture_size=64).triangle_counts
         trim_heavy = _trim_heavy_kit(material)
         game_ready.uv_unwrap_and_pack([trim_heavy])
-        trim_set = lod.generate_lods(trim_heavy, ratios=(1.0, 0.5, 0.15), normal_map_size=64)
+        trim_set = lod.generate_lods(trim_heavy, ratios=(1.0, 0.5, 0.15), texture_size=64)
         trim_counts = trim_set.triangle_counts
         plate_diagonals = [_largest_part_diagonal(obj, lod) for obj in trim_set.objects]
         image_stats = {
-            image_name: _image_stats(bpy.data.images[image_name])
-            for image_name in lod_set.normal_maps
-            if image_name is not None
+            entry.normal: _image_stats(bpy.data.images[entry.normal])
+            for entry in lod_set.textures
+            if entry is not None
+        }
+        dark_fractions = {
+            obj.name: _dark_face_fraction(obj, bpy.data.images[entry.albedo])
+            for obj, entry in zip(lod_set.objects, lod_set.textures)
+            if entry is not None
         }
 
         ok = (
@@ -266,6 +295,7 @@ def main() -> None:
                 size == HINGE_VERTEX_COUNT for sizes in hinge_sizes.values() for size in sizes
             )
             and all(count == 0 for count in uv_overlap_counts.values())
+            and all(fraction == 0.0 for fraction in dark_fractions.values())
         )
         payload = {
             "ok": ok,
@@ -277,6 +307,7 @@ def main() -> None:
             "boundary_edges": boundary_edges,
             "hinge_sizes": hinge_sizes,
             "uv_overlap_counts": uv_overlap_counts,
+            "dark_face_fractions": dark_fractions,
         }
     except Exception:
         payload = {"ok": False, "error": traceback.format_exc()}

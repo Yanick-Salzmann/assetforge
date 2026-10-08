@@ -144,7 +144,7 @@ bpy.context.view_layer.objects.active = objects[0]
 bpy.ops.object.join()                                         # generate_lods needs ONE object;
 lod0_object = bpy.context.view_layer.objects.active           # a multi-part asset is never
                                                                # auto-joined anywhere upstream
-lod_set = lod.generate_lods(lod0_object)                      # LOD1/2 decimated + normal-baked from LOD0
+lod_set = lod.generate_lods(lod0_object)                      # LOD1/2 decimated, own UVs, albedo/ORM/normal baked from LOD0
 result = export.export_asset(lod_set.objects, name=name, kind="hero_building")
 ```
 

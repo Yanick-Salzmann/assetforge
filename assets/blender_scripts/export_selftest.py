@@ -113,7 +113,7 @@ def main() -> None:
         lod0 = _detailed_box("hero", material)
         _uv_unwrap(lod0)
 
-        lod_set = lod.generate_lods(lod0, ratios=(1.0, 0.5, 0.15), normal_map_size=128)
+        lod_set = lod.generate_lods(lod0, ratios=(1.0, 0.5, 0.15), texture_size=128)
 
         name = "export-selftest"
         result = export.export_asset(lod_set.objects, name=name, kind="prop")
@@ -126,7 +126,7 @@ def main() -> None:
             and list(counts) == ["LOD0", "LOD1", "LOD2"]
             and counts["LOD0"] > counts["LOD1"] > counts["LOD2"] > 0
             and len(result.materials) == 3
-            and len(result.textures) == 2
+            and len(result.textures) == 6
             and all((out_dir / name / "textures" / t).is_file() for t in result.textures)
             and all(result.bbox_max[i] >= result.bbox_min[i] for i in range(3))
             and manifest["kind"] == "prop"

@@ -5,19 +5,13 @@ live MCP session imports this the same way it imports assets.game_ready and asse
 The headless self-test in assets/blender_scripts/lod_selftest.py does the same via subprocess.
 
 Call generate_lods on the object game_ready_pass already ran on - it decimates two reduced
-copies and bakes a normal map from LOD0 onto each one, so silhouette loss at distance is masked
-by shading instead of showing as faceting. The reduced LODs get their own copy of the shared
-atlas material - same nodes, only the Normal input's image differs - so the non-normal channels
-(albedo, ORM) stay the one shared texture set across all three LODs.
+copies, gives each its own packed UVs, and bakes an albedo/ORM/normal set from LOD0 onto it, so
+each reduced LOD ships with its own material and textures while LOD0 keeps the shared atlas.
 
-Each reduced LOD's UVs are re-fit per island against LOD0's own already-packed atlas rectangles
-(_refit_uvs_to_lod0_islands) rather than left as Decimate's raw vertex-interpolated output: an
-edge collapse near an island boundary can interpolate a triangle's UV corners past its island's
-packed bounds into a neighbouring island's region, which validate_asset's UV overlap check
-correctly flags (af-3b4). Re-fitting keeps every decimated face's UV inside the exact atlas
-rectangle its island already owns on LOD0, which both eliminates the cross-island bleed and keeps
-the reduced LOD's UVs landing on roughly the same atlas texels LOD0's own UVs do - the shared
-albedo/ORM atlas stays approximately correct on the reduced LODs without needing its own bake.
+Earlier versions kept the LOD0 atlas on every LOD and re-fit the decimated faces' UVs into
+LOD0's island rectangles (af-3b4, af-xvx). That cannot be made correct: a collapsed triangle
+matches no LOD0 island exactly, so its UVs land on texels of other faces, window holes or empty
+atlas space, which shows as black patches once the walls survive decimation (af-4ir.9).
 """
 
 from __future__ import annotations
@@ -27,11 +21,10 @@ from dataclasses import dataclass
 import bmesh
 import bpy
 
-from assets.game_ready import TRIANGLE_UV_SHRINK, triangulate
-from assets.uv_islands import axis_key, face_islands, project_point, shapes_overlap
+from assets.game_ready import triangulate, uv_unwrap_and_pack
 
 LOD_RATIOS: tuple[float, float, float] = (1.0, 0.5, 0.15)
-DEFAULT_NORMAL_MAP_SIZE = 1024
+DEFAULT_TEXTURE_SIZE = 1024
 DEFAULT_CAGE_EXTRUSION_RATIO = 0.02
 DEFAULT_BAKE_SAMPLES = 4
 DEFAULT_BAKE_DEVICE = "OPTIX"
@@ -40,16 +33,26 @@ MIN_CLOSED_SHAPE_TRIANGLES = 12
 
 
 @dataclass
+class LodTextures:
+    albedo: str
+    orm: str
+    normal: str
+
+    def as_dict(self) -> dict:
+        return {"albedo": self.albedo, "orm": self.orm, "normal": self.normal}
+
+
+@dataclass
 class LodSet:
     objects: list[bpy.types.Object]
     triangle_counts: list[int]
-    normal_maps: list[str | None]
+    textures: list[LodTextures | None]
 
     def as_dict(self) -> dict:
         return {
             "object_names": [obj.name for obj in self.objects],
             "triangle_counts": self.triangle_counts,
-            "normal_maps": self.normal_maps,
+            "textures": [entry.as_dict() if entry is not None else None for entry in self.textures],
         }
 
 
@@ -225,186 +228,6 @@ def _remove_decimate_debris(obj: bpy.types.Object) -> int:
     return removed
 
 
-def _part_centers(mesh: bpy.types.Mesh, parts: list[list[int]]) -> list[tuple[float, float, float]]:
-    centers = []
-    for indices in parts:
-        xs = [mesh.vertices[i].co.x for i in indices]
-        ys = [mesh.vertices[i].co.y for i in indices]
-        zs = [mesh.vertices[i].co.z for i in indices]
-        centers.append(((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0, (min(zs) + max(zs)) / 2.0))
-    return centers
-
-
-def _lod0_island_rects(lod0: bpy.types.Object) -> tuple[list[dict], list[tuple[float, float, float]]]:
-    """Read lod0's own already-packed, non-overlapping UVs and recover each island's exact atlas
-    rectangle (min/size in 0-1 UV space), so a decimated LOD's faces can later be refit into the
-    same rectangle instead of trusting Decimate's raw UV interpolation across island boundaries
-    (af-3b4). Also returns lod0's own loose-part centres (see _refit_uvs_to_lod0_islands for why a
-    decimated face is matched to its rect by loose part first, not by island centroid alone)."""
-    parts = _connected_parts(lod0.data)
-    part_of_vert = {index: part_index for part_index, indices in enumerate(parts) for index in indices}
-
-    bm = bmesh.new()
-    bm.from_mesh(lod0.data)
-    bm.faces.ensure_lookup_table()
-    uv_layer = bm.loops.layers.uv.verify()
-
-    rects = []
-    for group in face_islands(bm):
-        axis, sign = axis_key(group[0].normal)
-        uv_points = [tuple(loop[uv_layer].uv) for face in group for loop in face.loops]
-        uv_min = (min(p[0] for p in uv_points), min(p[1] for p in uv_points))
-        uv_max = (max(p[0] for p in uv_points), max(p[1] for p in uv_points))
-        rects.append(
-            {
-                "axis": axis,
-                "sign": sign,
-                "part_index": part_of_vert[group[0].verts[0].index],
-                "center_3d": tuple(sum(c) / len(c) for c in zip(*[v.co for face in group for v in face.verts])),
-                "uv_min": uv_min,
-                "uv_size": (max(uv_max[0] - uv_min[0], 1e-6), max(uv_max[1] - uv_min[1], 1e-6)),
-            }
-        )
-    bm.free()
-    return rects, _part_centers(lod0.data, parts)
-
-
-def _split_overlap_free_layers(
-    faces: list[bmesh.types.BMFace], axis: int
-) -> list[list[bmesh.types.BMFace]]:
-    """Split a rect's assigned faces into the fewest groups whose projected footprints (under
-    axis) never overlap within a group, greedily: a face joins the first existing layer it
-    doesn't overlap any member of, or seeds a new layer.
-
-    Faces are matched to a target rect by nearest 3D centre only (see the bucketing loop above),
-    which is a good approximation of lod0 island membership but not a guarantee - a decimated
-    face whose collapse pulled it away from its true island can land in the same bucket as faces
-    from a different, non-adjacent part of the same (axis, sign, lod0 part) that happens to
-    project onto an overlapping 2D footprint (e.g. two arms of a corner-joined timber ring, both
-    facing +X at different depths). The bucket's later per-axis bbox-to-rect fit is a single
-    affine map and therefore preserves whatever overlap already exists in its input, so an
-    overlapping bucket produces overlapping UVs downstream (the actual mechanism behind af-3b4's
-    residual failures after the first re-fit landed). Layering first and fitting each layer into
-    its own horizontal strip of the rect keeps every strip's own affine fit collision-free without
-    needing to know which faces truly belong together."""
-    layers: list[list[bmesh.types.BMFace]] = []
-    layer_shapes: list[list[list[tuple[float, float]]]] = []
-    for face in faces:
-        shape = [project_point(v.co, axis) for v in face.verts]
-        for layer, shapes in zip(layers, layer_shapes):
-            if not any(shapes_overlap(shape, other) for other in shapes):
-                layer.append(face)
-                shapes.append(shape)
-                break
-        else:
-            layers.append([face])
-            layer_shapes.append([shape])
-    return layers
-
-
-def _refit_uvs_to_lod0_islands(
-    obj: bpy.types.Object, rects: list[dict], lod0_part_centers: list[tuple[float, float, float]]
-) -> None:
-    """Re-derive obj's UVs entirely from its own current (post-decimate) geometry, mapping each
-    face into the exact atlas rectangle its matching lod0 island already owns, rather than keeping
-    whatever UV Decimate's vertex-interpolation left behind.
-
-    A face is matched to a candidate rect in two stages: first by loose part (obj's own loose parts
-    are matched to lod0's by nearest part centre - decimation never bridges two parts that weren't
-    already connected, so a part's centre barely moves), then, among that part's own rects, by
-    (axis, sign) and nearest island centre. Matching a face straight to its nearest island centre
-    with no part stage first (tried during development) misroutes a face near the edge of one large
-    island into a small, unrelated island that merely happens to sit physically closer to that one
-    face than the large island's own averaged-out centre does - confirmed with a beam running
-    through a box's centre and hinges sitting flush on the box's corners, both easily closer to a
-    stray corner face than the box's own whole-wall island centre is.
-
-    Every face routed to the same rect is then linearly fit - independently per axis, translate-
-    then-scale - from its own bucket's local bbox into that rect's uv_min/uv_size span. Because the
-    fit always maps a bucket's own bbox onto [uv_min, uv_min + uv_size], no bucket's UVs can ever
-    leave the rectangle its island already owned on lod0 - and those rectangles were already proven
-    non-overlapping there - so this cannot introduce the cross-island UV bleed Decimate's raw
-    interpolation does, regardless of how much a bucket's own footprint grew or shrank relative to
-    lod0's."""
-    triangulate(obj)
-    bm = bmesh.new()
-    bm.from_mesh(obj.data)
-    bm.faces.ensure_lookup_table()
-    uv_layer = bm.loops.layers.uv.verify()
-
-    parts = _connected_parts(obj.data)
-    part_centers = _part_centers(obj.data, parts)
-    part_match = [
-        min(
-            range(len(lod0_part_centers)),
-            key=lambda k: sum((lod0_part_centers[k][d] - center[d]) ** 2 for d in range(3)),
-        )
-        for center in part_centers
-    ]
-    matched_lod0_part_of_vert = {
-        index: part_match[part_index] for part_index, indices in enumerate(parts) for index in indices
-    }
-
-    buckets: dict[int, list[bmesh.types.BMFace]] = {}
-    for face in bm.faces:
-        axis, sign = axis_key(face.normal)
-        lod0_part = matched_lod0_part_of_vert[face.verts[0].index]
-        candidates = [
-            i for i, r in enumerate(rects) if r["axis"] == axis and r["sign"] == sign and r["part_index"] == lod0_part
-        ]
-        if not candidates:
-            candidates = [i for i, r in enumerate(rects) if r["axis"] == axis and r["sign"] == sign]
-        if candidates:
-            centroid = tuple(sum(c) / len(c) for c in zip(*[v.co for v in face.verts]))
-            chosen = min(
-                candidates,
-                key=lambda i: sum((rects[i]["center_3d"][k] - centroid[k]) ** 2 for k in range(3)),
-            )
-        else:
-            chosen = 0
-        buckets.setdefault(chosen, []).append(face)
-
-    for index, faces in buckets.items():
-        rect = rects[index]
-        axis = rect["axis"]
-        uv_min_x, uv_min_y = rect["uv_min"]
-        uv_width, uv_height = rect["uv_size"]
-
-        layers = _split_overlap_free_layers(faces, axis)
-        layer_height = uv_height / len(layers)
-
-        for layer_index, layer_faces in enumerate(layers):
-            points_by_face = {
-                face.index: [project_point(v.co, axis) for v in face.verts] for face in layer_faces
-            }
-            xs = [p[0] for pts in points_by_face.values() for p in pts]
-            ys = [p[1] for pts in points_by_face.values() for p in pts]
-            bbox_min_x, bbox_min_y = min(xs), min(ys)
-            bbox_width = max(max(xs) - bbox_min_x, 1e-6)
-            bbox_height = max(max(ys) - bbox_min_y, 1e-6)
-            layer_uv_min_y = uv_min_y + layer_index * layer_height
-
-            for face in layer_faces:
-                corners = [
-                    (
-                        uv_min_x + (px - bbox_min_x) / bbox_width * uv_width,
-                        layer_uv_min_y + (py - bbox_min_y) / bbox_height * layer_height,
-                    )
-                    for px, py in points_by_face[face.index]
-                ]
-                centroid_x = sum(u for u, _ in corners) / len(corners)
-                centroid_y = sum(v for _, v in corners) / len(corners)
-                for loop, (u, v) in zip(face.loops, corners):
-                    loop[uv_layer].uv = (
-                        centroid_x + (u - centroid_x) * (1.0 - TRIANGLE_UV_SHRINK),
-                        centroid_y + (v - centroid_y) * (1.0 - TRIANGLE_UV_SHRINK),
-                    )
-
-    bm.to_mesh(obj.data)
-    bm.free()
-    obj.data.update()
-
-
 def _bound_box_diagonal(obj: bpy.types.Object) -> float:
     xs = [corner[0] for corner in obj.bound_box]
     ys = [corner[1] for corner in obj.bound_box]
@@ -431,37 +254,139 @@ def _configure_cycles_device(device: str) -> None:
     scene.cycles.device = "GPU" if enabled else "CPU"
 
 
-def bake_normal_map(
+def _active_bake_target(material: bpy.types.Material, image: bpy.types.Image) -> bpy.types.ShaderNode:
+    tree = material.node_tree
+    node = tree.nodes.new("ShaderNodeTexImage")
+    node.image = image
+    for other in tree.nodes:
+        other.select = False
+    node.select = True
+    tree.nodes.active = node
+    return node
+
+
+def _socket_feeding(input_socket: bpy.types.NodeSocket) -> bpy.types.NodeSocket | None:
+    return input_socket.links[0].from_socket if input_socket.is_linked else None
+
+
+def _orm_source(material: bpy.types.Material) -> bpy.types.NodeSocket | None:
+    for node in material.node_tree.nodes:
+        if node.bl_idname == "ShaderNodeSeparateColor":
+            return _socket_feeding(node.inputs[0])
+    return None
+
+
+def _emit_from(material: bpy.types.Material, source: bpy.types.NodeSocket | None, fallback: tuple[float, float, float, float]):
+    """Route source (or a constant fallback colour) straight to material's surface output as an
+    Emission shader, so an EMIT bake copies the raw texel value instead of a lit result. Returns a
+    restore() callback that puts the original surface link back and removes the added nodes."""
+    tree = material.node_tree
+    output_node = next(n for n in tree.nodes if n.type == "OUTPUT_MATERIAL")
+    surface_input = output_node.inputs["Surface"]
+    original_from = surface_input.links[0].from_socket if surface_input.is_linked else None
+    created = []
+    emission = tree.nodes.new("ShaderNodeEmission")
+    created.append(emission)
+    if source is None:
+        constant = tree.nodes.new("ShaderNodeRGB")
+        constant.outputs[0].default_value = fallback
+        created.append(constant)
+        source = constant.outputs[0]
+    tree.links.new(source, emission.inputs["Color"])
+    tree.links.new(emission.outputs["Emission"], surface_input)
+
+    def restore() -> None:
+        if original_from is not None:
+            tree.links.new(original_from, surface_input)
+        for node in created:
+            tree.nodes.remove(node)
+
+    return restore
+
+
+def _transfer_bake(lod0: bpy.types.Object, lod_target: bpy.types.Object, image: bpy.types.Image, bake_type: str) -> None:
+    material = lod_target.data.materials[0]
+    target_node = _active_bake_target(material, image)
+    try:
+        _select_only([lod0, lod_target])
+        outcome = bpy.ops.object.bake(type=bake_type)
+        if outcome != {"FINISHED"}:
+            raise RuntimeError(f"LOD {bake_type} bake onto {lod_target.name!r} returned {sorted(outcome)}")
+    finally:
+        material.node_tree.nodes.remove(target_node)
+
+
+def _transfer_emission(
     lod0: bpy.types.Object,
     lod_target: bpy.types.Object,
-    base_material: bpy.types.Material,
-    image_size: int = DEFAULT_NORMAL_MAP_SIZE,
-    samples: int = DEFAULT_BAKE_SAMPLES,
-    device: str = DEFAULT_BAKE_DEVICE,
-) -> bpy.types.Image:
-    """Bake LOD0's surface normal onto lod_target's own UVs (selected-to-active), and give
-    lod_target a copy of base_material with only that image wired into the Normal input."""
-    lod_material = base_material.copy()
-    lod_material.name = f"{lod_target.name}_material"
+    image: bpy.types.Image,
+    source: bpy.types.NodeSocket | None,
+    fallback: tuple[float, float, float, float],
+) -> None:
+    restore = _emit_from(lod0.data.materials[0], source, fallback)
+    try:
+        _transfer_bake(lod0, lod_target, image, "EMIT")
+    finally:
+        restore()
+
+
+def _lod_material(lod_target: bpy.types.Object, albedo: bpy.types.Image, orm: bpy.types.Image, normal: bpy.types.Image) -> bpy.types.Material:
+    material = bpy.data.materials.new(f"{lod_target.name}_material")
+    material.use_nodes = True
+    tree = material.node_tree
+    bsdf = _principled_bsdf(material)
+
+    albedo_node = tree.nodes.new("ShaderNodeTexImage")
+    albedo_node.image = albedo
+    tree.links.new(albedo_node.outputs["Color"], bsdf.inputs["Base Color"])
+
+    orm_node = tree.nodes.new("ShaderNodeTexImage")
+    orm_node.image = orm
+    separate = tree.nodes.new("ShaderNodeSeparateColor")
+    tree.links.new(orm_node.outputs["Color"], separate.inputs["Color"])
+    tree.links.new(separate.outputs["Green"], bsdf.inputs["Roughness"])
+    tree.links.new(separate.outputs["Blue"], bsdf.inputs["Metallic"])
+
+    normal_node = tree.nodes.new("ShaderNodeTexImage")
+    normal_node.image = normal
+    normal_map = tree.nodes.new("ShaderNodeNormalMap")
+    tree.links.new(normal_node.outputs["Color"], normal_map.inputs["Color"])
+    tree.links.new(normal_map.outputs["Normal"], bsdf.inputs["Normal"])
+
     lod_target.data.materials.clear()
-    lod_target.data.materials.append(lod_material)
+    lod_target.data.materials.append(material)
     for polygon in lod_target.data.polygons:
         polygon.material_index = 0
+    return material
 
-    image = bpy.data.images.new(f"{lod_target.name}_normal", width=image_size, height=image_size, alpha=False)
-    image.colorspace_settings.name = "Non-Color"
 
-    node_tree = lod_material.node_tree
-    image_node = node_tree.nodes.new("ShaderNodeTexImage")
-    image_node.image = image
-    for node in node_tree.nodes:
-        node.select = False
-    image_node.select = True
-    node_tree.nodes.active = image_node
+def bake_lod_textures(
+    lod0: bpy.types.Object,
+    lod_target: bpy.types.Object,
+    image_size: int = DEFAULT_TEXTURE_SIZE,
+    samples: int = DEFAULT_BAKE_SAMPLES,
+    device: str = DEFAULT_BAKE_DEVICE,
+) -> LodTextures:
+    """Give lod_target a fresh UV layout and its own albedo/ORM/normal set, each baked from LOD0's
+    surface (selected-to-active), wired into a new material of its own.
 
-    normal_map_node = node_tree.nodes.new("ShaderNodeNormalMap")
-    node_tree.links.new(image_node.outputs["Color"], normal_map_node.inputs["Color"])
-    node_tree.links.new(normal_map_node.outputs["Normal"], _principled_bsdf(lod_material).inputs["Normal"])
+    Reusing LOD0's atlas on a decimated mesh cannot work in general: a collapsed triangle no
+    longer matches any LOD0 island, so whatever UV it is given samples texels that belong to
+    another face, a window hole or empty atlas space - black patches on the walls (af-4ir.9).
+    Baking from LOD0 onto the LOD's own packed UVs samples whatever LOD0 surface lies under every
+    texel, so a texel can only ever hold colour that exists on the asset. Albedo and ORM are EMIT
+    bakes of LOD0's raw texture values, so no lighting or AO darkening lands in them."""
+    triangulate(lod_target)
+    uv_unwrap_and_pack([lod_target])
+    lod0_material = lod0.data.materials[0]
+    lod0_bsdf = _principled_bsdf(lod0_material)
+
+    albedo = bpy.data.images.new(f"{lod_target.name}_albedo", width=image_size, height=image_size, alpha=False)
+    orm = bpy.data.images.new(f"{lod_target.name}_orm", width=image_size, height=image_size, alpha=False)
+    orm.colorspace_settings.name = "Non-Color"
+    normal = bpy.data.images.new(f"{lod_target.name}_normal", width=image_size, height=image_size, alpha=False)
+    normal.colorspace_settings.name = "Non-Color"
+    _lod_material(lod_target, albedo, orm, normal)
 
     _configure_cycles_device(device)
     scene = bpy.context.scene
@@ -469,27 +394,34 @@ def bake_normal_map(
     scene.render.bake.use_selected_to_active = True
     scene.render.bake.cage_extrusion = _bound_box_diagonal(lod0) * DEFAULT_CAGE_EXTRUSION_RATIO
     scene.render.bake.margin = 4
-
-    _select_only([lod0, lod_target])
-    bpy.ops.object.bake(type="NORMAL")
-
-    return image
+    try:
+        base_color = tuple(lod0_bsdf.inputs["Base Color"].default_value)
+        _transfer_emission(lod0, lod_target, albedo, _socket_feeding(lod0_bsdf.inputs["Base Color"]), base_color)
+        roughness = lod0_bsdf.inputs["Roughness"].default_value
+        metallic = lod0_bsdf.inputs["Metallic"].default_value
+        _transfer_emission(lod0, lod_target, orm, _orm_source(lod0_material), (1.0, roughness, metallic, 1.0))
+        _transfer_bake(lod0, lod_target, normal, "NORMAL")
+    finally:
+        scene.render.bake.use_selected_to_active = False
+    return LodTextures(albedo=albedo.name, orm=orm.name, normal=normal.name)
 
 
 def generate_lods(
     lod0: bpy.types.Object,
     ratios: tuple[float, float, float] = LOD_RATIOS,
-    normal_map_size: int = DEFAULT_NORMAL_MAP_SIZE,
+    texture_size: int = DEFAULT_TEXTURE_SIZE,
 ) -> LodSet:
-    """Decimate lod0 into two further LODs at ratios[1] and ratios[2], and bake a normal map
-    from lod0 onto each. lod0 itself becomes the LOD0 entry, renamed with a _LOD0 suffix.
+    """Decimate lod0 into two further LODs at ratios[1] and ratios[2], and bake an albedo/ORM/
+    normal set from lod0 onto each one's own fresh UVs (texture_size for LOD1, half that for
+    LOD2). lod0 itself becomes the LOD0 entry, renamed with a _LOD0 suffix, and keeps the atlas.
 
     Each LOD is decimated from the previous one at the relative ratio between them, not from
     lod0 directly. _protect_small_parts keeps any part that a given ratio would crush below a
     closed shape at full resolution, and a lower ratio protects more parts - decimating LOD2
     straight from lod0 left every mid-size part at its lod0 count and shipped medieval_tavern
     with LOD2 above LOD1 (af-k4g). Chaining means a part protected at LOD2 still carries its
-    LOD1 reduction, so counts can only fall."""
+    LOD1 reduction, so counts can only fall. Textures always bake from lod0, never from the
+    previous LOD, so detail is resampled once."""
     if len(ratios) != 3 or ratios[0] != 1.0:
         raise ValueError("ratios must be a 3-tuple with ratios[0] == 1.0 (LOD0 is full resolution)")
     if not lod0.data.materials:
@@ -497,24 +429,20 @@ def generate_lods(
 
     base_name = lod0.name
     lod0.name = f"{base_name}_LOD0"
-    base_material = lod0.data.materials[0]
-    lod0_rects, lod0_part_centers = _lod0_island_rects(lod0)
 
     objects = [lod0]
-    normal_maps: list[str | None] = [None]
+    textures: list[LodTextures | None] = [None]
     previous = lod0
     for index, ratio in enumerate(ratios[1:], start=1):
         lod = _duplicate(previous, f"{base_name}_LOD{index}")
         _decimate(lod, ratio / ratios[index - 1])
         _remove_decimate_debris(lod)
-        _refit_uvs_to_lod0_islands(lod, lod0_rects, lod0_part_centers)
-        image = bake_normal_map(lod0, lod, base_material, image_size=normal_map_size)
+        textures.append(bake_lod_textures(lod0, lod, image_size=max(texture_size >> (index - 1), 64)))
         objects.append(lod)
-        normal_maps.append(image.name)
         previous = lod
 
     return LodSet(
         objects=objects,
         triangle_counts=[_triangle_count(obj) for obj in objects],
-        normal_maps=normal_maps,
+        textures=textures,
     )

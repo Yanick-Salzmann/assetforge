@@ -189,8 +189,8 @@ geometry, not a texture standing in for it.
   (bevelled box, panel-cut boolean, array/mirror, solidify, greeble). 4000–15000 tris, one
   material, 2048 atlas. Real modelled window recesses, door frames, roof edges and cornices —
   the silhouette must survive being viewed from below and from behind.
-- **LODs** — because the camera also pulls back, each building exports LOD0/1/2 via decimate with
-  normals baked from LOD0. Your engine picks; the pipeline always ships all three.
+- **LODs** — because the camera also pulls back, each building exports LOD0/1/2 via decimate, each
+  reduced LOD with its own UVs and albedo/ORM/normal baked from LOD0. Your engine picks; the pipeline always ships all three.
 - **Prop sets** — each building ships with a companion set of 6–12 dressing props (fences, crates,
   benches, lamps, carts, vegetation) at 200–1500 tris, batched into one atlas per set. Same rule:
   fully closed 3D, viewable from any angle. Check `library/kits/` for a CC0 fit before generating.
