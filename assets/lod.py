@@ -4,9 +4,10 @@ Runs inside Blender's own interpreter, never the uv venv - only bpy, bmesh and t
 live MCP session imports this the same way it imports assets.game_ready and assets.hardsurface.
 The headless self-test in assets/blender_scripts/lod_selftest.py does the same via subprocess.
 
-Call generate_lods on the object game_ready_pass already ran on - it decimates two reduced
-copies, gives each its own packed UVs, and bakes an albedo/ORM/normal set from LOD0 onto it, so
-each reduced LOD ships with its own material and textures while LOD0 keeps the shared atlas.
+Call generate_lods on the object game_ready_pass already ran on - it builds two reduced LODs
+by decimating each loose part on its own under a shape-deviation cap, gives each LOD its own
+packed UVs, and bakes an albedo/ORM/normal set from LOD0 onto it, so each reduced LOD ships with
+its own material and textures while LOD0 keeps the shared atlas.
 
 Earlier versions kept the LOD0 atlas on every LOD and re-fit the decimated faces' UVs into
 LOD0's island rectangles (af-3b4, af-xvx). That cannot be made correct: a collapsed triangle
@@ -20,6 +21,7 @@ from dataclasses import dataclass
 
 import bmesh
 import bpy
+from mathutils.bvhtree import BVHTree
 
 from assets.game_ready import triangulate, uv_unwrap_and_pack
 
@@ -30,6 +32,8 @@ DEFAULT_BAKE_SAMPLES = 4
 DEFAULT_BAKE_DEVICE = "OPTIX"
 MIN_PROTECTED_PART_DIAGONAL_RATIO = 0.05
 MIN_CLOSED_SHAPE_TRIANGLES = 12
+LOD_DEVIATION_RATIOS: tuple[float, float, float] = (0.0, 0.008, 0.02)
+DEVIATION_RELAXATION_STEPS: tuple[float, ...] = (0.0, 0.25, 0.5, 0.75)
 
 
 @dataclass
@@ -69,15 +73,6 @@ def _triangle_count(obj: bpy.types.Object) -> int:
     return len(obj.data.loop_triangles)
 
 
-def _duplicate(obj: bpy.types.Object, name: str) -> bpy.types.Object:
-    mesh = obj.data.copy()
-    duplicate = obj.copy()
-    duplicate.data = mesh
-    duplicate.name = name
-    bpy.context.collection.objects.link(duplicate)
-    return duplicate
-
-
 def _connected_parts(mesh: bpy.types.Mesh) -> list[list[int]]:
     """Vertex indices grouped by loose part, via union-find over the mesh's own edges."""
     bm = bmesh.new()
@@ -104,12 +99,6 @@ def _connected_parts(mesh: bpy.types.Mesh) -> list[list[int]]:
     return list(groups.values())
 
 
-def _part_triangle_count(mesh: bpy.types.Mesh, indices: list[int]) -> int:
-    index_set = set(indices)
-    mesh.calc_loop_triangles()
-    return sum(1 for tri in mesh.loop_triangles if tri.vertices[0] in index_set)
-
-
 def _part_diagonal(mesh: bpy.types.Mesh, indices: list[int]) -> float:
     xs = [mesh.vertices[i].co.x for i in indices]
     ys = [mesh.vertices[i].co.y for i in indices]
@@ -117,115 +106,124 @@ def _part_diagonal(mesh: bpy.types.Mesh, indices: list[int]) -> float:
     return ((max(xs) - min(xs)) ** 2 + (max(ys) - min(ys)) ** 2 + (max(zs) - min(zs)) ** 2) ** 0.5
 
 
-def _protect_small_parts(
-    obj: bpy.types.Object,
+def _mesh_triangle_count(mesh: bpy.types.Mesh) -> int:
+    return sum(len(polygon.vertices) - 2 for polygon in mesh.polygons)
+
+
+def _mesh_diagonal(mesh: bpy.types.Mesh) -> float:
+    return _part_diagonal(mesh, list(range(len(mesh.vertices)))) if len(mesh.vertices) else 0.0
+
+
+def _part_meshes(obj: bpy.types.Object) -> list[bpy.types.Mesh]:
+    """One standalone mesh per loose part of obj, in obj's own coordinates. Decimating parts one
+    at a time is what lets each part be held to its own shape: a single Decimate over the joined
+    mesh spends its whole budget wherever collapses are cheapest, which on a building means the
+    big flat walls (af-4ir.8), and can bridge vertices of unrelated parts."""
+    mesh = obj.data
+    parts = _connected_parts(mesh)
+    part_of_vert: dict[int, int] = {}
+    local_index: dict[int, int] = {}
+    for part_index, indices in enumerate(parts):
+        for position, vert_index in enumerate(indices):
+            part_of_vert[vert_index] = part_index
+            local_index[vert_index] = position
+    faces: list[list[tuple[int, ...]]] = [[] for _ in parts]
+    for polygon in mesh.polygons:
+        faces[part_of_vert[polygon.vertices[0]]].append(tuple(local_index[v] for v in polygon.vertices))
+    meshes = []
+    for part_index, indices in enumerate(parts):
+        if not faces[part_index]:
+            continue
+        part_mesh = bpy.data.meshes.new(f"{obj.name}_part_{part_index}")
+        part_mesh.from_pydata([tuple(mesh.vertices[v].co) for v in indices], [], faces[part_index])
+        part_mesh.update()
+        meshes.append(part_mesh)
+    return meshes
+
+
+def _bvh(mesh: bpy.types.Mesh) -> BVHTree:
+    return BVHTree.FromPolygons([v.co for v in mesh.vertices], [tuple(p.vertices) for p in mesh.polygons])
+
+
+def _sample_points(mesh: bpy.types.Mesh) -> list:
+    return [v.co for v in mesh.vertices] + [p.center for p in mesh.polygons]
+
+
+def _deviation(original: bpy.types.Mesh, reduced: bpy.types.Mesh) -> float:
+    """Symmetric worst-case distance between two meshes, sampled at vertices and face centres in
+    both directions. Reduced-to-original catches faces that left the surface; original-to-reduced
+    catches surface the reduction dropped - a tower corner collapsed across the wall puts its
+    face centres metres inside the original even though every remaining vertex still sits on it."""
+    original_tree = _bvh(original)
+    reduced_tree = _bvh(reduced)
+    worst = 0.0
+    for points, tree in ((_sample_points(reduced), original_tree), (_sample_points(original), reduced_tree)):
+        for point in points:
+            distance = tree.find_nearest(point)[3]
+            if distance is None:
+                return float("inf")
+            worst = max(worst, distance)
+    return worst
+
+
+def _collapsed(mesh: bpy.types.Mesh, ratio: float) -> bpy.types.Mesh:
+    scratch = bpy.data.objects.new("lod_decimate_scratch", mesh)
+    bpy.context.collection.objects.link(scratch)
+    try:
+        modifier = scratch.modifiers.new(name="lod_decimate", type="DECIMATE")
+        modifier.ratio = ratio
+        modifier.use_collapse_triangulate = True
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        return bpy.data.meshes.new_from_object(scratch.evaluated_get(depsgraph), depsgraph=depsgraph)
+    finally:
+        bpy.data.objects.remove(scratch, do_unlink=True)
+
+
+def _reduce_part(
+    original: bpy.types.Mesh,
+    previous: bpy.types.Mesh,
     ratio: float,
-    min_diagonal_ratio: float = MIN_PROTECTED_PART_DIAGONAL_RATIO,
-    min_closed_shape_triangles: int = MIN_CLOSED_SHAPE_TRIANGLES,
-) -> tuple[str | None, int]:
-    """Vertex group naming every vertex safe to hand the Decimate modifier, plus the triangle
-    count of the parts left out of it.
+    overall_diagonal: float,
+    tolerance: float,
+) -> bpy.types.Mesh:
+    """Reduce one loose part toward ratio * its LOD0 triangle count, starting from its previous
+    LOD, accepting the first candidate whose deviation from the LOD0 part stays within tolerance.
 
-    A single flat COLLAPSE ratio applied to a whole joined multi-part mesh punches real holes
-    through parts that are small or thin relative to the object as a whole - hinges, finials,
-    glass panes - because the same ratio that removes negligible tris from the big parts removes
-    all of the few tris those small parts have. Loose parts whose own bbox diagonal falls under
-    min_diagonal_ratio of the object's full diagonal are left out of the returned group entirely,
-    which is what keeps the Decimate modifier's vertex_group input from touching them at all.
-
-    The diagonal ratio alone misses long/thin parts (full-span timber beams, barge boards) that
-    are not small relative to the whole asset but were already built with few source triangles -
-    ratio * their own triangle count can fall below what a closed manifold shape needs (12 tris
-    for a simple box) well before the diagonal check would ever flag them. Any part whose own
-    triangle count is already under min_closed_shape_triangles, or would be decimated under it by
-    this ratio, is protected too.
-
-    Returns (None, 0) when every part clears both thresholds, so the modifier runs unconstrained
-    exactly as it did before this existed.
-    """
-    mesh = obj.data
-    parts = _connected_parts(mesh)
-    if len(parts) <= 1:
-        return None, 0
-    overall_diagonal = _bound_box_diagonal(obj)
-    diagonal_threshold = overall_diagonal * min_diagonal_ratio
-    protected: set[int] = set()
-    protected_triangles = 0
-    for indices in parts:
-        part_triangles = _part_triangle_count(mesh, indices)
-        if _part_diagonal(mesh, indices) < diagonal_threshold or part_triangles * ratio < min_closed_shape_triangles:
-            protected.update(indices)
-            protected_triangles += part_triangles
-    if not protected:
-        return None, 0
-    eligible = obj.vertex_groups.new(name="lod_decimate_eligible")
-    eligible.add(
-        [vert.index for vert in mesh.vertices if vert.index not in protected], 1.0, "REPLACE"
-    )
-    return eligible.name, protected_triangles
+    Parts that are small next to the whole asset (hinges, finials, quoins) or that the ratio would
+    push below a closed box (12 tris - long thin beams, barge boards) keep their previous shape;
+    collapsing them punches holes (af-6cu, af-dds). For everything else the ratio is relaxed in
+    steps toward no reduction until the shape holds, so a part that cannot lose triangles without
+    folding in (a boolean-cut tower wall at LOD2) simply keeps more of them."""
+    original_triangles = _mesh_triangle_count(original)
+    small = _mesh_diagonal(original) < overall_diagonal * MIN_PROTECTED_PART_DIAGONAL_RATIO
+    if small or original_triangles * ratio < MIN_CLOSED_SHAPE_TRIANGLES:
+        return previous.copy()
+    previous_triangles = _mesh_triangle_count(previous)
+    relative = original_triangles * ratio / max(previous_triangles, 1)
+    if relative >= 1.0:
+        return previous.copy()
+    for step in DEVIATION_RELAXATION_STEPS:
+        candidate = _collapsed(previous, relative + (1.0 - relative) * step)
+        if candidate.polygons and _deviation(original, candidate) <= tolerance:
+            return candidate
+        bpy.data.meshes.remove(candidate)
+    return previous.copy()
 
 
-def _whole_mesh_ratio(ratio: float, total_triangles: int, protected_triangles: int) -> float:
-    """Decimate's ratio targets the whole mesh even when a vertex group pins part of it, so the
-    pinned triangles' share of the cut lands on the eligible parts instead. When small protected
-    parts (quoins, trim, hardware) hold most of a building's triangles, a raw 0.5 asks the walls
-    and roofs to give up more triangles than they have and they collapse to nothing. Scaling the
-    target so only the eligible triangles shrink by ratio keeps every part present."""
-    if total_triangles <= 0:
-        return ratio
-    eligible_triangles = total_triangles - protected_triangles
-    return (eligible_triangles * ratio + protected_triangles) / total_triangles
-
-
-def _decimate(obj: bpy.types.Object, ratio: float) -> None:
-    modifier = obj.modifiers.new(name="lod_decimate", type="DECIMATE")
-    modifier.use_collapse_triangulate = True
-    group_name, protected_triangles = _protect_small_parts(obj, ratio)
-    modifier.ratio = _whole_mesh_ratio(ratio, _triangle_count(obj), protected_triangles)
-    if group_name is not None:
-        modifier.vertex_group = group_name
-    _select_only([obj])
-    bpy.ops.object.modifier_apply(modifier=modifier.name)
-
-
-DEGENERATE_ISLAND_DIAGONAL_RATIO = 0.05
-
-
-def _remove_decimate_debris(obj: bpy.types.Object) -> int:
-    """Delete any post-Decimate connected component that is a single free-floating triangle
-    spanning a large fraction of the object's own bounds - a rare COLLAPSE_TRIANGULATE artifact
-    at the boundary between _protect_small_parts's protected and unprotected vertex groups, where
-    the modifier bridges two unrelated collapsed vertices into one degenerate face instead of
-    touching a real part. Confirmed on medieval_tavern: three orphan triangles, each its own
-    3-vertex connected component with a bbox diagonal of several metres (spanning unrelated parts
-    of the building), reported as 9 boundary edges (holes) by validate_asset's watertight check -
-    real geometry never produces a lone triangle disconnected from everything else. A genuine tiny
-    part (a bolt head, a sliver of trim) has vertices close together, so a bbox-diagonal threshold
-    tells the two apart without needing to know which case produced a given 3-vertex island.
-    Returns the number of triangles removed."""
-    mesh = obj.data
-    parts = _connected_parts(mesh)
-    if len(parts) <= 1:
-        return 0
-    threshold = _bound_box_diagonal(obj) * DEGENERATE_ISLAND_DIAGONAL_RATIO
-    debris_verts: set[int] = {
-        index
-        for indices in parts
-        if len(indices) == 3 and _part_diagonal(mesh, indices) >= threshold
-        for index in indices
-    }
-    if not debris_verts:
-        return 0
-    bm = bmesh.new()
-    bm.from_mesh(mesh)
-    bm.verts.ensure_lookup_table()
-    doomed = [bm.verts[i] for i in debris_verts]
-    removed = sum(len(v.link_faces) for v in doomed)
-    bmesh.ops.delete(bm, geom=doomed, context="VERTS")
-    bm.to_mesh(mesh)
-    bm.free()
+def _joined_object(name: str, meshes: list[bpy.types.Mesh], material: bpy.types.Material) -> bpy.types.Object:
+    vertices: list[tuple[float, float, float]] = []
+    faces: list[tuple[int, ...]] = []
+    for part in meshes:
+        offset = len(vertices)
+        vertices.extend(tuple(v.co) for v in part.vertices)
+        faces.extend(tuple(offset + i for i in polygon.vertices) for polygon in part.polygons)
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata(vertices, [], faces)
     mesh.update()
-    return removed
+    mesh.materials.append(material)
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    return obj
 
 
 def _bound_box_diagonal(obj: bpy.types.Object) -> float:
@@ -410,18 +408,18 @@ def generate_lods(
     lod0: bpy.types.Object,
     ratios: tuple[float, float, float] = LOD_RATIOS,
     texture_size: int = DEFAULT_TEXTURE_SIZE,
+    deviation_ratios: tuple[float, float, float] = LOD_DEVIATION_RATIOS,
 ) -> LodSet:
-    """Decimate lod0 into two further LODs at ratios[1] and ratios[2], and bake an albedo/ORM/
-    normal set from lod0 onto each one's own fresh UVs (texture_size for LOD1, half that for
-    LOD2). lod0 itself becomes the LOD0 entry, renamed with a _LOD0 suffix, and keeps the atlas.
+    """Build LOD1 and LOD2 from lod0 one loose part at a time, then bake an albedo/ORM/normal set
+    from lod0 onto each one's own fresh UVs (texture_size for LOD1, half that for LOD2). lod0
+    itself becomes the LOD0 entry, renamed with a _LOD0 suffix, and keeps the shared atlas.
 
-    Each LOD is decimated from the previous one at the relative ratio between them, not from
-    lod0 directly. _protect_small_parts keeps any part that a given ratio would crush below a
-    closed shape at full resolution, and a lower ratio protects more parts - decimating LOD2
-    straight from lod0 left every mid-size part at its lod0 count and shipped medieval_tavern
-    with LOD2 above LOD1 (af-k4g). Chaining means a part protected at LOD2 still carries its
-    LOD1 reduction, so counts can only fall. Textures always bake from lod0, never from the
-    previous LOD, so detail is resampled once."""
+    ratios are triangle targets relative to LOD0; deviation_ratios cap how far, as a fraction of
+    lod0's bbox diagonal, any reduced part may move from its LOD0 shape. A part that cannot reach
+    its target within the cap keeps more triangles - shape wins over the ratio, because a folded
+    wall is visible at any distance (church tower at LOD2). Each part's LOD2 is reduced from its
+    LOD1, never above it, so counts can only fall (af-k4g); deviation and textures are always
+    measured and baked against LOD0 so error is not compounded."""
     if len(ratios) != 3 or ratios[0] != 1.0:
         raise ValueError("ratios must be a 3-tuple with ratios[0] == 1.0 (LOD0 is full resolution)")
     if not lod0.data.materials:
@@ -429,17 +427,28 @@ def generate_lods(
 
     base_name = lod0.name
     lod0.name = f"{base_name}_LOD0"
+    overall_diagonal = _bound_box_diagonal(lod0)
+    originals = _part_meshes(lod0)
 
     objects = [lod0]
     textures: list[LodTextures | None] = [None]
-    previous = lod0
+    scratch_meshes = list(originals)
+    previous = originals
     for index, ratio in enumerate(ratios[1:], start=1):
-        lod = _duplicate(previous, f"{base_name}_LOD{index}")
-        _decimate(lod, ratio / ratios[index - 1])
-        _remove_decimate_debris(lod)
+        tolerance = overall_diagonal * deviation_ratios[index]
+        reduced = [
+            _reduce_part(original, prior, ratio, overall_diagonal, tolerance)
+            for original, prior in zip(originals, previous)
+        ]
+        scratch_meshes.extend(reduced)
+        lod = _joined_object(f"{base_name}_LOD{index}", reduced, lod0.data.materials[0])
+        lod.matrix_world = lod0.matrix_world.copy()
         textures.append(bake_lod_textures(lod0, lod, image_size=max(texture_size >> (index - 1), 64)))
         objects.append(lod)
-        previous = lod
+        previous = reduced
+
+    for mesh in scratch_meshes:
+        bpy.data.meshes.remove(mesh)
 
     return LodSet(
         objects=objects,

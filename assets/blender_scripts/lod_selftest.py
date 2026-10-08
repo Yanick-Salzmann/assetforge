@@ -274,6 +274,11 @@ def main() -> None:
             for entry in lod_set.textures
             if entry is not None
         }
+        hero_diagonal = lod._bound_box_diagonal(lod_set.objects[0])
+        deviations = {
+            obj.name: lod._deviation(lod_set.objects[0].data, obj.data) / hero_diagonal
+            for obj in lod_set.objects[1:]
+        }
         dark_fractions = {
             obj.name: _dark_face_fraction(obj, bpy.data.images[entry.albedo])
             for obj, entry in zip(lod_set.objects, lod_set.textures)
@@ -296,6 +301,10 @@ def main() -> None:
             )
             and all(count == 0 for count in uv_overlap_counts.values())
             and all(fraction == 0.0 for fraction in dark_fractions.values())
+            and all(
+                deviations[obj.name] <= lod.LOD_DEVIATION_RATIOS[level] + 1e-6
+                for level, obj in enumerate(lod_set.objects[1:], start=1)
+            )
         )
         payload = {
             "ok": ok,
@@ -308,6 +317,7 @@ def main() -> None:
             "hinge_sizes": hinge_sizes,
             "uv_overlap_counts": uv_overlap_counts,
             "dark_face_fractions": dark_fractions,
+            "deviation_ratios": deviations,
         }
     except Exception:
         payload = {"ok": False, "error": traceback.format_exc()}
