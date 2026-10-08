@@ -61,6 +61,9 @@ def _run_checks(mats) -> dict:
     image_nodes = [n for n in cc0_material.node_tree.nodes if n.bl_idname == "ShaderNodeTexImage"]
     checks["cc0_image_node_count"] = len(image_nodes)
     checks["cc0_images_loaded"] = all(n.image is not None for n in image_nodes)
+    checks["cc0_box_projected"] = all(n.projection == "BOX" for n in image_nodes)
+    mapping = next(n for n in cc0_material.node_tree.nodes if n.bl_idname == "ShaderNodeMapping")
+    checks["cc0_tiles_in_object_metres"] = mapping.inputs["Vector"].links[0].from_socket.name == "Object"
 
     bsdf = next(n for n in cc0_material.node_tree.nodes if n.bl_idname == "ShaderNodeBsdfPrincipled")
     checks["base_color_from_image"] = bsdf.inputs["Base Color"].links[0].from_node.bl_idname == "ShaderNodeTexImage"
@@ -89,6 +92,8 @@ def main() -> None:
             checks["slots_distinct"]
             and checks["cc0_image_node_count"] == 3
             and checks["cc0_images_loaded"]
+            and checks["cc0_box_projected"]
+            and checks["cc0_tiles_in_object_metres"]
             and checks["base_color_from_image"]
             and checks["normal_from_normal_map"]
             and checks["unknown_name_raises"]

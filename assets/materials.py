@@ -207,10 +207,15 @@ def load_cc0_index(path: Path = CC0_INDEX_FILE) -> dict[str, dict]:
     return json.loads(path.read_text(encoding="utf-8")).get("materials", {})
 
 
+BOX_PROJECTION_BLEND = 0.2
+
+
 def _cc0_image(tree: bpy.types.NodeTree, path: Path, non_color: bool, location: tuple[float, float]) -> bpy.types.ShaderNodeTexImage:
     node = tree.nodes.new("ShaderNodeTexImage")
     node.location = location
     node.image = bpy.data.images.load(str(path), check_existing=True)
+    node.projection = "BOX"
+    node.projection_blend = BOX_PROJECTION_BLEND
     if non_color:
         node.image.colorspace_settings.name = "Non-Color"
     return node
@@ -230,7 +235,7 @@ def cc0_material(name: str, entry: dict, library_dir: Path = LIBRARY_DIR) -> bpy
     mapping.location = (-700.0, 0.0)
     scale = 1.0 / float(entry["tiling_m"])
     mapping.inputs["Scale"].default_value = (scale, scale, scale)
-    tree.links.new(coord.outputs["Generated"], mapping.inputs["Vector"])
+    tree.links.new(coord.outputs["Object"], mapping.inputs["Vector"])
 
     maps = entry["maps"]
     albedo = _cc0_image(tree, library_dir / maps["albedo"], non_color=False, location=(-400.0, 250.0))
