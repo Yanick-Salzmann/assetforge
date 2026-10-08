@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>assetforge viewer</title>
+<link rel="stylesheet" href="/static/viewer.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+<aside id="panel">
+  <h1>assetforge viewer</h1>
+  <label>Asset <select id="asset"></select></label>
+  <label>LOD <select id="lod"></select></label>
+  <fieldset id="mode">
+    <legend>Shading</legend>
+    <label><input type="radio" name="mode" value="textured" checked> textured</label>
+    <label><input type="radio" name="mode" value="backfaces"> back faces red</label>
+    <label><input type="radio" name="mode" value="normals"> normals</label>
+    <label><input type="radio" name="mode" value="wireframe"> wireframe</label>
+  </fieldset>
+  <fieldset>
+    <legend>Camera</legend>
+    <div class="row">
+      <button id="frame" type="button">Frame</button>
+      <button id="ground" type="button">Ground level</button>
+    </div>
+    <label><input type="checkbox" id="spin"> auto-orbit</label>
+  </fieldset>
+  <label><input type="checkbox" id="human" checked> 1.8 m reference</label>
+  <dl id="info"></dl>
+  <p id="status"></p>
+</aside>
+<script type="module" src="/static/viewer.js"></script>
+</body>
+</html>

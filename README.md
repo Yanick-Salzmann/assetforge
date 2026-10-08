@@ -43,6 +43,18 @@ environment variable that the setup skill writes into your MCP server config. `t
 resolves it once at import time: an explicit override, else `ASSETFORGE_WORKSPACE`, else the
 current working directory. Nothing a plugin update touches ever lives inside it.
 
+## Viewer
+
+```bash
+uv run python -m viewer.server --open    # http://127.0.0.1:8765/
+```
+
+A three.js page that loads any exported `out/assets/<name>/<name>.glb` on a ground plane beside
+a 1.8 m reference figure. It switches LODs, orbits at eye height ("Ground level"), and shades
+back faces red to expose holes and flipped normals. State lives in the URL hash
+(`#asset=medieval_tavern&lod=LOD1&mode=backfaces&cam=ground`), so a view can be linked.
+three.js loads from jsdelivr, so the page needs network access.
+
 ## Versioning
 
 The plugin (`.claude-plugin/plugin.json` / `.codex-plugin/plugin.json`) is versioned
