@@ -130,10 +130,7 @@ result = export.export_asset(lod_set.objects, name=name, kind="vehicle")
 passes and is long-running (minutes on a many-part asset) - `bpy.ops.object.bake` blocks
 Blender's single thread for the whole call, and the `blender-mcp` bridge's transport can time out
 before it returns even though Blender keeps computing correctly. That's a transport artifact, not
-a failure - do not blindly retry a timed-out bake call (it duplicates images under `.001`
-suffixes); check `bpy.data.images`/the material's node tree first to see what already completed.
-Issuing one `execute_blender_code` call per bake pass instead of one call for all of
-`bake_atlas` reduces how often this trips, at no cost to the actual bake time.
+a failure. To avoid it, split it into one `execute_blender_code` call per pass: `atlas_bake.prepare_bake()`, `atlas_bake.bake_albedo(objects)`, `atlas_bake.bake_normal(objects)`, `atlas_bake.bake_orm(objects)`, then `bake_result = atlas_bake.collect_bake_result()`. Never look baked images up by literal name (`bpy.data.images["albedo"]`) - `collect_bake_result` is the only safe lookup. Every pass claims its reserved image name, moving any earlier image under that name aside as `<name>_stale`, so re-running a pass after a timeout or building several assets in one Blender session never ships a stale or `.001` texture; `atlas_bake.purge_stale_images()` drops the moved-aside ones. A pass that comes back `CANCELLED` or all black raises `atlas_bake.BakeError` instead of leaving a blank image (af-225).
 
 ## Done
 

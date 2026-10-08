@@ -84,9 +84,7 @@ one shared `atlas_material` wired to those images - the "one atlas per set" budg
 `atlas_bake.bake_atlas` runs 5 sequential full-resolution Cycles bake passes and is long-running;
 `bpy.ops.object.bake` blocks Blender's thread for the whole call and the `blender-mcp` bridge's
 transport can time out and report "failed" before Blender actually finishes - that's a transport
-artifact, not a real failure. Don't blindly retry (it duplicates images under `.001`); check
-`bpy.data.images` and the material's node tree first. Issuing one `execute_blender_code` call per
-bake pass instead of one call for all of `bake_atlas` reduces how often this trips.
+artifact, not a real failure. To avoid the timeout, split it into one `execute_blender_code` call per pass: `atlas_bake.prepare_bake()`, `atlas_bake.bake_albedo(objects)`, `atlas_bake.bake_normal(objects)`, `atlas_bake.bake_orm(objects)`, then `bake_result = atlas_bake.collect_bake_result()`. Never look baked images up by literal name (`bpy.data.images["albedo"]`) - `collect_bake_result` is the only safe lookup. Every pass claims its reserved image name, moving any earlier image under that name aside as `<name>_stale`, so re-running a pass after a timeout or building several assets in one Blender session never ships a stale or `.001` texture; `atlas_bake.purge_stale_images()` drops the moved-aside ones. A pass that comes back `CANCELLED` or all black raises `atlas_bake.BakeError` instead of leaving a blank image (af-225).
 
 If a later patch (step 7) changes one prop's geometry, re-run this whole sequence across the
 whole set's objects again before re-exporting anything - the shared UV pack shifts when any

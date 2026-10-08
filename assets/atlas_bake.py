@@ -35,6 +35,10 @@ import numpy as np
 ALBEDO_NAME = "albedo"
 NORMAL_NAME = "normal"
 ORM_NAME = "orm"
+AO_SCRATCH_NAME = "orm_ao_scratch"
+ROUGHNESS_SCRATCH_NAME = "orm_roughness_scratch"
+METALLIC_SCRATCH_NAME = "orm_metallic_scratch"
+STALE_SUFFIX = "_stale"
 DEFAULT_ATLAS_SIZE = 2048
 DEFAULT_BAKE_SAMPLES = 8
 DEFAULT_BAKE_DEVICE = "OPTIX"
@@ -49,6 +53,41 @@ class AtlasBakeResult:
 
     def as_dict(self) -> dict:
         return {"albedo": self.albedo.name, "normal": self.normal.name, "orm": self.orm.name}
+
+
+class BakeError(RuntimeError):
+    pass
+
+
+def claim_image(name: str, size: int, non_color: bool) -> bpy.types.Image:
+    """Create a generated image under exactly `name`. Any image already holding that name - left
+    behind by an earlier asset or an earlier pass in a long-lived live session - is renamed out of
+    the way first, so the new image never silently becomes `name.001` while a later lookup by the
+    literal name still resolves to the stale one (af-225). The colorspace is set here, once,
+    before any pixels are written."""
+    existing = bpy.data.images.get(name)
+    if existing is not None:
+        existing.name = f"{name}{STALE_SUFFIX}"
+    image = bpy.data.images.new(name, width=size, height=size, alpha=False)
+    if image.name != name:
+        raise BakeError(f"could not claim image name {name!r}, got {image.name!r}")
+    if non_color:
+        image.colorspace_settings.name = "Non-Color"
+    return image
+
+
+def _run_bake(bake_type: str, **kwargs) -> None:
+    outcome = bpy.ops.object.bake(type=bake_type, **kwargs)
+    if outcome != {"FINISHED"}:
+        raise BakeError(f"bpy.ops.object.bake(type={bake_type!r}) returned {sorted(outcome)}")
+
+
+def _require_signal(image: bpy.types.Image) -> None:
+    width, height = image.size
+    pixels = np.empty(width * height * 4, dtype=np.float32)
+    image.pixels.foreach_get(pixels)
+    if not np.any(pixels.reshape(-1, 4)[:, :3]):
+        raise BakeError(f"bake into {image.name!r} came back all black")
 
 
 def _select_only(objects: Sequence[bpy.types.Object]) -> None:
@@ -119,10 +158,10 @@ def _bake_direct(
     _select_only(objects)
     targets = _attach_bake_targets(materials, image)
     try:
-        kwargs = {"type": bake_type}
+        kwargs = {}
         if pass_filter is not None:
             kwargs["pass_filter"] = pass_filter
-        bpy.ops.object.bake(**kwargs)
+        _run_bake(bake_type, **kwargs)
     finally:
         _remove_bake_targets(targets)
 
@@ -169,7 +208,7 @@ def _bake_input_via_emission(objects: Sequence[bpy.types.Object], materials: Seq
     targets = _attach_bake_targets(materials, image)
     restores = [_rewire_input_to_emission(material, input_name) for material in materials]
     try:
-        bpy.ops.object.bake(type="EMIT")
+        _run_bake("EMIT")
     finally:
         for restore in restores:
             restore()
@@ -195,11 +234,86 @@ def _pack_orm(ao_image: bpy.types.Image, roughness_image: bpy.types.Image, metal
     packed[:, 2] = metallic[:, 0]
     packed[:, 3] = 1.0
 
-    orm = bpy.data.images.new(ORM_NAME, width=atlas_size, height=atlas_size, alpha=False)
-    orm.colorspace_settings.name = "Non-Color"
+    orm = claim_image(ORM_NAME, atlas_size, non_color=True)
     orm.pixels.foreach_set(packed.ravel())
     orm.update()
     return orm
+
+
+def _bake_materials(objects: Sequence[bpy.types.Object]) -> tuple[list[bpy.types.Object], list[bpy.types.Material]]:
+    objects = list(objects)
+    if not objects:
+        raise ValueError("bake_atlas requires at least one object")
+    materials = _unique_materials(objects)
+    if not materials:
+        raise ValueError("bake_atlas requires objects with at least one material assigned")
+    return objects, materials
+
+
+def prepare_bake(
+    samples: int = DEFAULT_BAKE_SAMPLES,
+    device: str = DEFAULT_BAKE_DEVICE,
+    margin: int = DEFAULT_MARGIN,
+) -> None:
+    _configure_cycles_device(device)
+    scene = bpy.context.scene
+    scene.cycles.samples = samples
+    scene.render.bake.use_selected_to_active = False
+    scene.render.bake.margin = margin
+
+
+def bake_albedo(objects: Sequence[bpy.types.Object], atlas_size: int = DEFAULT_ATLAS_SIZE) -> bpy.types.Image:
+    objects, materials = _bake_materials(objects)
+    albedo = claim_image(ALBEDO_NAME, atlas_size, non_color=False)
+    _bake_input_via_emission(objects, materials, albedo, "Base Color")
+    _require_signal(albedo)
+    return albedo
+
+
+def bake_normal(objects: Sequence[bpy.types.Object], atlas_size: int = DEFAULT_ATLAS_SIZE) -> bpy.types.Image:
+    objects, materials = _bake_materials(objects)
+    normal = claim_image(NORMAL_NAME, atlas_size, non_color=True)
+    _bake_direct(objects, materials, normal, bake_type="NORMAL")
+    _require_signal(normal)
+    return normal
+
+
+def bake_orm(objects: Sequence[bpy.types.Object], atlas_size: int = DEFAULT_ATLAS_SIZE) -> bpy.types.Image:
+    objects, materials = _bake_materials(objects)
+    ao_scratch = claim_image(AO_SCRATCH_NAME, atlas_size, non_color=True)
+    _bake_direct(objects, materials, ao_scratch, bake_type="AO")
+
+    roughness_scratch = claim_image(ROUGHNESS_SCRATCH_NAME, atlas_size, non_color=True)
+    _bake_direct(objects, materials, roughness_scratch, bake_type="ROUGHNESS")
+
+    metallic_scratch = claim_image(METALLIC_SCRATCH_NAME, atlas_size, non_color=True)
+    _bake_input_via_emission(objects, materials, metallic_scratch, "Metallic")
+
+    orm = _pack_orm(ao_scratch, roughness_scratch, metallic_scratch, atlas_size)
+    for scratch in (ao_scratch, roughness_scratch, metallic_scratch):
+        bpy.data.images.remove(scratch)
+    return orm
+
+
+def collect_bake_result() -> AtlasBakeResult:
+    """Rebuild an AtlasBakeResult from the reserved image names, for a live session that drove
+    bake_albedo/bake_normal/bake_orm in separate calls. Safe because claim_image guarantees each
+    reserved name belongs to the most recent bake of that pass."""
+    images = bpy.data.images
+    missing = [name for name in (ALBEDO_NAME, NORMAL_NAME, ORM_NAME) if images.get(name) is None]
+    if missing:
+        raise BakeError(f"no baked image named {missing}")
+    return AtlasBakeResult(albedo=images[ALBEDO_NAME], normal=images[NORMAL_NAME], orm=images[ORM_NAME])
+
+
+def purge_stale_images() -> list[str]:
+    """Remove every image claim_image moved aside that nothing uses any more."""
+    removed = []
+    for image in list(bpy.data.images):
+        if STALE_SUFFIX in image.name and image.users == 0:
+            removed.append(image.name)
+            bpy.data.images.remove(image)
+    return removed
 
 
 def bake_atlas(
@@ -212,43 +326,13 @@ def bake_atlas(
     """Bake objects' current per-face materials into one shared albedo/normal/orm atlas, reading
     the UV layout uv_unwrap_and_pack already packed. Call this before consolidate_material, which
     still needs the objects' original materials to wire this result's images into the new atlas
-    material."""
-    objects = list(objects)
-    if not objects:
-        raise ValueError("bake_atlas requires at least one object")
-    materials = _unique_materials(objects)
-    if not materials:
-        raise ValueError("bake_atlas requires objects with at least one material assigned")
-
-    _configure_cycles_device(device)
-    scene = bpy.context.scene
-    scene.cycles.samples = samples
-    scene.render.bake.use_selected_to_active = False
-    scene.render.bake.margin = margin
-
-    albedo = bpy.data.images.new(ALBEDO_NAME, width=atlas_size, height=atlas_size, alpha=False)
-    _bake_input_via_emission(objects, materials, albedo, "Base Color")
-
-    normal = bpy.data.images.new(NORMAL_NAME, width=atlas_size, height=atlas_size, alpha=False)
-    normal.colorspace_settings.name = "Non-Color"
-    _bake_direct(objects, materials, normal, bake_type="NORMAL")
-
-    ao_scratch = bpy.data.images.new("orm_ao_scratch", width=atlas_size, height=atlas_size, alpha=False)
-    ao_scratch.colorspace_settings.name = "Non-Color"
-    _bake_direct(objects, materials, ao_scratch, bake_type="AO")
-
-    roughness_scratch = bpy.data.images.new("orm_roughness_scratch", width=atlas_size, height=atlas_size, alpha=False)
-    roughness_scratch.colorspace_settings.name = "Non-Color"
-    _bake_direct(objects, materials, roughness_scratch, bake_type="ROUGHNESS")
-
-    metallic_scratch = bpy.data.images.new("orm_metallic_scratch", width=atlas_size, height=atlas_size, alpha=False)
-    metallic_scratch.colorspace_settings.name = "Non-Color"
-    _bake_input_via_emission(objects, materials, metallic_scratch, "Metallic")
-
-    orm = _pack_orm(ao_scratch, roughness_scratch, metallic_scratch, atlas_size)
-    for scratch in (ao_scratch, roughness_scratch, metallic_scratch):
-        bpy.data.images.remove(scratch)
-
+    material. A live session that must split the bake across calls runs prepare_bake, bake_albedo,
+    bake_normal and bake_orm one per call, then collect_bake_result."""
+    objects, _ = _bake_materials(objects)
+    prepare_bake(samples=samples, device=device, margin=margin)
+    albedo = bake_albedo(objects, atlas_size)
+    normal = bake_normal(objects, atlas_size)
+    orm = bake_orm(objects, atlas_size)
     return AtlasBakeResult(albedo=albedo, normal=normal, orm=orm)
 
 

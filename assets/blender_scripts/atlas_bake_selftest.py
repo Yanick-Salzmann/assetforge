@@ -129,11 +129,24 @@ def main() -> None:
         # live session does on a second patch/re-bake pass. wire_atlas_textures must replace its
         # own prior nodes rather than accumulate them, or export_asset would pick up every stale
         # image alongside the current three.
+        foreign = bpy.data.images.new(atlas_bake.ALBEDO_NAME, width=8, height=8, alpha=False)
+        foreign.use_fake_user = True
+
         stale_bake_result = atlas_bake.bake_atlas(objects, atlas_size=ATLAS_SIZE, samples=8)
         game_ready.consolidate_material(objects, bake_result=stale_bake_result)
 
         bake_result = atlas_bake.bake_atlas(objects, atlas_size=ATLAS_SIZE, samples=8)
         material = game_ready.consolidate_material(objects, bake_result=bake_result)
+
+        collected = atlas_bake.collect_bake_result()
+        stale_prefix = atlas_bake.ALBEDO_NAME + atlas_bake.STALE_SUFFIX
+        names_are_exact = (
+            bake_result.as_dict() == {"albedo": "albedo", "normal": "normal", "orm": "orm"}
+            and collected.albedo == bake_result.albedo
+            and collected.orm == bake_result.orm
+            and foreign.name.startswith(stale_prefix)
+            and stale_bake_result.albedo.name.startswith(stale_prefix)
+        )
 
         image_nodes_after_rewire = [n for n in material.node_tree.nodes if n.type == "TEX_IMAGE"]
         rewire_is_idempotent = (
@@ -198,6 +211,7 @@ def main() -> None:
             and power_of_two
             and manifest["materials"] == [material.name]
             and rewire_is_idempotent
+            and names_are_exact
             and all(check["albedo_close"] and check["roughness_close"] and check["metallic_close"] for check in sample_checks)
         )
         payload = {
@@ -205,6 +219,7 @@ def main() -> None:
             "manifest": manifest,
             "sample_checks": sample_checks,
             "rewire_is_idempotent": rewire_is_idempotent,
+            "names_are_exact": names_are_exact,
             "bake_result": bake_result.as_dict(),
         }
     except Exception:

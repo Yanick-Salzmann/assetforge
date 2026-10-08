@@ -162,15 +162,17 @@ metallic) across every object - on an asset with 100+ parts this routinely takes
 as a connection-timeout failure while Blender keeps computing correctly in the background - this
 is a transport artifact, not a crash, and does not mean the bake needs to be re-run. To avoid
 tripping the transport timeout in the first place (not to make the bake faster, which isn't the
-goal - only to stop it from spuriously erroring), issue one `execute_blender_code` call per bake
-pass instead of one call running `bake_atlas` end to end, e.g. call `uv_unwrap_and_pack` in its
-own snippet, then separately drive albedo/normal/AO/roughness/metallic (mirroring
-`atlas_bake.bake_atlas`'s internal steps) each in their own call. If a call times out anyway,
-do not blindly retry it - first check state with a small, fast snippet (e.g. list
-`bpy.data.images` for `albedo`/`normal`/`orm`, or check whether `atlas_material`'s node tree
-already has the bake wired in) before deciding whether to resume or re-run; re-running a
-completed bake step duplicates images under `.001` suffixes that `export_asset` will then ship
-alongside the real ones.
+goal - only to stop it from spuriously erroring), call `uv_unwrap_and_pack` in its own snippet,
+then one `execute_blender_code` call per pass: `atlas_bake.prepare_bake()`,
+`atlas_bake.bake_albedo(objects)`, `atlas_bake.bake_normal(objects)`,
+`atlas_bake.bake_orm(objects)`, then `bake_result = atlas_bake.collect_bake_result()`. Never look
+baked images up by literal name (`bpy.data.images["albedo"]`) - `collect_bake_result` is the only
+safe lookup. Every pass claims its reserved image name, moving any earlier image under that name
+aside as `<name>_stale`, so re-running a pass after a timeout, or building several assets in one
+Blender session, never ships a stale or `.001` texture; `atlas_bake.purge_stale_images()` drops
+the moved-aside ones. A pass that comes back `CANCELLED` or all black raises
+`atlas_bake.BakeError` instead of leaving a blank image (af-225). If a call times out, check
+`bpy.data.images` for `albedo`/`normal`/`orm` before deciding whether to resume or re-run.
 
 ## Done
 
