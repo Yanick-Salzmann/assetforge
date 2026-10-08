@@ -469,7 +469,14 @@ def generate_lods(
     normal_map_size: int = DEFAULT_NORMAL_MAP_SIZE,
 ) -> LodSet:
     """Decimate lod0 into two further LODs at ratios[1] and ratios[2], and bake a normal map
-    from lod0 onto each. lod0 itself becomes the LOD0 entry, renamed with a _LOD0 suffix."""
+    from lod0 onto each. lod0 itself becomes the LOD0 entry, renamed with a _LOD0 suffix.
+
+    Each LOD is decimated from the previous one at the relative ratio between them, not from
+    lod0 directly. _protect_small_parts keeps any part that a given ratio would crush below a
+    closed shape at full resolution, and a lower ratio protects more parts - decimating LOD2
+    straight from lod0 left every mid-size part at its lod0 count and shipped medieval_tavern
+    with LOD2 above LOD1 (af-k4g). Chaining means a part protected at LOD2 still carries its
+    LOD1 reduction, so counts can only fall."""
     if len(ratios) != 3 or ratios[0] != 1.0:
         raise ValueError("ratios must be a 3-tuple with ratios[0] == 1.0 (LOD0 is full resolution)")
     if not lod0.data.materials:
@@ -482,14 +489,16 @@ def generate_lods(
 
     objects = [lod0]
     normal_maps: list[str | None] = [None]
+    previous = lod0
     for index, ratio in enumerate(ratios[1:], start=1):
-        lod = _duplicate(lod0, f"{base_name}_LOD{index}")
-        _decimate(lod, ratio)
+        lod = _duplicate(previous, f"{base_name}_LOD{index}")
+        _decimate(lod, ratio / ratios[index - 1])
         _remove_decimate_debris(lod)
         _refit_uvs_to_lod0_islands(lod, lod0_rects, lod0_part_centers)
         image = bake_normal_map(lod0, lod, base_material, image_size=normal_map_size)
         objects.append(lod)
         normal_maps.append(image.name)
+        previous = lod
 
     return LodSet(
         objects=objects,
