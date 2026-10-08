@@ -343,3 +343,18 @@ def test_validate_asset_end_to_end_on_a_closed_tetrahedron(monkeypatch, tmp_path
     names = {c.name for c in report.checks}
     assert any("watertight" in n for n in names)
     assert any("manifold" in n for n in names)
+
+
+def test_report_as_dict_is_plain_json_even_with_numpy_values():
+    report = validate.ValidationReport(
+        name="m",
+        kind="prop",
+        triangle_count=np.int64(12),
+        bbox_min=(np.float64(0.0), 0.0, 0.0),
+        bbox_max=(1.0, 1.0, np.float32(1.0)),
+        checks=[validate.CheckResult("c", np.bool_(True), "ok")],
+    )
+    payload = report.as_dict()
+    assert json.loads(json.dumps(payload)) == payload
+    assert type(payload["checks"][0]["passed"]) is bool
+    assert type(payload["ok"]) is bool

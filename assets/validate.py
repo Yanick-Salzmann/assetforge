@@ -52,11 +52,11 @@ class ValidationReport:
         return {
             "name": self.name,
             "kind": self.kind,
-            "ok": self.ok,
-            "triangle_count": self.triangle_count,
-            "bbox_min": list(self.bbox_min),
-            "bbox_max": list(self.bbox_max),
-            "checks": [{"name": c.name, "passed": c.passed, "detail": c.detail} for c in self.checks],
+            "ok": bool(self.ok),
+            "triangle_count": int(self.triangle_count),
+            "bbox_min": [float(v) for v in self.bbox_min],
+            "bbox_max": [float(v) for v in self.bbox_max],
+            "checks": [{"name": c.name, "passed": bool(c.passed), "detail": str(c.detail)} for c in self.checks],
         }
 
 
