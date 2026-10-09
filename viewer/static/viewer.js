@@ -740,6 +740,9 @@ function tick() {
   view.dirty = false;
   view.matrix.copy(camera.matrixWorld);
   view.projection.copy(camera.projectionMatrix);
+  if (state.terrain) {
+    state.terrain.cullScatter(camera.position);
+  }
   renderer.render(scene, camera);
 }
 

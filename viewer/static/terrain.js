@@ -28,10 +28,10 @@ const DEFAULT_MACRO_SCALE = 7.3;
 const LAYER_COLOURS = [0xd9a441, 0x4f9fd8, 0xe8dca0, 0x8c8478, 0x7fb24a, 0x6a4e42, 0x2e7d4f, 0xf2f2f2];
 
 const SCATTER_KINDS = {
-  tree: { spacing_m: 6, cap: 60000, sink_m: 0.3, scale: [0.7, 1.4], parts: treeParts },
-  rock: { spacing_m: 5, cap: 40000, sink_m: 0.35, scale: [0.6, 2.2], parts: rockParts },
-  grass: { spacing_m: 1.5, cap: 80000, sink_m: 0.02, scale: [0.7, 1.3], parts: grassParts },
-  debris: { spacing_m: 3, cap: 40000, sink_m: 0.08, scale: [0.6, 1.6], parts: debrisParts },
+  tree: { spacing_m: 6, cap: 60000, sink_m: 0.3, scale: [0.7, 1.4], tile_m: 768, reach_m: Infinity, parts: treeParts },
+  rock: { spacing_m: 5, cap: 40000, sink_m: 0.35, scale: [0.6, 2.2], tile_m: 384, reach_m: 1500, parts: rockParts },
+  grass: { spacing_m: 1.5, cap: 80000, sink_m: 0.02, scale: [0.7, 1.3], tile_m: 128, reach_m: 250, parts: grassParts },
+  debris: { spacing_m: 3, cap: 40000, sink_m: 0.08, scale: [0.6, 1.6], tile_m: 192, reach_m: 400, parts: debrisParts },
 };
 
 function treeParts() {
@@ -716,16 +716,72 @@ function writePlacements(mesh, placements) {
   mesh.computeBoundingSphere();
 }
 
-function scatterGroup(kind, placements) {
+function tileScatter(group) {
+  for (const tile of [...group.children]) {
+    group.remove(tile);
+    for (const mesh of tile.children) {
+      mesh.dispose();
+    }
+  }
+  const { kind, placements, parts, worldSize } = group.userData;
+  const tiles = Math.max(1, Math.round(worldSize / SCATTER_KINDS[kind].tile_m));
+  const tileSize = worldSize / tiles;
+  const buckets = new Map();
+  for (const placement of placements) {
+    const ti = Math.min(tiles - 1, Math.max(0, Math.floor((placement[0] + worldSize / 2) / tileSize)));
+    const tj = Math.min(tiles - 1, Math.max(0, Math.floor((placement[2] + worldSize / 2) / tileSize)));
+    const key = tj * tiles + ti;
+    if (!buckets.has(key)) {
+      buckets.set(key, []);
+    }
+    buckets.get(key).push(placement);
+  }
+  for (const [key, bucket] of buckets) {
+    const tile = new THREE.Group();
+    const ti = key % tiles;
+    const tj = Math.floor(key / tiles);
+    tile.name = `${group.name}_${ti}_${tj}`;
+    tile.userData.centre = new THREE.Vector2((ti + 0.5) * tileSize - worldSize / 2, (tj + 0.5) * tileSize - worldSize / 2);
+    tile.userData.radius = tileSize * Math.SQRT1_2;
+    for (const [geometry, material] of parts) {
+      const mesh = new THREE.InstancedMesh(geometry, material, bucket.length);
+      writePlacements(mesh, bucket);
+      tile.add(mesh);
+    }
+    group.add(tile);
+  }
+}
+
+function scatterGroup(kind, placements, worldSize) {
   const group = new THREE.Group();
   group.name = `scatter_${kind}`;
-  group.userData.placements = placements;
-  for (const [geometry, material] of SCATTER_KINDS[kind].parts()) {
-    const mesh = new THREE.InstancedMesh(geometry, material, Math.max(placements.length, 1));
-    writePlacements(mesh, placements);
-    group.add(mesh);
-  }
+  group.userData = { kind, placements, worldSize, parts: SCATTER_KINDS[kind].parts() };
+  tileScatter(group);
   return group;
+}
+
+function cullScatter(scatter, eye) {
+  for (const group of scatter.children) {
+    const reach = SCATTER_KINDS[group.userData.kind].reach_m;
+    for (const tile of group.children) {
+      const { centre, radius } = tile.userData;
+      tile.visible = Math.hypot(eye.x - centre.x, eye.z - centre.y) - radius < reach;
+    }
+  }
+}
+
+function disposeScatter(scatter) {
+  for (const group of scatter.children) {
+    for (const tile of group.children) {
+      for (const mesh of tile.children) {
+        mesh.dispose();
+      }
+    }
+    for (const [geometry, material] of group.userData.parts) {
+      geometry.dispose();
+      material.dispose();
+    }
+  }
 }
 
 function maskAt(mask, field, x, z) {
@@ -829,10 +885,8 @@ function clearScatter(scatter, scatterStats, sites) {
     );
     cleared += placements.length - kept.length;
     group.userData.placements = kept;
-    scatterStats[group.name.slice("scatter_".length)].count = kept.length;
-    for (const mesh of group.children) {
-      writePlacements(mesh, kept);
-    }
+    scatterStats[group.userData.kind].count = kept.length;
+    tileScatter(group);
   }
   return cleared;
 }
@@ -932,7 +986,7 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
     }
     const raw = await fetchRaw(`${entry.raw}${mask.path}`);
     const { placements, spacing, meanDensity } = scatterPlacements(mask.kind, raw, field, manifest);
-    scatter.add(scatterGroup(mask.kind, placements));
+    scatter.add(scatterGroup(mask.kind, placements, manifest.world_size_m));
     scatterStats[mask.kind] = { count: placements.length, spacing_m: spacing, mean_density: meanDensity };
   }
   group.add(scatter);
@@ -950,11 +1004,6 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
     ...Object.values(layerArrays).map((array) => array.texture),
     ...Object.values(splatTextures),
   ];
-  scatter.traverse((node) => {
-    if (node.isMesh) {
-      disposables.push(node.geometry, node.material, node);
-    }
-  });
 
   return {
     name: manifest.name,
@@ -1000,7 +1049,11 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
     clearScatter(sites) {
       return clearScatter(scatter, scatterStats, sites);
     },
+    cullScatter(eye) {
+      cullScatter(scatter, eye);
+    },
     dispose() {
+      disposeScatter(scatter);
       for (const item of disposables) {
         item.dispose();
       }
