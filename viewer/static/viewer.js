@@ -13,6 +13,10 @@ const BACKGROUND = 0xb9bcc2;
 const BUILDING_KIND = /building/;
 const FIGURE_STANDOFF_M = 1.5;
 const EYE_CLEARING_M = 10;
+const MAX_PIXEL_RATIO = 1.5;
+const TERRAIN_NEAR_FRACTION = 0.25;
+const TERRAIN_NEAR_MIN_M = 0.1;
+const TERRAIN_NEAR_MAX_M = 100;
 
 const canvas = document.getElementById("view");
 const assetSelect = document.getElementById("asset");
@@ -27,8 +31,8 @@ const humanBox = document.getElementById("human");
 const infoList = document.getElementById("info");
 const statusLine = document.getElementById("status");
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true, logarithmicDepthBuffer: true });
-renderer.setPixelRatio(window.devicePixelRatio);
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -706,9 +710,21 @@ function resize() {
   }
 }
 
+function fitTerrainClip() {
+  const clearance = camera.position.y - state.terrain.heightAt(camera.position.x, camera.position.z);
+  const near = THREE.MathUtils.clamp(clearance * TERRAIN_NEAR_FRACTION, TERRAIN_NEAR_MIN_M, TERRAIN_NEAR_MAX_M);
+  if (near !== camera.near) {
+    camera.near = near;
+    camera.updateProjectionMatrix();
+  }
+}
+
 function tick() {
   resize();
   controls.update();
+  if (state.terrain) {
+    fitTerrainClip();
+  }
   renderer.render(scene, camera);
   requestAnimationFrame(tick);
 }
@@ -835,7 +851,7 @@ function orbitTo(degrees) {
   controls.update();
 }
 
-window.viewerApi = { orbitTo, frameCamera, groundCamera, frameBuildings, camera, controls, scene, terrain: () => state.terrain };
+window.viewerApi = { orbitTo, frameCamera, groundCamera, frameBuildings, camera, controls, scene, renderer, terrain: () => state.terrain };
 
 tick();
 start();
