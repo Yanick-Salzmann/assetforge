@@ -324,7 +324,8 @@ HEIGHT_BLEND_FORMULA = (
     "cut = max_i(score_i) - blend_depth; "
     "blended_i = weight_i > 0 ? max(score_i - cut, 0) : 0; "
     "albedo = sum(blended_i * albedo_i) / sum(blended_i); "
-    "height_i is the layer material height map, normalised to [0, 1] per material"
+    "height_i is the layer material height map, normalised to [0, 1] per material; "
+    "fade back to linear weights with distance once the height maps are sub-pixel"
 )
 
 

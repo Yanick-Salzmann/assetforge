@@ -440,6 +440,8 @@ const SPLAT_GLSL = `
 #define SPLAT_HEX_FADE_END_TILES 45.0
 #define SPLAT_SIDE_CUTOFF 0.05
 #define SPLAT_LAYER_CUTOFF 0.02
+#define SPLAT_HEIGHT_FADE_START_M 30.0
+#define SPLAT_HEIGHT_FADE_END_M 90.0
 struct SplatTap {
   vec3 albedo;
   vec3 normal;
@@ -592,6 +594,8 @@ function splatShader(layers, splatSamplers, hasMacroNormal, hasColourMacro, blen
     "float splatWeight;",
     "float splatBlend;",
     "float splatTop = -1e3;",
+    "float splatWeightTotal = 0.0;",
+    "float splatHeightTotal = 0.0;",
     "SplatTap splatTap;",
     "float splatDistance = length(vViewPosition);",
     "vec2 splatWorldDx = dFdx(vSplatWorld);",
@@ -643,15 +647,23 @@ function splatShader(layers, splatSamplers, hasMacroNormal, hasColourMacro, blen
     lines.push("    splatTap = splatTriplanar(splatTap, splatSideX, splatSideZ, splatSideWeight, splatFrameT, splatFrameB);");
     lines.push("  }");
     lines.push(`  splatTap${index} = splatTap;`);
-    lines.push(`  splatScore${index} = splatWeight + ${contrast} * splatTap.height * uHeightBlend;`);
+    lines.push(`  splatScore${index} = splatWeight + ${contrast} * splatTap.height;`);
     lines.push(`  splatTop = max(splatTop, splatScore${index});`);
     lines.push("}");
   });
-  lines.push(`float splatCut = splatTop - mix(1e3, ${Math.max(blendDepth, 0.01).toFixed(4)}, uHeightBlend);`);
+  lines.push(`float splatCut = splatTop - ${Math.max(blendDepth, 0.01).toFixed(4)};`);
+  lines.push("float splatHeightFade = uHeightBlend * (1.0 - smoothstep(SPLAT_HEIGHT_FADE_START_M, SPLAT_HEIGHT_FADE_END_M, splatDistance));");
+  layers.forEach((layer, index) => {
+    lines.push(`float splatHeight${index} = splatWeight${index} > 0.0 ? max(splatScore${index} - splatCut, 0.0) : 0.0;`);
+    lines.push(`splatWeightTotal += splatWeight${index};`);
+    lines.push(`splatHeightTotal += splatHeight${index};`);
+  });
+  lines.push("splatWeightTotal = max(splatWeightTotal, 1e-4);");
+  lines.push("splatHeightTotal = max(splatHeightTotal, 1e-4);");
   layers.forEach((layer, index) => {
     const colour = new THREE.Color(LAYER_COLOURS[index % LAYER_COLOURS.length]).convertSRGBToLinear();
     lines.push(`if (splatWeight${index} > 0.0) {`);
-    lines.push(`  splatBlend = mix(splatWeight${index}, max(splatScore${index} - splatCut, 0.0), uHeightBlend);`);
+    lines.push(`  splatBlend = mix(splatWeight${index} / splatWeightTotal, splatHeight${index} / splatHeightTotal, splatHeightFade);`);
     lines.push(
       `  splatAlbedo += splatBlend * mix(splatTap${index}.albedo, vec3(${colour.r.toFixed(4)}, ${colour.g.toFixed(4)}, ${colour.b.toFixed(4)}), uFalseColour);`,
     );
