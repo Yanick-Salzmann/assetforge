@@ -10,6 +10,9 @@ const HUMAN_RADIUS_M = 0.22;
 const LOD_PATTERN = /_LOD(\d+)$/;
 const MODES = ["textured", "splat", "backfaces", "normals", "wireframe"];
 const BACKGROUND = 0xb9bcc2;
+const BUILDING_KIND = /building/;
+const FIGURE_STANDOFF_M = 1.5;
+const EYE_CLEARING_M = 10;
 
 const canvas = document.getElementById("view");
 const assetSelect = document.getElementById("asset");
@@ -17,6 +20,7 @@ const terrainSelect = document.getElementById("terrain");
 const seaBox = document.getElementById("sea");
 const waterTintBox = document.getElementById("water-tint");
 const scatterBox = document.getElementById("scatter");
+const buildingsBox = document.getElementById("buildings");
 const lodSelect = document.getElementById("lod");
 const spinBox = document.getElementById("spin");
 const humanBox = document.getElementById("human");
@@ -182,6 +186,7 @@ function applyTerrainMode() {
   terrain.sea.visible = seaBox.checked;
   terrain.uniforms.uWaterTint.value = waterTintBox.checked ? 1 : 0;
   terrain.scatter.visible = scatterBox.checked;
+  terrain.buildings.group.visible = buildingsBox.checked;
   updateInfo();
 }
 
@@ -282,19 +287,83 @@ function frameTerrain() {
   updateInfo();
 }
 
+function buildingCentre(sites) {
+  if (sites.length === 0) {
+    return null;
+  }
+  const centre = new THREE.Vector3();
+  for (const site of sites) {
+    centre.add(new THREE.Vector3(site.x, site.base, site.z));
+  }
+  return centre.divideScalar(sites.length);
+}
+
+function figureBeside(site) {
+  const terrain = state.terrain;
+  const outward = new THREE.Vector3(terrain.ground.x - site.x, 0, terrain.ground.z - site.z).normalize();
+  const figure = new THREE.Vector3(site.x, 0, site.z).addScaledVector(outward, site.front + FIGURE_STANDOFF_M);
+  figure.y = terrain.heightAt(figure.x, figure.z) + HUMAN_HEIGHT_M / 2;
+  return figure;
+}
+
+function nearestSite(sites, point) {
+  let best = null;
+  for (const site of sites) {
+    if (!best || Math.hypot(site.x - point.x, site.z - point.z) < Math.hypot(best.x - point.x, best.z - point.z)) {
+      best = site;
+    }
+  }
+  return best;
+}
+
+function frameBuildings() {
+  const terrain = state.terrain;
+  const sites = terrain.buildings.sites;
+  const centre = buildingCentre(sites);
+  if (!centre) {
+    frameTerrain();
+    return;
+  }
+  state.camera = "buildings";
+  let spread = 0;
+  for (const site of sites) {
+    spread = Math.max(spread, Math.hypot(site.x - centre.x, site.z - centre.z) + site.radius);
+  }
+  const target = centre.clone();
+  target.y += HUMAN_HEIGHT_M * 3;
+  const direction = new THREE.Vector3(terrain.ground.x - centre.x, 0, terrain.ground.z - centre.z);
+  if (direction.lengthSq() < 1) {
+    direction.set(1, 0, 1.2);
+  }
+  direction.normalize().setY(0.55).normalize();
+  unlockControls();
+  camera.position.copy(target).addScaledVector(direction, Math.max(spread, 20) * 2.2);
+  controls.target.copy(target);
+  controls.update();
+  human.position.copy(figureBeside(nearestSite(sites, terrain.ground)));
+  writeHash();
+  updateInfo();
+}
+
 function groundTerrain() {
   state.camera = "ground";
   const terrain = state.terrain;
+  const sites = terrain.buildings.sites;
   const eye = terrain.ground.clone();
   eye.y += EYE_HEIGHT_M;
-  const look = terrain.peak.clone().sub(terrain.ground).setY(0);
+  const focus = buildingCentre(sites) ?? terrain.peak;
+  const look = focus.clone().sub(terrain.ground).setY(0);
   if (look.lengthSq() < 1) {
     look.set(0, 0, -1);
   }
   look.normalize();
-  const figure = terrain.ground.clone().addScaledVector(look, 15);
-  figure.y = terrain.heightAt(figure.x, figure.z) + HUMAN_HEIGHT_M / 2;
-  human.position.copy(figure);
+  if (sites.length > 0) {
+    human.position.copy(figureBeside(nearestSite(sites, terrain.ground)));
+  } else {
+    const figure = terrain.ground.clone().addScaledVector(look, 15);
+    figure.y = terrain.heightAt(figure.x, figure.z) + HUMAN_HEIGHT_M / 2;
+    human.position.copy(figure);
+  }
   unlockControls();
   camera.position.copy(eye);
   controls.target.copy(eye).addScaledVector(look, 0.5);
@@ -379,6 +448,12 @@ function terrainInfo() {
   ];
   for (const [kind, stats] of Object.entries(terrain.scatterStats)) {
     rows.push([kind, `${stats.count.toLocaleString()} @ ${stats.spacing_m.toFixed(1)} m`]);
+  }
+  for (const site of terrain.buildings.sites) {
+    rows.push([site.name, `footprint relief ${site.relief.toFixed(1)} m`]);
+  }
+  for (const name of terrain.buildings.failed) {
+    rows.push([name, "not placed"]);
   }
   for (const [role, layers] of Object.entries(terrain.missingMaps)) {
     if (layers.length > 0) {
@@ -492,11 +567,69 @@ async function loadAsset(name, wanted = {}) {
   window.viewerState = { ready: true, asset: name, terrain: null, lod: state.lod, error: null, triangles: window.viewerState.triangles };
 }
 
+function footprintOf(asset) {
+  const [minX, minY] = asset.bbox_min;
+  const [maxX, maxY] = asset.bbox_max;
+  const halfWidth = Math.max(-minX, maxX);
+  const halfDepth = Math.max(-minY, maxY);
+  return { name: asset.name, radius: Math.hypot(halfWidth, halfDepth), front: halfDepth };
+}
+
+function disposeBuildings(buildings) {
+  buildings.group.traverse((node) => {
+    if (node.isMesh) {
+      node.geometry.dispose();
+      const materials = Array.isArray(node.material) ? node.material : [node.material];
+      for (const material of materials) {
+        material.dispose();
+      }
+    }
+  });
+}
+
+async function loadBuildings(terrain) {
+  const assets = state.assets.filter((asset) => BUILDING_KIND.test(asset.kind ?? "") && asset.bbox_min && asset.bbox_max);
+  const footprints = assets.map(footprintOf);
+  const sites = terrain.siteBuildings(footprints);
+  const group = new THREE.Group();
+  group.name = "buildings";
+  const placed = [];
+  const failed = [];
+  for (const [index, asset] of assets.entries()) {
+    const site = sites[index];
+    if (!site) {
+      failed.push(asset.name);
+      continue;
+    }
+    let gltf;
+    try {
+      gltf = await loader.loadAsync(asset.glb);
+    } catch (error) {
+      failed.push(asset.name);
+      continue;
+    }
+    const root = gltf.scene;
+    root.name = `building_${asset.name}`;
+    root.traverse((node) => {
+      if (node.isMesh) {
+        node.visible = lodIndexOf(node) === 0;
+      }
+    });
+    root.position.set(site.x, site.base, site.z);
+    root.rotation.y = site.yaw;
+    group.add(root);
+    placed.push({ ...site, front: footprints[index].front });
+  }
+  terrain.clearScatter([...placed, { x: terrain.ground.x, z: terrain.ground.z, radius: EYE_CLEARING_M }]);
+  return { group, sites: placed, failed };
+}
+
 function unloadTerrain() {
   if (!state.terrain) {
     return;
   }
   scene.remove(state.terrain.group);
+  disposeBuildings(state.terrain.buildings);
   state.terrain.dispose();
   state.terrain = null;
   terrainSelect.value = "";
@@ -516,15 +649,19 @@ async function showTerrain(name, wanted = {}) {
   let terrain;
   try {
     terrain = await loadTerrain(entry, renderer, (stage) => setStatus(`loading ${name}: ${stage}…`));
+    setStatus(`loading ${name}: buildings…`);
+    terrain.buildings = await loadBuildings(terrain);
   } catch (error) {
     window.viewerState.error = String(error);
     setStatus(`failed to load ${name}: ${error}`);
     return;
   }
   if (state.terrainLoading !== name) {
+    disposeBuildings(terrain.buildings);
     terrain.dispose();
     return;
   }
+  terrain.group.add(terrain.buildings.group);
   unloadTerrain();
   disposeRoot();
   state.asset = null;
@@ -537,13 +674,26 @@ async function showTerrain(name, wanted = {}) {
   document.body.classList.add("terrain-view");
   terrainStage(terrain);
   applyTerrainMode();
-  if ((wanted.camera ?? state.camera) === "ground") {
+  const wantedCamera = wanted.camera ?? state.camera;
+  if (wantedCamera === "ground") {
     groundTerrain();
+  } else if (wantedCamera === "buildings") {
+    frameBuildings();
   } else {
     frameTerrain();
   }
   setStatus("");
-  window.viewerState = { ready: true, asset: null, terrain: name, lod: null, error: null, scatter: terrain.scatterStats, missingMaps: terrain.missingMaps };
+  window.viewerState = {
+    ready: true,
+    asset: null,
+    terrain: name,
+    lod: null,
+    error: null,
+    scatter: terrain.scatterStats,
+    missingMaps: terrain.missingMaps,
+    buildings: terrain.buildings.sites.map(({ name: building, x, z, base, relief, yaw }) => ({ name: building, x, z, base, relief, yaw })),
+    unplaced: terrain.buildings.failed,
+  };
 }
 
 function resize() {
@@ -575,7 +725,7 @@ terrainSelect.addEventListener("change", () => {
   }
 });
 
-for (const box of [seaBox, waterTintBox, scatterBox]) {
+for (const box of [seaBox, waterTintBox, scatterBox, buildingsBox]) {
   box.addEventListener("change", () => {
     if (state.terrain) {
       applyTerrainMode();
@@ -599,6 +749,11 @@ for (const radio of document.querySelectorAll('input[name="mode"]')) {
 
 document.getElementById("frame").addEventListener("click", frameCamera);
 document.getElementById("ground").addEventListener("click", groundCamera);
+document.getElementById("village").addEventListener("click", () => {
+  if (state.terrain) {
+    frameBuildings();
+  }
+});
 spinBox.addEventListener("change", () => {
   controls.autoRotate = spinBox.checked;
 });
@@ -680,7 +835,7 @@ function orbitTo(degrees) {
   controls.update();
 }
 
-window.viewerApi = { orbitTo, frameCamera, groundCamera, camera, controls, scene, terrain: () => state.terrain };
+window.viewerApi = { orbitTo, frameCamera, groundCamera, frameBuildings, camera, controls, scene, terrain: () => state.terrain };
 
 tick();
 start();

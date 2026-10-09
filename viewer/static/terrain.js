@@ -5,6 +5,13 @@ const MAX_SCATTER_CELLS = 4_000_000;
 const GROUND_FLAT_REACH_M = 20;
 const GROUND_MAX_SLOPE = 0.08;
 const LAYER_MAP_SIZE = 1024;
+const SITE_GAP_M = 8;
+const SITE_EYE_CLEARANCE_M = 14;
+const SITE_MAX_RELIEF_M = 2.5;
+const SITE_MAX_WET = 0.2;
+const SITE_SEA_MARGIN_M = 1;
+const SITE_SAMPLES = 9;
+const SITE_SCATTER_MARGIN_M = 2;
 const LAYER_ROLES = ["albedo", "normal", "roughness"];
 const NEUTRAL_TEXEL = {
   albedo: [128, 128, 128, 255],
@@ -387,29 +394,143 @@ function scatterPlacements(kind, mask, field, manifest) {
   return { placements, spacing, meanDensity };
 }
 
-function scatterGroup(kind, placements) {
-  const group = new THREE.Group();
-  group.name = `scatter_${kind}`;
+function writePlacements(mesh, placements) {
   const matrix = new THREE.Matrix4();
   const quaternion = new THREE.Quaternion();
   const position = new THREE.Vector3();
   const scale = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
+  mesh.count = placements.length;
+  placements.forEach(([x, y, z, yaw, size], index) => {
+    position.set(x, y, z);
+    quaternion.setFromAxisAngle(up, yaw);
+    scale.setScalar(size);
+    matrix.compose(position, quaternion, scale);
+    mesh.setMatrixAt(index, matrix);
+  });
+  mesh.instanceMatrix.needsUpdate = true;
+  mesh.computeBoundingSphere();
+}
+
+function scatterGroup(kind, placements) {
+  const group = new THREE.Group();
+  group.name = `scatter_${kind}`;
+  group.userData.placements = placements;
   for (const [geometry, material] of SCATTER_KINDS[kind].parts()) {
     const mesh = new THREE.InstancedMesh(geometry, material, Math.max(placements.length, 1));
-    mesh.count = placements.length;
-    placements.forEach(([x, y, z, yaw, size], index) => {
-      position.set(x, y, z);
-      quaternion.setFromAxisAngle(up, yaw);
-      scale.setScalar(size);
-      matrix.compose(position, quaternion, scale);
-      mesh.setMatrixAt(index, matrix);
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
+    writePlacements(mesh, placements);
     group.add(mesh);
   }
   return group;
+}
+
+function maskAt(mask, field, x, z) {
+  const resolution = mask.width;
+  const px = Math.min(resolution - 1, Math.max(0, Math.round(field.toPixel(x))));
+  const pz = Math.min(resolution - 1, Math.max(0, Math.round(field.toPixel(z))));
+  return mask.data[pz * resolution + px] / 255;
+}
+
+function surveyFootprint(field, waterRaw, x, z, radius) {
+  let low = Infinity;
+  let high = -Infinity;
+  let wet = 0;
+  for (let j = 0; j < SITE_SAMPLES; j += 1) {
+    for (let i = 0; i < SITE_SAMPLES; i += 1) {
+      const dx = ((2 * i) / (SITE_SAMPLES - 1) - 1) * radius;
+      const dz = ((2 * j) / (SITE_SAMPLES - 1) - 1) * radius;
+      if (Math.hypot(dx, dz) > radius) {
+        continue;
+      }
+      const elevation = field.at(x + dx, z + dz);
+      low = Math.min(low, elevation);
+      high = Math.max(high, elevation);
+      wet = Math.max(wet, maskAt(waterRaw, field, x + dx, z + dz));
+    }
+  }
+  return { low, high, wet };
+}
+
+function siteCandidates(field, ground) {
+  const resolution = field.resolution;
+  const step = Math.max(1, Math.floor(resolution / 256));
+  const candidates = [];
+  for (let pz = 0; pz < resolution; pz += step) {
+    for (let px = 0; px < resolution; px += step) {
+      const x = field.toWorld(px);
+      const z = field.toWorld(pz);
+      candidates.push([Math.hypot(x - ground.x, z - ground.z), x, z]);
+    }
+  }
+  candidates.sort((a, b) => a[0] - b[0]);
+  return candidates;
+}
+
+function chooseSite(footprint, candidates, field, waterRaw, seaLevel, ground, taken) {
+  const half = field.worldSize / 2;
+  let fallback = null;
+  for (const [distance, x, z] of candidates) {
+    if (distance < footprint.radius + SITE_EYE_CLEARANCE_M) {
+      continue;
+    }
+    if (Math.abs(x) + footprint.radius > half || Math.abs(z) + footprint.radius > half) {
+      continue;
+    }
+    if (taken.some((site) => Math.hypot(site.x - x, site.z - z) < site.radius + footprint.radius + SITE_GAP_M)) {
+      continue;
+    }
+    const survey = surveyFootprint(field, waterRaw, x, z, footprint.radius);
+    if (survey.wet > SITE_MAX_WET || survey.low < seaLevel + SITE_SEA_MARGIN_M) {
+      continue;
+    }
+    const relief = survey.high - survey.low;
+    const site = {
+      name: footprint.name,
+      x,
+      z,
+      base: survey.low,
+      relief,
+      radius: footprint.radius,
+      yaw: Math.atan2(-(ground.x - x), -(ground.z - z)),
+    };
+    if (relief <= SITE_MAX_RELIEF_M) {
+      return site;
+    }
+    if (!fallback || relief < fallback.relief) {
+      fallback = site;
+    }
+  }
+  return fallback;
+}
+
+function buildingSites(footprints, field, waterRaw, seaLevel, ground) {
+  const candidates = siteCandidates(field, ground);
+  const order = [...footprints].sort((a, b) => b.radius - a.radius);
+  const taken = [];
+  for (const footprint of order) {
+    const site = chooseSite(footprint, candidates, field, waterRaw, seaLevel, ground, taken);
+    if (site) {
+      taken.push(site);
+    }
+  }
+  return footprints.map((footprint) => taken.find((site) => site.name === footprint.name) ?? null);
+}
+
+function clearScatter(scatter, scatterStats, sites) {
+  let cleared = 0;
+  for (const group of scatter.children) {
+    const placements = group.userData.placements;
+    const kept = placements.filter(
+      ([x, , z]) => !sites.some((site) => Math.hypot(site.x - x, site.z - z) < site.radius + SITE_SCATTER_MARGIN_M),
+    );
+    cleared += placements.length - kept.length;
+    group.userData.placements = kept;
+    scatterStats[group.name.slice("scatter_".length)].count = kept.length;
+    for (const mesh of group.children) {
+      writePlacements(mesh, kept);
+    }
+  }
+  return cleared;
 }
 
 function groundPoint(field, waterMask, seaLevel) {
@@ -551,6 +672,12 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
     splatMaterial: material,
     layerColours: manifest.splat.layers.map((layer, index) => [layer.layer, LAYER_COLOURS[index % LAYER_COLOURS.length]]),
     heightAt: (x, z) => field.at(x, z),
+    siteBuildings(footprints) {
+      return buildingSites(footprints, field, waterRaw, seaLevel, ground);
+    },
+    clearScatter(sites) {
+      return clearScatter(scatter, scatterStats, sites);
+    },
     dispose() {
       for (const item of disposables) {
         item.dispose();
