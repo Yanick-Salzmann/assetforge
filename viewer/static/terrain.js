@@ -409,6 +409,11 @@ const SPLAT_GLSL = `
 #define SPLAT_TRIPLANAR_SHARPNESS 4.0
 #define SPLAT_JITTER_PERIOD_TEXELS 2.5
 #define SPLAT_JITTER_TEXELS 0.9
+#define SPLAT_HEX_CUTOFF 0.05
+#define SPLAT_HEX_FADE_START_TILES 30.0
+#define SPLAT_HEX_FADE_END_TILES 45.0
+#define SPLAT_SIDE_CUTOFF 0.05
+#define SPLAT_LAYER_CUTOFF 0.02
 struct SplatTap {
   vec3 albedo;
   vec3 normal;
@@ -465,6 +470,12 @@ SplatTap splatTapScrambled(float layer, vec2 uv, vec2 dx, vec2 dy, vec2 cell) {
   tap.normal.xy = transpose(turn) * tap.normal.xy;
   return tap;
 }
+SplatTap splatAccumulate(SplatTap sum, SplatTap tap, float weight) {
+  sum.albedo += tap.albedo * weight;
+  sum.normal += tap.normal * weight;
+  sum.roughness += tap.roughness * weight;
+  return sum;
+}
 SplatTap splatBlend3(SplatTap a, SplatTap b, SplatTap c, vec3 w) {
   SplatTap tap;
   tap.albedo = a.albedo * w.x + b.albedo * w.y + c.albedo * w.z;
@@ -482,13 +493,33 @@ SplatTap splatTapHex(float layer, vec2 uv, vec2 dx, vec2 dy) {
   vec3 w = max(vec3(-f.z * s2, s - f.y * s2, s - f.x * s2), 0.0);
   w = pow(w, vec3(SPLAT_HEX_SHARPNESS));
   w /= max(w.x + w.y + w.z, 1e-5);
-  SplatTap a = splatTapScrambled(layer, uv, dx, dy, base + vec2(s, s));
-  SplatTap b = splatTapScrambled(layer, uv, dx, dy, base + vec2(s, 1.0 - s));
-  SplatTap c = splatTapScrambled(layer, uv, dx, dy, base + vec2(1.0 - s, s));
-  return splatBlend3(a, b, c, w);
+  w = max(w - SPLAT_HEX_CUTOFF, 0.0);
+  w /= max(w.x + w.y + w.z, 1e-5);
+  SplatTap tap = SplatTap(vec3(0.0), vec3(0.0), 0.0);
+  if (w.x > 0.0) {
+    tap = splatAccumulate(tap, splatTapScrambled(layer, uv, dx, dy, base + vec2(s, s)), w.x);
+  }
+  if (w.y > 0.0) {
+    tap = splatAccumulate(tap, splatTapScrambled(layer, uv, dx, dy, base + vec2(s, 1.0 - s)), w.y);
+  }
+  if (w.z > 0.0) {
+    tap = splatAccumulate(tap, splatTapScrambled(layer, uv, dx, dy, base + vec2(1.0 - s, s)), w.z);
+  }
+  return tap;
+}
+SplatTap splatTapNear(float layer, vec2 uv, vec2 dx, vec2 dy, float distanceTiles) {
+  float single = smoothstep(SPLAT_HEX_FADE_START_TILES, SPLAT_HEX_FADE_END_TILES, distanceTiles);
+  SplatTap tap = SplatTap(vec3(0.0), vec3(0.0), 0.0);
+  if (single < 1.0) {
+    tap = splatAccumulate(tap, splatTapHex(layer, uv, dx, dy), 1.0 - single);
+  }
+  if (single > 0.0) {
+    tap = splatAccumulate(tap, splatTapScrambled(layer, uv, dx, dy, vec2(layer, 7.0)), single);
+  }
+  return tap;
 }
 SplatTap splatTapAntiTiled(float layer, vec2 uv, vec2 dx, vec2 dy, float macroScale, float distanceTiles) {
-  SplatTap near = splatTapHex(layer, uv, dx, dy);
+  SplatTap near = splatTapNear(layer, uv, dx, dy, distanceTiles);
   float macroMix = SPLAT_MACRO_MIX * smoothstep(SPLAT_MACRO_NEAR_TILES, SPLAT_MACRO_FAR_TILES, distanceTiles);
   if (macroMix <= 0.0 || macroScale <= 1.0) {
     return near;
@@ -542,7 +573,7 @@ function splatShader(layers, splatSamplers, hasMacroNormal) {
     "vec3 splatAxes = pow(abs(splatMacroWorld), vec3(SPLAT_TRIPLANAR_SHARPNESS));",
     "splatAxes /= max(splatAxes.x + splatAxes.y + splatAxes.z, 1e-5);",
     "float splatSteep = smoothstep(SPLAT_TRIPLANAR_START, SPLAT_TRIPLANAR_FULL, 1.0 - abs(splatMacroWorld.y));",
-    "vec2 splatSideWeight = splatAxes.xz * splatSteep;",
+    "vec2 splatSideWeight = max(splatAxes.xz * splatSteep - SPLAT_SIDE_CUTOFF, 0.0) / (1.0 - SPLAT_SIDE_CUTOFF);",
   ];
   lines.push(`vec2 splatMapSize = vec2(textureSize(${splatSamplers[0]}, 0));`);
   lines.push("vec2 splatMapUv = splatWeightUv(vSplatUv, splatMapSize);");
@@ -555,17 +586,23 @@ function splatShader(layers, splatSamplers, hasMacroNormal) {
     const tiling = Math.max(layer.tiling_m, 0.01).toFixed(4);
     const antiTile = layer.anti_tile ?? true;
     const macroScale = Math.max(layer.macro_scale ?? DEFAULT_MACRO_SCALE, 1).toFixed(4);
-    lines.push(`splatWeight = ${sampler}Sample.${layer.channel};`);
-    lines.push("if (splatWeight > 0.002) {");
+    lines.push(`splatWeight = max(${sampler}Sample.${layer.channel} - SPLAT_LAYER_CUTOFF, 0.0);`);
+    lines.push("if (splatWeight > 0.0) {");
     const tail = `${antiTile}, ${macroScale}, splatDistance / ${tiling}`;
     lines.push(`  splatTap = splatTapLayer(${index}.0, vSplatWorld / ${tiling}, splatWorldDx / ${tiling}, splatWorldDy / ${tiling}, ${tail});`);
-    lines.push("  if (splatSteep > 0.0) {");
+    lines.push("  if (splatSideWeight.x + splatSideWeight.y > 0.0) {");
+    lines.push("    SplatTap splatSideX = splatTap;");
+    lines.push("    SplatTap splatSideZ = splatTap;");
+    lines.push("    if (splatSideWeight.x > 0.0) {");
     lines.push(
-      `    SplatTap splatSideX = splatTapLayer(${index}.0, vSplatPosition.zy / ${tiling}, splatSideXDx / ${tiling}, splatSideXDy / ${tiling}, ${tail});`,
+      `      splatSideX = splatTapLayer(${index}.0, vSplatPosition.zy / ${tiling}, splatSideXDx / ${tiling}, splatSideXDy / ${tiling}, ${tail});`,
     );
+    lines.push("    }");
+    lines.push("    if (splatSideWeight.y > 0.0) {");
     lines.push(
-      `    SplatTap splatSideZ = splatTapLayer(${index}.0, vSplatPosition.xy / ${tiling}, splatSideZDx / ${tiling}, splatSideZDy / ${tiling}, ${tail});`,
+      `      splatSideZ = splatTapLayer(${index}.0, vSplatPosition.xy / ${tiling}, splatSideZDx / ${tiling}, splatSideZDy / ${tiling}, ${tail});`,
     );
+    lines.push("    }");
     lines.push("    splatTap = splatTriplanar(splatTap, splatSideX, splatSideZ, splatSideWeight, splatFrameT, splatFrameB);");
     lines.push("  }");
     lines.push(
