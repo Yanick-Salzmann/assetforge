@@ -251,6 +251,8 @@ const SPLAT_GLSL = `
 #define SPLAT_TRIPLANAR_START 0.15
 #define SPLAT_TRIPLANAR_FULL 0.35
 #define SPLAT_TRIPLANAR_SHARPNESS 4.0
+#define SPLAT_JITTER_PERIOD_TEXELS 2.5
+#define SPLAT_JITTER_TEXELS 0.9
 struct SplatTap {
   vec3 albedo;
   vec3 normal;
@@ -265,6 +267,39 @@ SplatTap splatTapPlain(float layer, vec2 uv, vec2 dx, vec2 dy) {
 }
 vec2 splatHash(vec2 p) {
   return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453);
+}
+float splatValueNoise(vec2 p) {
+  vec2 cell = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = splatHash(cell).x;
+  float b = splatHash(cell + vec2(1.0, 0.0)).x;
+  float c = splatHash(cell + vec2(0.0, 1.0)).x;
+  float d = splatHash(cell + vec2(1.0, 1.0)).x;
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+vec2 splatWeightUv(vec2 uv, vec2 size) {
+  vec2 p = uv * size / SPLAT_JITTER_PERIOD_TEXELS;
+  vec2 jitter = vec2(splatValueNoise(p), splatValueNoise(p + vec2(31.7, 17.3))) - 0.5;
+  return uv + jitter * (2.0 * SPLAT_JITTER_TEXELS) / size;
+}
+vec4 splatCubic(sampler2D map, vec2 uv, vec2 size) {
+  vec2 st = uv * size - 0.5;
+  vec2 base = floor(st);
+  vec2 f = st - base;
+  vec2 f2 = f * f;
+  vec2 f3 = f2 * f;
+  vec2 w0 = (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0;
+  vec2 w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
+  vec2 w2 = (1.0 + 3.0 * f + 3.0 * f2 - 3.0 * f3) / 6.0;
+  vec2 w3 = f3 / 6.0;
+  vec2 g0 = w0 + w1;
+  vec2 g1 = w2 + w3;
+  vec2 h0 = (base - 0.5 + w1 / g0) / size;
+  vec2 h1 = (base + 1.5 + w3 / g1) / size;
+  vec4 low = g0.x * texture(map, vec2(h0.x, h0.y)) + g1.x * texture(map, vec2(h1.x, h0.y));
+  vec4 high = g0.x * texture(map, vec2(h0.x, h1.y)) + g1.x * texture(map, vec2(h1.x, h1.y));
+  return g0.y * low + g1.y * high;
 }
 SplatTap splatTapScrambled(float layer, vec2 uv, vec2 dx, vec2 dy, vec2 cell) {
   vec2 h = splatHash(cell);
@@ -353,8 +388,10 @@ function splatShader(layers, splatSamplers, hasMacroNormal) {
     "float splatSteep = smoothstep(SPLAT_TRIPLANAR_START, SPLAT_TRIPLANAR_FULL, 1.0 - abs(splatMacroWorld.y));",
     "vec2 splatSideWeight = splatAxes.xz * splatSteep;",
   ];
+  lines.push(`vec2 splatMapSize = vec2(textureSize(${splatSamplers[0]}, 0));`);
+  lines.push("vec2 splatMapUv = splatWeightUv(vSplatUv, splatMapSize);");
   for (const name of splatSamplers) {
-    lines.push(`vec4 ${name}Sample = texture2D(${name}, vSplatUv);`);
+    lines.push(`vec4 ${name}Sample = splatCubic(${name}, splatMapUv, splatMapSize);`);
   }
   layers.forEach((layer, index) => {
     const sampler = `uSplat${layer.texture.replace(/\D/g, "")}`;
