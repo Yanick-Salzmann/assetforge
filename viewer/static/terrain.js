@@ -248,6 +248,9 @@ const SPLAT_GLSL = `
 #define SPLAT_MACRO_NEAR_TILES 6.0
 #define SPLAT_MACRO_FAR_TILES 60.0
 #define SPLAT_MACRO_MIX 0.5
+#define SPLAT_TRIPLANAR_START 0.15
+#define SPLAT_TRIPLANAR_FULL 0.35
+#define SPLAT_TRIPLANAR_SHARPNESS 4.0
 struct SplatTap {
   vec3 albedo;
   vec3 normal;
@@ -306,9 +309,27 @@ SplatTap splatTapAntiTiled(float layer, vec2 uv, vec2 dx, vec2 dy, float macroSc
   tap.roughness = mix(near.roughness, far.roughness, macroMix);
   return tap;
 }
+SplatTap splatTapLayer(float layer, vec2 uv, vec2 dx, vec2 dy, bool antiTile, float macroScale, float distanceTiles) {
+  if (antiTile) {
+    return splatTapAntiTiled(layer, uv, dx, dy, macroScale, distanceTiles);
+  }
+  return splatTapPlain(layer, uv, dx, dy);
+}
+vec3 splatSideNormal(vec3 tangentNormal, vec3 axisU, vec3 axisV, vec3 frameT, vec3 frameB) {
+  vec3 tilt = tangentNormal.x * axisU + tangentNormal.y * axisV;
+  return vec3(dot(tilt, frameT), dot(tilt, frameB), tangentNormal.z);
+}
+SplatTap splatTriplanar(SplatTap top, SplatTap sideX, SplatTap sideZ, vec2 sideWeight, vec3 frameT, vec3 frameB) {
+  sideX.normal = splatSideNormal(sideX.normal, vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0), frameT, frameB);
+  sideZ.normal = splatSideNormal(sideZ.normal, vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), frameT, frameB);
+  return splatBlend3(top, sideX, sideZ, vec3(1.0 - sideWeight.x - sideWeight.y, sideWeight));
+}
 `;
 
-function splatShader(layers, splatSamplers) {
+function splatShader(layers, splatSamplers, hasMacroNormal) {
+  const macro = hasMacroNormal
+    ? "vec3 splatMacroPacked = texture2D(uMacroNormal, vSplatUv).xyz * 2.0 - 1.0;\nvec3 splatMacroWorld = normalize(vec3(splatMacroPacked.x, splatMacroPacked.z, splatMacroPacked.y));"
+    : "vec3 splatMacroWorld = normalize(vSplatNormal);";
   const lines = [
     "vec3 splatAlbedo = vec3(0.0);",
     "vec3 splatTangentNormal = vec3(0.0);",
@@ -319,6 +340,18 @@ function splatShader(layers, splatSamplers) {
     "float splatDistance = length(vViewPosition);",
     "vec2 splatWorldDx = dFdx(vSplatWorld);",
     "vec2 splatWorldDy = dFdy(vSplatWorld);",
+    "vec2 splatSideXDx = dFdx(vSplatPosition.zy);",
+    "vec2 splatSideXDy = dFdy(vSplatPosition.zy);",
+    "vec2 splatSideZDx = dFdx(vSplatPosition.xy);",
+    "vec2 splatSideZDy = dFdy(vSplatPosition.xy);",
+    macro,
+    "vec3 splatFrameRef = normalize(mix(vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), smoothstep(0.7, 0.95, abs(splatMacroWorld.x))));",
+    "vec3 splatFrameT = normalize(splatFrameRef - splatMacroWorld * dot(splatFrameRef, splatMacroWorld));",
+    "vec3 splatFrameB = cross(splatFrameT, splatMacroWorld);",
+    "vec3 splatAxes = pow(abs(splatMacroWorld), vec3(SPLAT_TRIPLANAR_SHARPNESS));",
+    "splatAxes /= max(splatAxes.x + splatAxes.y + splatAxes.z, 1e-5);",
+    "float splatSteep = smoothstep(SPLAT_TRIPLANAR_START, SPLAT_TRIPLANAR_FULL, 1.0 - abs(splatMacroWorld.y));",
+    "vec2 splatSideWeight = splatAxes.xz * splatSteep;",
   ];
   for (const name of splatSamplers) {
     lines.push(`vec4 ${name}Sample = texture2D(${name}, vSplatUv);`);
@@ -331,11 +364,17 @@ function splatShader(layers, splatSamplers) {
     const macroScale = Math.max(layer.macro_scale ?? DEFAULT_MACRO_SCALE, 1).toFixed(4);
     lines.push(`splatWeight = ${sampler}Sample.${layer.channel};`);
     lines.push("if (splatWeight > 0.002) {");
-    if (antiTile) {
-      lines.push(`  splatTap = splatTapAntiTiled(${index}.0, vSplatWorld / ${tiling}, splatWorldDx / ${tiling}, splatWorldDy / ${tiling}, ${macroScale}, splatDistance / ${tiling});`);
-    } else {
-      lines.push(`  splatTap = splatTapPlain(${index}.0, vSplatWorld / ${tiling}, splatWorldDx / ${tiling}, splatWorldDy / ${tiling});`);
-    }
+    const tail = `${antiTile}, ${macroScale}, splatDistance / ${tiling}`;
+    lines.push(`  splatTap = splatTapLayer(${index}.0, vSplatWorld / ${tiling}, splatWorldDx / ${tiling}, splatWorldDy / ${tiling}, ${tail});`);
+    lines.push("  if (splatSteep > 0.0) {");
+    lines.push(
+      `    SplatTap splatSideX = splatTapLayer(${index}.0, vSplatPosition.zy / ${tiling}, splatSideXDx / ${tiling}, splatSideXDy / ${tiling}, ${tail});`,
+    );
+    lines.push(
+      `    SplatTap splatSideZ = splatTapLayer(${index}.0, vSplatPosition.xy / ${tiling}, splatSideZDx / ${tiling}, splatSideZDy / ${tiling}, ${tail});`,
+    );
+    lines.push("    splatTap = splatTriplanar(splatTap, splatSideX, splatSideZ, splatSideWeight, splatFrameT, splatFrameB);");
+    lines.push("  }");
     lines.push(
       `  splatAlbedo += splatWeight * mix(splatTap.albedo, vec3(${colour.r.toFixed(4)}, ${colour.g.toFixed(4)}, ${colour.b.toFixed(4)}), uFalseColour);`,
     );
@@ -356,22 +395,14 @@ function splatShader(layers, splatSamplers) {
 
 const ROUGHNESS_SHADER = "#include <roughnessmap_fragment>\nroughnessFactor = mix(splatRoughness, 0.92, uFalseColour);";
 
-function normalShader(hasMacroNormal) {
-  const macro = hasMacroNormal
-    ? "vec3 macroPacked = texture2D(uMacroNormal, vSplatUv).xyz * 2.0 - 1.0;\nvec3 macroWorld = normalize(vec3(macroPacked.x, macroPacked.z, macroPacked.y));"
-    : "vec3 macroWorld = normalize((vec4(normal, 0.0) * viewMatrix).xyz);";
-  return [
-    "#include <normal_fragment_maps>",
-    macro,
-    "vec3 detailNormal = splatTangentNormal;",
-    "detailNormal.xy *= uDetailNormal * (1.0 - uFalseColour);",
-    "detailNormal = normalize(vec3(detailNormal.xy, max(detailNormal.z, 1e-3)));",
-    "vec3 tangentWorld = normalize(vec3(1.0, 0.0, 0.0) - macroWorld * macroWorld.x);",
-    "vec3 bitangentWorld = cross(tangentWorld, macroWorld);",
-    "vec3 shadedWorld = normalize(tangentWorld * detailNormal.x + bitangentWorld * detailNormal.y + macroWorld * detailNormal.z);",
-    "normal = normalize((viewMatrix * vec4(shadedWorld, 0.0)).xyz);",
-  ].join("\n");
-}
+const NORMAL_SHADER = [
+  "#include <normal_fragment_maps>",
+  "vec3 detailNormal = splatTangentNormal;",
+  "detailNormal.xy *= uDetailNormal * (1.0 - uFalseColour);",
+  "detailNormal = normalize(vec3(detailNormal.xy, max(detailNormal.z, 1e-3)));",
+  "vec3 shadedWorld = normalize(splatFrameT * detailNormal.x + splatFrameB * detailNormal.y + splatMacroWorld * detailNormal.z);",
+  "normal = normalize((viewMatrix * vec4(shadedWorld, 0.0)).xyz);",
+].join("\n");
 
 function splatMaterial(manifest, splatTextures, layerArrays, waterMask, macroNormal) {
   const layers = manifest.splat.layers;
@@ -406,6 +437,8 @@ function splatMaterial(manifest, splatTextures, layerArrays, waterMask, macroNor
     ...splatSamplers.map((name) => `uniform sampler2D ${name};`),
     "varying vec2 vSplatUv;",
     "varying vec2 vSplatWorld;",
+    "varying vec3 vSplatPosition;",
+    "varying vec3 vSplatNormal;",
     SPLAT_GLSL,
   ].join("\n");
   const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0, envMapIntensity: 0.4 });
@@ -414,17 +447,17 @@ function splatMaterial(manifest, splatTextures, layerArrays, waterMask, macroNor
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
-        "#include <common>\nuniform float uWorldSize;\nvarying vec2 vSplatUv;\nvarying vec2 vSplatWorld;",
+        "#include <common>\nuniform float uWorldSize;\nvarying vec2 vSplatUv;\nvarying vec2 vSplatWorld;\nvarying vec3 vSplatPosition;\nvarying vec3 vSplatNormal;",
       )
       .replace(
         "#include <project_vertex>",
-        "#include <project_vertex>\nvec4 splatWorldPosition = modelMatrix * vec4(transformed, 1.0);\nvSplatWorld = splatWorldPosition.xz;\nvSplatUv = (splatWorldPosition.xz + 0.5 * uWorldSize) / uWorldSize;",
+        "#include <project_vertex>\nvec4 splatWorldPosition = modelMatrix * vec4(transformed, 1.0);\nvSplatWorld = splatWorldPosition.xz;\nvSplatPosition = splatWorldPosition.xyz;\nvSplatNormal = normalize(mat3(modelMatrix) * objectNormal);\nvSplatUv = (splatWorldPosition.xz + 0.5 * uWorldSize) / uWorldSize;",
       );
     shader.fragmentShader = shader.fragmentShader
       .replace("#include <common>", `#include <common>\n${declarations}`)
-      .replace("#include <map_fragment>", splatShader(layers, splatSamplers))
+      .replace("#include <map_fragment>", splatShader(layers, splatSamplers, macroNormal !== null))
       .replace("#include <roughnessmap_fragment>", ROUGHNESS_SHADER)
-      .replace("#include <normal_fragment_maps>", normalShader(macroNormal !== null));
+      .replace("#include <normal_fragment_maps>", NORMAL_SHADER);
   };
   const layerKey = layers.map((layer) => `${layer.tiling_m}/${layer.anti_tile ?? true}/${layer.macro_scale ?? DEFAULT_MACRO_SCALE}`).join(",");
   material.customProgramCacheKey = () => `splat:${manifest.name}:${layerKey}:${macroNormal !== null}`;
