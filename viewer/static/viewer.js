@@ -380,6 +380,11 @@ function terrainInfo() {
   for (const [kind, stats] of Object.entries(terrain.scatterStats)) {
     rows.push([kind, `${stats.count.toLocaleString()} @ ${stats.spacing_m.toFixed(1)} m`]);
   }
+  for (const [role, layers] of Object.entries(terrain.missingMaps)) {
+    if (layers.length > 0) {
+      rows.push([`no ${role}`, layers.join(", ")]);
+    }
+  }
   if (state.mode === "splat") {
     for (const [layer, colour] of terrain.layerColours) {
       rows.push(["layer", layer, colour]);
@@ -538,7 +543,7 @@ async function showTerrain(name, wanted = {}) {
     frameTerrain();
   }
   setStatus("");
-  window.viewerState = { ready: true, asset: null, terrain: name, lod: null, error: null, scatter: terrain.scatterStats };
+  window.viewerState = { ready: true, asset: null, terrain: name, lod: null, error: null, scatter: terrain.scatterStats, missingMaps: terrain.missingMaps };
 }
 
 function resize() {
