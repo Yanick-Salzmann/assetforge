@@ -24,6 +24,7 @@ const terrainSelect = document.getElementById("terrain");
 const seaBox = document.getElementById("sea");
 const waterTintBox = document.getElementById("water-tint");
 const colourMacroBox = document.getElementById("colour-macro");
+const heightBlendBox = document.getElementById("height-blend");
 const scatterBox = document.getElementById("scatter");
 const buildingsBox = document.getElementById("buildings");
 const lodSelect = document.getElementById("lod");
@@ -192,6 +193,7 @@ function applyTerrainMode() {
   terrain.sea.visible = seaBox.checked;
   terrain.uniforms.uWaterTint.value = waterTintBox.checked ? 1 : 0;
   terrain.uniforms.uColourMacroOn.value = colourMacroBox.checked ? 1 : 0;
+  terrain.uniforms.uHeightBlend.value = heightBlendBox.checked ? 1 : 0;
   terrain.scatter.visible = scatterBox.checked;
   terrain.buildings.group.visible = buildingsBox.checked;
   updateInfo();
@@ -760,7 +762,7 @@ terrainSelect.addEventListener("change", () => {
   }
 });
 
-for (const box of [seaBox, waterTintBox, colourMacroBox, scatterBox, buildingsBox]) {
+for (const box of [seaBox, waterTintBox, colourMacroBox, heightBlendBox, scatterBox, buildingsBox]) {
   box.addEventListener("change", () => {
     if (state.terrain) {
       applyTerrainMode();

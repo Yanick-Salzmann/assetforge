@@ -29,7 +29,7 @@ TERRAIN_FILE_PREFIX = "/files/terrain/"
 LIBRARY_FILE_PREFIX = "/files/library/"
 RAW_IMAGE_PREFIX = "/api/raw/terrain/"
 MATERIAL_INDEX_NAME = "materials.json"
-MATERIAL_ROLES = ("albedo", "normal", "roughness")
+MATERIAL_ROLES = ("albedo", "normal", "roughness", "height")
 STATIC_PREFIX = "/static/"
 
 mimetypes.add_type("model/gltf-binary", ".glb")

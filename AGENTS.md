@@ -221,6 +221,10 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   normalised too — the metre mapping is applied only at export.
 - Splat masks pack 4 layers per RGBA texture: `splat_0.png` holds layers 0-3,
   `splat_1.png` layers 4-7. Layer weights across all textures sum to 1 per pixel.
+- Splat masks carry linear weights only. Height-based blending is a shading-time step:
+  each layer's `blend_contrast` and the biome's `blend_depth` are recorded in
+  `terrain.json` (`splat.layers[].blend_contrast`, `splat.blend_depth`, and the formula in
+  `splat.height_blend`) so an engine can reproduce it against the material height maps.
 - Scatter masks are single-channel 8-bit: `scatter_rock.png`, `scatter_tree.png`,
   `scatter_grass.png`, `scatter_debris.png`.
 - `colour_macro.png` is an 8-bit RGB albedo multiplier (`byte / 128`, neutral 128) built

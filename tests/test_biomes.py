@@ -133,6 +133,47 @@ def test_anti_tile_invalid_values_are_rejected(text, index):
         splat.parse_biome(text, index)
 
 
+def test_height_blend_defaults(index):
+    biome = splat.parse_biome(RULES, index)
+    assert biome.blend_depth == pytest.approx(splat.DEFAULT_BLEND_DEPTH)
+    for layer in biome:
+        assert layer.blend_contrast == pytest.approx(splat.DEFAULT_BLEND_CONTRAST)
+
+
+def test_height_blend_is_read_from_the_rule_file(index):
+    text = "[biome]\nblend_depth = 0.35\n\n[layer.a]\nmaterial = 'silt'\nweight = 'flow'\nblend_contrast = 0.6\n"
+    biome = splat.parse_biome(text, index)
+    assert biome.blend_depth == pytest.approx(0.35)
+    assert biome["a"].blend_contrast == pytest.approx(0.6)
+    assert biome.as_dict()["blend_depth"] == pytest.approx(0.35)
+    assert biome.as_dict()["layers"]["a"]["blend_contrast"] == pytest.approx(0.6)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "[layer.a]\nmaterial = 'silt'\nweight = 'flow'\nblend_contrast = -0.1\n",
+        "[layer.a]\nmaterial = 'silt'\nweight = 'flow'\nblend_contrast = 1.5\n",
+        "[layer.a]\nmaterial = 'silt'\nweight = 'flow'\nblend_contrast = true\n",
+        "[biome]\nblend_depth = 0.0\n\n[layer.a]\nmaterial = 'silt'\nweight = 'flow'\n",
+        "[biome]\nblend_depth = 0.9\n\n[layer.a]\nmaterial = 'silt'\nweight = 'flow'\n",
+    ],
+)
+def test_height_blend_invalid_values_are_rejected(text, index):
+    with pytest.raises(MapConfigError):
+        splat.parse_biome(text, index)
+
+
+def test_shipped_biomes_let_rock_poke_through_and_snow_settle(index):
+    for name in splat.available():
+        biome = splat.biome(name, index=index)
+        contrasts = {layer.material: layer.blend_contrast for layer in biome}
+        if "gravel" in contrasts and "dry_grass" in contrasts:
+            assert contrasts["gravel"] > contrasts["dry_grass"]
+        if "snow" in contrasts:
+            assert contrasts["snow"] < contrasts["cliff_rock"]
+
+
 def test_referenced_channels_and_materials_are_reported(index):
     biome = splat.parse_biome(RULES, index)
     assert biome.materials() == ("cliff_rock", "river_rock", "silt")

@@ -233,6 +233,14 @@ def test_assignment_carries_the_material_and_tiling(biome, index):
     assert placed[1]["tiling_m"] == pytest.approx(index["river_rock"].tiling_m)
     assert placed[1]["anti_tile"] is True
     assert placed[1]["macro_scale"] == pytest.approx(splat.DEFAULT_MACRO_SCALE)
+    assert placed[1]["blend_contrast"] == pytest.approx(splat.DEFAULT_BLEND_CONTRAST)
+
+
+def test_result_documents_the_height_blend(biome):
+    payload = splat.render(biome, stack()).as_dict()
+    assert payload["blend_depth"] == pytest.approx(biome.blend_depth)
+    assert "blend_contrast" in payload["height_blend"]
+    assert "blend_depth" in payload["height_blend"]
 
 
 def test_coverage_sums_to_one_and_names_the_layers(biome):

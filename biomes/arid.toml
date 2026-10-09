@@ -5,6 +5,7 @@ sharpness = 3.0
 
 [layer.dry_wash]
 material = "river_rock"
+blend_contrast = 0.5
 weight = "smoothstep(flow, 0.5, 0.72) * step(slope < 0.35)"
 
 [layer.playa_silt]
@@ -15,12 +16,14 @@ variation_m = 500.0
 
 [layer.dune_sand]
 material = "sand"
+blend_contrast = 0.25
 weight = "step(slope < 0.25) * (1 - smoothstep(moisture, 0.45, 0.65)) * patchiness_mid"
 variation = 0.3
 variation_m = 700.0
 
 [layer.desert_pavement]
 material = "gravel"
+blend_contrast = 0.5
 weight = "step(slope < 0.25) * (1 - smoothstep(moisture, 0.45, 0.65)) * (1 - patchiness_mid)"
 variation = 0.25
 variation_m = 600.0
@@ -33,4 +36,5 @@ variation_m = 800.0
 
 [layer.exposed_rock]
 material = "cliff_rock"
+blend_contrast = 0.45
 weight = "max(smoothstep(slope, 0.4, 0.7), bedrock * wear)"

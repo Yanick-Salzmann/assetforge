@@ -25,6 +25,9 @@ const NEUTRAL_TEXEL = {
 };
 const WATER_COLOUR = new THREE.Color(0x2b5d74);
 const DEFAULT_MACRO_SCALE = 7.3;
+const DEFAULT_BLEND_CONTRAST = 0.3;
+const DEFAULT_BLEND_DEPTH = 0.08;
+const NEUTRAL_HEIGHT = 128;
 const LAYER_COLOURS = [0xd9a441, 0x4f9fd8, 0xe8dca0, 0x8c8478, 0x7fb24a, 0x6a4e42, 0x2e7d4f, 0xf2f2f2];
 
 const SCATTER_KINDS = {
@@ -139,12 +142,32 @@ async function layerPixels(url, size) {
   }
 }
 
-async function layerArray(urls, role, anisotropy) {
+function packHeight(data, offset, texels, pixels) {
+  if (!pixels) {
+    for (let index = offset + 1; index < offset + texels; index += 4) {
+      data[index] = NEUTRAL_HEIGHT;
+    }
+    return;
+  }
+  let low = 255;
+  let high = 0;
+  for (let index = 0; index < texels; index += 4) {
+    low = Math.min(low, pixels[index]);
+    high = Math.max(high, pixels[index]);
+  }
+  const span = Math.max(high - low, 1);
+  for (let index = 0; index < texels; index += 4) {
+    data[offset + index + 1] = Math.round(((pixels[index] - low) * 255) / span);
+  }
+}
+
+async function layerArray(urls, role, anisotropy, heightUrls = null) {
   const size = LAYER_MAP_SIZE;
   const texels = size * size * 4;
   const data = new Uint8Array(texels * Math.max(urls.length, 1));
   const missing = [];
   const loaded = await Promise.all(urls.map((url) => layerPixels(url, size)));
+  const heights = heightUrls ? await Promise.all(heightUrls.map((url) => layerPixels(url, size))) : null;
   loaded.forEach((pixels, layer) => {
     if (pixels) {
       data.set(pixels, layer * texels);
@@ -156,6 +179,9 @@ async function layerArray(urls, role, anisotropy) {
       data.set(fill, offset);
     }
   });
+  if (heights) {
+    heights.forEach((pixels, layer) => packHeight(data, layer * texels, texels, pixels));
+  }
   const texture = new THREE.DataArrayTexture(data, size, size, Math.max(urls.length, 1));
   texture.colorSpace = role === "albedo" ? THREE.SRGBColorSpace : THREE.NoColorSpace;
   texture.wrapS = THREE.RepeatWrapping;
@@ -418,12 +444,15 @@ struct SplatTap {
   vec3 albedo;
   vec3 normal;
   float roughness;
+  float height;
 };
 SplatTap splatTapPlain(float layer, vec2 uv, vec2 dx, vec2 dy) {
   SplatTap tap;
   tap.albedo = textureGrad(uLayerAlbedo, vec3(uv, layer), dx, dy).rgb;
   tap.normal = textureGrad(uLayerNormal, vec3(uv, layer), dx, dy).xyz * 2.0 - 1.0;
-  tap.roughness = textureGrad(uLayerRoughness, vec3(uv, layer), dx, dy).r;
+  vec2 surface = textureGrad(uLayerRoughness, vec3(uv, layer), dx, dy).rg;
+  tap.roughness = surface.x;
+  tap.height = surface.y;
   return tap;
 }
 vec2 splatHash(vec2 p) {
@@ -474,6 +503,7 @@ SplatTap splatAccumulate(SplatTap sum, SplatTap tap, float weight) {
   sum.albedo += tap.albedo * weight;
   sum.normal += tap.normal * weight;
   sum.roughness += tap.roughness * weight;
+  sum.height += tap.height * weight;
   return sum;
 }
 SplatTap splatBlend3(SplatTap a, SplatTap b, SplatTap c, vec3 w) {
@@ -481,6 +511,7 @@ SplatTap splatBlend3(SplatTap a, SplatTap b, SplatTap c, vec3 w) {
   tap.albedo = a.albedo * w.x + b.albedo * w.y + c.albedo * w.z;
   tap.normal = a.normal * w.x + b.normal * w.y + c.normal * w.z;
   tap.roughness = a.roughness * w.x + b.roughness * w.y + c.roughness * w.z;
+  tap.height = a.height * w.x + b.height * w.y + c.height * w.z;
   return tap;
 }
 SplatTap splatTapHex(float layer, vec2 uv, vec2 dx, vec2 dy) {
@@ -495,7 +526,7 @@ SplatTap splatTapHex(float layer, vec2 uv, vec2 dx, vec2 dy) {
   w /= max(w.x + w.y + w.z, 1e-5);
   w = max(w - SPLAT_HEX_CUTOFF, 0.0);
   w /= max(w.x + w.y + w.z, 1e-5);
-  SplatTap tap = SplatTap(vec3(0.0), vec3(0.0), 0.0);
+  SplatTap tap = SplatTap(vec3(0.0), vec3(0.0), 0.0, 0.0);
   if (w.x > 0.0) {
     tap = splatAccumulate(tap, splatTapScrambled(layer, uv, dx, dy, base + vec2(s, s)), w.x);
   }
@@ -509,7 +540,7 @@ SplatTap splatTapHex(float layer, vec2 uv, vec2 dx, vec2 dy) {
 }
 SplatTap splatTapNear(float layer, vec2 uv, vec2 dx, vec2 dy, float distanceTiles) {
   float single = smoothstep(SPLAT_HEX_FADE_START_TILES, SPLAT_HEX_FADE_END_TILES, distanceTiles);
-  SplatTap tap = SplatTap(vec3(0.0), vec3(0.0), 0.0);
+  SplatTap tap = SplatTap(vec3(0.0), vec3(0.0), 0.0, 0.0);
   if (single < 1.0) {
     tap = splatAccumulate(tap, splatTapHex(layer, uv, dx, dy), 1.0 - single);
   }
@@ -529,6 +560,7 @@ SplatTap splatTapAntiTiled(float layer, vec2 uv, vec2 dx, vec2 dy, float macroSc
   tap.albedo = mix(near.albedo, far.albedo, macroMix);
   tap.normal = mix(near.normal, far.normal, macroMix);
   tap.roughness = mix(near.roughness, far.roughness, macroMix);
+  tap.height = mix(near.height, far.height, macroMix);
   return tap;
 }
 SplatTap splatTapLayer(float layer, vec2 uv, vec2 dx, vec2 dy, bool antiTile, float macroScale, float distanceTiles) {
@@ -548,7 +580,7 @@ SplatTap splatTriplanar(SplatTap top, SplatTap sideX, SplatTap sideZ, vec2 sideW
 }
 `;
 
-function splatShader(layers, splatSamplers, hasMacroNormal, hasColourMacro) {
+function splatShader(layers, splatSamplers, hasMacroNormal, hasColourMacro, blendDepth) {
   const macro = hasMacroNormal
     ? "vec3 splatMacroPacked = texture2D(uMacroNormal, vSplatUv).xyz * 2.0 - 1.0;\nvec3 splatMacroWorld = normalize(vec3(splatMacroPacked.x, splatMacroPacked.z, splatMacroPacked.y));"
     : "vec3 splatMacroWorld = normalize(vSplatNormal);";
@@ -558,6 +590,8 @@ function splatShader(layers, splatSamplers, hasMacroNormal, hasColourMacro) {
     "float splatRoughness = 0.0;",
     "float splatTotal = 0.0;",
     "float splatWeight;",
+    "float splatBlend;",
+    "float splatTop = -1e3;",
     "SplatTap splatTap;",
     "float splatDistance = length(vViewPosition);",
     "vec2 splatWorldDx = dFdx(vSplatWorld);",
@@ -582,12 +616,15 @@ function splatShader(layers, splatSamplers, hasMacroNormal, hasColourMacro) {
   }
   layers.forEach((layer, index) => {
     const sampler = `uSplat${layer.texture.replace(/\D/g, "")}`;
-    const colour = new THREE.Color(LAYER_COLOURS[index % LAYER_COLOURS.length]).convertSRGBToLinear();
     const tiling = Math.max(layer.tiling_m, 0.01).toFixed(4);
     const antiTile = layer.anti_tile ?? true;
     const macroScale = Math.max(layer.macro_scale ?? DEFAULT_MACRO_SCALE, 1).toFixed(4);
-    lines.push(`splatWeight = max(${sampler}Sample.${layer.channel} - SPLAT_LAYER_CUTOFF, 0.0);`);
-    lines.push("if (splatWeight > 0.0) {");
+    const contrast = Math.max(layer.blend_contrast ?? DEFAULT_BLEND_CONTRAST, 0).toFixed(4);
+    lines.push(`float splatWeight${index} = max(${sampler}Sample.${layer.channel} - SPLAT_LAYER_CUTOFF, 0.0);`);
+    lines.push(`SplatTap splatTap${index} = SplatTap(vec3(0.0), vec3(0.0), 0.0, 0.0);`);
+    lines.push(`float splatScore${index} = -1e3;`);
+    lines.push(`if (splatWeight${index} > 0.0) {`);
+    lines.push(`  splatWeight = splatWeight${index};`);
     const tail = `${antiTile}, ${macroScale}, splatDistance / ${tiling}`;
     lines.push(`  splatTap = splatTapLayer(${index}.0, vSplatWorld / ${tiling}, splatWorldDx / ${tiling}, splatWorldDy / ${tiling}, ${tail});`);
     lines.push("  if (splatSideWeight.x + splatSideWeight.y > 0.0) {");
@@ -605,12 +642,22 @@ function splatShader(layers, splatSamplers, hasMacroNormal, hasColourMacro) {
     lines.push("    }");
     lines.push("    splatTap = splatTriplanar(splatTap, splatSideX, splatSideZ, splatSideWeight, splatFrameT, splatFrameB);");
     lines.push("  }");
+    lines.push(`  splatTap${index} = splatTap;`);
+    lines.push(`  splatScore${index} = splatWeight + ${contrast} * splatTap.height * uHeightBlend;`);
+    lines.push(`  splatTop = max(splatTop, splatScore${index});`);
+    lines.push("}");
+  });
+  lines.push(`float splatCut = splatTop - mix(1e3, ${Math.max(blendDepth, 0.01).toFixed(4)}, uHeightBlend);`);
+  layers.forEach((layer, index) => {
+    const colour = new THREE.Color(LAYER_COLOURS[index % LAYER_COLOURS.length]).convertSRGBToLinear();
+    lines.push(`if (splatWeight${index} > 0.0) {`);
+    lines.push(`  splatBlend = mix(splatWeight${index}, max(splatScore${index} - splatCut, 0.0), uHeightBlend);`);
     lines.push(
-      `  splatAlbedo += splatWeight * mix(splatTap.albedo, vec3(${colour.r.toFixed(4)}, ${colour.g.toFixed(4)}, ${colour.b.toFixed(4)}), uFalseColour);`,
+      `  splatAlbedo += splatBlend * mix(splatTap${index}.albedo, vec3(${colour.r.toFixed(4)}, ${colour.g.toFixed(4)}, ${colour.b.toFixed(4)}), uFalseColour);`,
     );
-    lines.push("  splatTangentNormal += splatWeight * splatTap.normal;");
-    lines.push("  splatRoughness += splatWeight * splatTap.roughness;");
-    lines.push("  splatTotal += splatWeight;");
+    lines.push(`  splatTangentNormal += splatBlend * splatTap${index}.normal;`);
+    lines.push(`  splatRoughness += splatBlend * splatTap${index}.roughness;`);
+    lines.push("  splatTotal += splatBlend;");
     lines.push("}");
   });
   lines.push("splatAlbedo /= max(splatTotal, 1e-4);");
@@ -661,6 +708,7 @@ function splatMaterial(manifest, splatTextures, layerArrays, waterMask, macroNor
     uLayerRoughness: { value: layerArrays.roughness.texture },
     uColourMacro: { value: colourMacro },
     uColourMacroOn: { value: 1 },
+    uHeightBlend: { value: 1 },
     uColourMacroRange: { value: colourMacroRange(manifest.colour_macro) },
   };
   const splatSamplers = [];
@@ -678,6 +726,7 @@ function splatMaterial(manifest, splatTextures, layerArrays, waterMask, macroNor
     "uniform sampler2D uMacroNormal;",
     "uniform sampler2D uColourMacro;",
     "uniform float uColourMacroOn;",
+    "uniform float uHeightBlend;",
     "uniform vec3 uColourMacroRange;",
     "uniform highp sampler2DArray uLayerAlbedo;",
     "uniform highp sampler2DArray uLayerNormal;",
@@ -703,11 +752,13 @@ function splatMaterial(manifest, splatTextures, layerArrays, waterMask, macroNor
       );
     shader.fragmentShader = shader.fragmentShader
       .replace("#include <common>", `#include <common>\n${declarations}`)
-      .replace("#include <map_fragment>", splatShader(layers, splatSamplers, macroNormal !== null, colourMacro !== null))
+      .replace("#include <map_fragment>", splatShader(layers, splatSamplers, macroNormal !== null, colourMacro !== null, manifest.splat.blend_depth ?? DEFAULT_BLEND_DEPTH))
       .replace("#include <roughnessmap_fragment>", ROUGHNESS_SHADER)
       .replace("#include <normal_fragment_maps>", NORMAL_SHADER);
   };
-  const layerKey = layers.map((layer) => `${layer.tiling_m}/${layer.anti_tile ?? true}/${layer.macro_scale ?? DEFAULT_MACRO_SCALE}`).join(",");
+  const layerKey = layers
+    .map((layer) => `${layer.tiling_m}/${layer.anti_tile ?? true}/${layer.macro_scale ?? DEFAULT_MACRO_SCALE}/${layer.blend_contrast ?? DEFAULT_BLEND_CONTRAST}`)
+    .join(",");
   material.customProgramCacheKey = () => `splat:${manifest.name}:${layerKey}:${macroNormal !== null}:${colourMacro !== null}`;
   return { material, uniforms };
 }
@@ -1010,7 +1061,8 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
   const layerArrays = {};
   for (const role of LAYER_ROLES) {
     const urls = manifest.splat.layers.map((layer) => entry.materials[layer.material]?.[role]);
-    layerArrays[role] = await layerArray(urls, role, anisotropy);
+    const heightUrls = role === "roughness" ? manifest.splat.layers.map((layer) => entry.materials[layer.material]?.height) : null;
+    layerArrays[role] = await layerArray(urls, role, anisotropy, heightUrls);
   }
   onProgress("mesh");
   const splatTextures = Object.fromEntries(Object.entries(splatRaws).map(([name, raw]) => [name, dataTexture(raw)]));

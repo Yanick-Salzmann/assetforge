@@ -291,8 +291,17 @@ def evaluate(
 
 
 BIOME_KEYS = ("biome", "layer")
-BIOME_META_KEYS = ("name", "description", "sharpness")
-LAYER_KEYS = ("material", "weight", "tiling_m", "variation", "variation_m", "anti_tile", "macro_scale")
+BIOME_META_KEYS = ("name", "description", "sharpness", "blend_depth")
+LAYER_KEYS = (
+    "material",
+    "weight",
+    "tiling_m",
+    "variation",
+    "variation_m",
+    "anti_tile",
+    "macro_scale",
+    "blend_contrast",
+)
 DEFAULT_SHARPNESS = 4.0
 MIN_SHARPNESS = 0.1
 MAX_SHARPNESS = 64.0
@@ -304,6 +313,19 @@ MAX_VARIATION_M = 4096.0
 DEFAULT_MACRO_SCALE = 7.3
 MIN_MACRO_SCALE = 1.0
 MAX_MACRO_SCALE = 64.0
+DEFAULT_BLEND_CONTRAST = 0.3
+MIN_BLEND_CONTRAST = 0.0
+MAX_BLEND_CONTRAST = 1.0
+DEFAULT_BLEND_DEPTH = 0.08
+MIN_BLEND_DEPTH = 0.01
+MAX_BLEND_DEPTH = 0.5
+HEIGHT_BLEND_FORMULA = (
+    "score_i = weight_i + blend_contrast_i * height_i; "
+    "cut = max_i(score_i) - blend_depth; "
+    "blended_i = weight_i > 0 ? max(score_i - cut, 0) : 0; "
+    "albedo = sum(blended_i * albedo_i) / sum(blended_i); "
+    "height_i is the layer material height map, normalised to [0, 1] per material"
+)
 
 
 @dataclass(frozen=True)
@@ -318,6 +340,7 @@ class Layer:
     variation_m: float = DEFAULT_VARIATION_M
     anti_tile: bool = True
     macro_scale: float = DEFAULT_MACRO_SCALE
+    blend_contrast: float = DEFAULT_BLEND_CONTRAST
 
     @property
     def channels(self) -> tuple[str, ...]:
@@ -335,6 +358,7 @@ class Layer:
             "variation_m": self.variation_m,
             "anti_tile": self.anti_tile,
             "macro_scale": self.macro_scale,
+            "blend_contrast": self.blend_contrast,
         }
 
 
@@ -347,6 +371,7 @@ class Biome:
     sharpness: float
     layers: tuple[Layer, ...]
     path: Path | None = None
+    blend_depth: float = DEFAULT_BLEND_DEPTH
 
     def __len__(self) -> int:
         return len(self.layers)
@@ -380,6 +405,7 @@ class Biome:
             "name": self.name,
             "description": self.description,
             "sharpness": self.sharpness,
+            "blend_depth": self.blend_depth,
             "layers": {layer.name: layer.as_dict() for layer in self.layers},
         }
 
@@ -439,6 +465,15 @@ def _layer_anti_tile(name: str, entry: Mapping[str, Any]) -> tuple[bool, float]:
     return anti_tile, macro_scale
 
 
+def _ranged(value: Any, low: float, high: float, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise SplatRuleError(f"{label} must be a number")
+    number = float(value)
+    if not low <= number <= high:
+        raise SplatRuleError(f"{label} {number} lies outside [{low}, {high}]")
+    return number
+
+
 def _layer(
     name: str,
     entry: Mapping[str, Any],
@@ -472,6 +507,12 @@ def _layer(
         variation_m,
         anti_tile,
         macro_scale,
+        _ranged(
+            entry.get("blend_contrast", DEFAULT_BLEND_CONTRAST),
+            MIN_BLEND_CONTRAST,
+            MAX_BLEND_CONTRAST,
+            f"layer {name!r} blend_contrast",
+        ),
     )
 
 
@@ -516,6 +557,12 @@ def parse_biome(
         sharpness=_sharpness(meta, where),
         layers=layers,
         path=path,
+        blend_depth=_ranged(
+            meta.get("blend_depth", DEFAULT_BLEND_DEPTH),
+            MIN_BLEND_DEPTH,
+            MAX_BLEND_DEPTH,
+            f"{where} blend_depth",
+        ),
     )
 
 
@@ -567,6 +614,7 @@ def assignment(biome: Biome) -> tuple[dict, ...]:
                 "tiling_m": layer.tiling_m,
                 "anti_tile": layer.anti_tile,
                 "macro_scale": layer.macro_scale,
+                "blend_contrast": layer.blend_contrast,
                 "index": position,
                 "texture": _texture_name(texture),
                 "channel": SPLAT_CHANNELS[channel],
@@ -707,6 +755,8 @@ class SplatResult:
         return {
             "biome": self.biome.name,
             "sharpness": self.sharpness,
+            "blend_depth": self.biome.blend_depth,
+            "height_blend": HEIGHT_BLEND_FORMULA,
             "textures": [_texture_name(n) for n in range(len(self.textures))],
             "layers": list(self.assignment()),
             "coverage": list(self.coverage),

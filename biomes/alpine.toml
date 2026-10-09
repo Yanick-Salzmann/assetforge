@@ -5,6 +5,7 @@ sharpness = 3.0
 
 [layer.glacial_wash]
 material = "river_rock"
+blend_contrast = 0.5
 weight = "smoothstep(flow, 0.55, 0.78) * step(slope < 0.4)"
 
 [layer.glacial_silt]
@@ -27,14 +28,17 @@ variation_m = 650.0
 
 [layer.talus_scree]
 material = "gravel"
+blend_contrast = 0.5
 weight = "smoothstep(slope, 0.28, 0.45) * (1 - smoothstep(temperature, 0.4, 0.56))"
 variation = 0.25
 variation_m = 600.0
 
 [layer.exposed_rock]
 material = "cliff_rock"
+blend_contrast = 0.45
 weight = "smoothstep(slope, 0.28, 0.45) * smoothstep(temperature, 0.4, 0.56)"
 
 [layer.snowfield]
 material = "snow"
+blend_contrast = 0.15
 weight = "1 - smoothstep(temperature, 0.28, 0.42)"
