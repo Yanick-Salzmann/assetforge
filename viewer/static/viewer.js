@@ -94,9 +94,11 @@ const state = {
   terrainLoading: null,
 };
 window.viewerState = { ready: false, asset: null, terrain: null, lod: null, error: null };
+const view = { dirty: true, matrix: new THREE.Matrix4(), projection: new THREE.Matrix4() };
 
 function setStatus(text) {
   statusLine.textContent = text;
+  invalidate();
 }
 
 function readHash() {
@@ -707,6 +709,7 @@ function resize() {
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
+    invalidate();
   }
 }
 
@@ -719,14 +722,29 @@ function fitTerrainClip() {
   }
 }
 
+function invalidate() {
+  view.dirty = true;
+}
+
+function cameraMoved() {
+  camera.updateMatrixWorld();
+  return !camera.matrixWorld.equals(view.matrix) || !camera.projectionMatrix.equals(view.projection);
+}
+
 function tick() {
+  requestAnimationFrame(tick);
   resize();
   controls.update();
   if (state.terrain) {
     fitTerrainClip();
   }
+  if (!view.dirty && !cameraMoved()) {
+    return;
+  }
+  view.dirty = false;
+  view.matrix.copy(camera.matrixWorld);
+  view.projection.copy(camera.projectionMatrix);
   renderer.render(scene, camera);
-  requestAnimationFrame(tick);
 }
 
 assetSelect.addEventListener("change", () => {
@@ -851,7 +869,11 @@ function orbitTo(degrees) {
   controls.update();
 }
 
-window.viewerApi = { orbitTo, frameCamera, groundCamera, frameBuildings, camera, controls, scene, renderer, terrain: () => state.terrain };
+window.viewerApi = { orbitTo, frameCamera, groundCamera, frameBuildings, camera, controls, scene, renderer, invalidate, terrain: () => state.terrain };
+
+for (const type of ["change", "input", "click"]) {
+  document.addEventListener(type, invalidate, true);
+}
 
 tick();
 start();
