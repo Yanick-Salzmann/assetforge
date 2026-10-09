@@ -123,3 +123,17 @@ dd {
     max-height: 45vh;
   }
 }
+
+body:not(.terrain-view) .terrain-only,
+body.terrain-view .asset-only {
+  display: none;
+}
+
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 4px;
+  border-radius: 2px;
+  vertical-align: middle;
+}

@@ -18,11 +18,19 @@
 <canvas id="view"></canvas>
 <aside id="panel">
   <h1>assetforge viewer</h1>
-  <label>Asset <select id="asset"></select></label>
-  <label>LOD <select id="lod"></select></label>
+  <label>Terrain <select id="terrain"><option value="">(none)</option></select></label>
+  <label class="asset-only">Asset <select id="asset"></select></label>
+  <label class="asset-only">LOD <select id="lod"></select></label>
+  <fieldset id="terrain-options" class="terrain-only">
+    <legend>Terrain</legend>
+    <label><input type="checkbox" id="sea" checked> sea level plane</label>
+    <label><input type="checkbox" id="water-tint" checked> water mask tint</label>
+    <label><input type="checkbox" id="scatter" checked> scatter instances</label>
+  </fieldset>
   <fieldset id="mode">
     <legend>Shading</legend>
     <label><input type="radio" name="mode" value="textured" checked> textured</label>
+    <label class="terrain-only"><input type="radio" name="mode" value="splat"> splat layers</label>
     <label><input type="radio" name="mode" value="backfaces"> back faces red</label>
     <label><input type="radio" name="mode" value="normals"> normals</label>
     <label><input type="radio" name="mode" value="wireframe"> wireframe</label>

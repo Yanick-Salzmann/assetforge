@@ -2,28 +2,35 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { loadTerrain } from "./terrain.js";
 
 const EYE_HEIGHT_M = 1.7;
 const HUMAN_HEIGHT_M = 1.8;
 const HUMAN_RADIUS_M = 0.22;
 const LOD_PATTERN = /_LOD(\d+)$/;
+const MODES = ["textured", "splat", "backfaces", "normals", "wireframe"];
+const BACKGROUND = 0xb9bcc2;
 
 const canvas = document.getElementById("view");
 const assetSelect = document.getElementById("asset");
+const terrainSelect = document.getElementById("terrain");
+const seaBox = document.getElementById("sea");
+const waterTintBox = document.getElementById("water-tint");
+const scatterBox = document.getElementById("scatter");
 const lodSelect = document.getElementById("lod");
 const spinBox = document.getElementById("spin");
 const humanBox = document.getElementById("human");
 const infoList = document.getElementById("info");
 const statusLine = document.getElementById("status");
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true, logarithmicDepthBuffer: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xb9bcc2);
+scene.background = new THREE.Color(BACKGROUND);
 
 const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 2000);
 const controls = new OrbitControls(camera, canvas);
@@ -74,8 +81,11 @@ const state = {
   lod: 0,
   mode: "textured",
   camera: "frame",
+  terrains: [],
+  terrain: null,
+  terrainLoading: null,
 };
-window.viewerState = { ready: false, asset: null, lod: null, error: null };
+window.viewerState = { ready: false, asset: null, terrain: null, lod: null, error: null };
 
 function setStatus(text) {
   statusLine.textContent = text;
@@ -85,6 +95,7 @@ function readHash() {
   const params = new URLSearchParams(window.location.hash.slice(1));
   return {
     asset: params.get("asset"),
+    terrain: params.get("terrain"),
     lod: params.get("lod"),
     mode: params.get("mode"),
     camera: params.get("cam"),
@@ -92,6 +103,11 @@ function readHash() {
 }
 
 function writeHash() {
+  if (state.terrain) {
+    const params = new URLSearchParams({ terrain: state.terrain.name, mode: state.mode, cam: state.camera });
+    history.replaceState(null, "", `#${params}`);
+    return;
+  }
   if (!state.asset) {
     return;
   }
@@ -151,7 +167,29 @@ function applyLod() {
   updateInfo();
 }
 
+function applyTerrainMode() {
+  const terrain = state.terrain;
+  const surface = terrain.surface;
+  if (state.mode === "normals") {
+    surface.material = debugMaterials.normals;
+  } else if (state.mode === "wireframe") {
+    surface.material = debugMaterials.wireframe;
+  } else {
+    surface.material = terrain.splatMaterial;
+  }
+  terrain.uniforms.uFalseColour.value = state.mode === "splat" ? 1 : 0;
+  terrain.overlay.visible = state.mode === "backfaces";
+  terrain.sea.visible = seaBox.checked;
+  terrain.uniforms.uWaterTint.value = waterTintBox.checked ? 1 : 0;
+  terrain.scatter.visible = scatterBox.checked;
+  updateInfo();
+}
+
 function applyMode() {
+  if (state.terrain) {
+    applyTerrainMode();
+    return;
+  }
   for (const entry of state.meshes) {
     if (state.mode === "normals") {
       entry.mesh.material = debugMaterials.normals;
@@ -192,7 +230,88 @@ function fitStage(box) {
   shadow.updateProjectionMatrix();
 }
 
+function terrainStage(terrain) {
+  const size = terrain.manifest.world_size_m;
+  camera.near = 0.1;
+  camera.far = size * 4;
+  camera.updateProjectionMatrix();
+  scene.fog = new THREE.Fog(BACKGROUND, size * 0.9, size * 3);
+  ground.visible = false;
+  if (grid) {
+    grid.visible = false;
+  }
+  sun.castShadow = false;
+  sun.position.set(size * 0.4, size * 0.6, size * 0.3);
+  sun.target.position.set(0, 0, 0);
+}
+
+function assetStage() {
+  camera.near = 0.05;
+  camera.far = 2000;
+  camera.updateProjectionMatrix();
+  scene.fog = null;
+  ground.visible = true;
+  if (grid) {
+    grid.visible = true;
+  }
+  sun.castShadow = true;
+}
+
+function unlockControls() {
+  controls.minPolarAngle = 0;
+  controls.maxPolarAngle = Math.PI;
+  controls.minDistance = 0;
+  controls.maxDistance = Infinity;
+  controls.enablePan = true;
+  controls.enableZoom = true;
+}
+
+function frameTerrain() {
+  state.camera = "frame";
+  const terrain = state.terrain;
+  const size = terrain.manifest.world_size_m;
+  const box = terrain.surface.geometry.boundingBox;
+  const centre = new THREE.Vector3(0, (box.min.y + box.max.y) / 2, 0);
+  const direction = new THREE.Vector3(1, 0.75, 1.2).normalize();
+  unlockControls();
+  camera.position.copy(centre).addScaledVector(direction, size * 0.95);
+  controls.target.copy(centre);
+  controls.update();
+  human.position.set(terrain.ground.x, terrain.ground.y + HUMAN_HEIGHT_M / 2, terrain.ground.z);
+  writeHash();
+  updateInfo();
+}
+
+function groundTerrain() {
+  state.camera = "ground";
+  const terrain = state.terrain;
+  const eye = terrain.ground.clone();
+  eye.y += EYE_HEIGHT_M;
+  const look = terrain.peak.clone().sub(terrain.ground).setY(0);
+  if (look.lengthSq() < 1) {
+    look.set(0, 0, -1);
+  }
+  look.normalize();
+  const figure = terrain.ground.clone().addScaledVector(look, 15);
+  figure.y = terrain.heightAt(figure.x, figure.z) + HUMAN_HEIGHT_M / 2;
+  human.position.copy(figure);
+  unlockControls();
+  camera.position.copy(eye);
+  controls.target.copy(eye).addScaledVector(look, 0.5);
+  controls.enablePan = false;
+  controls.enableZoom = false;
+  controls.minPolarAngle = Math.PI / 2 - 0.9;
+  controls.maxPolarAngle = Math.PI / 2 + 0.5;
+  controls.update();
+  writeHash();
+  updateInfo();
+}
+
 function frameCamera() {
+  if (state.terrain) {
+    frameTerrain();
+    return;
+  }
   state.camera = "frame";
   const box = visibleBox();
   const sphere = box.getBoundingSphere(new THREE.Sphere());
@@ -200,14 +319,16 @@ function frameCamera() {
   const direction = new THREE.Vector3(1, 0.55, 1.2).normalize();
   camera.position.copy(sphere.center).addScaledVector(direction, radius * 2.6);
   controls.target.copy(sphere.center);
-  controls.minPolarAngle = 0;
-  controls.maxPolarAngle = Math.PI;
-  controls.enablePan = true;
+  unlockControls();
   controls.update();
   writeHash();
 }
 
 function groundCamera() {
+  if (state.terrain) {
+    groundTerrain();
+    return;
+  }
   state.camera = "ground";
   const box = visibleBox();
   const size = box.getSize(new THREE.Vector3());
@@ -217,8 +338,7 @@ function groundCamera() {
   const distance = Math.max(Math.hypot(size.x, size.z) * 1.1, fitHeight, 2.5);
   controls.target.set(centre.x, Math.min(EYE_HEIGHT_M, centre.y), centre.z);
   camera.position.set(centre.x + distance * 0.7, EYE_HEIGHT_M, centre.z + distance * 0.7);
-  controls.minPolarAngle = 0;
-  controls.maxPolarAngle = Math.PI;
+  unlockControls();
   controls.update();
   const polar = controls.getPolarAngle();
   controls.minPolarAngle = polar;
@@ -228,7 +348,51 @@ function groundCamera() {
   writeHash();
 }
 
+function infoRows(rows) {
+  infoList.replaceChildren(
+    ...rows.flatMap(([term, value, colour]) => {
+      const dt = document.createElement("dt");
+      dt.textContent = term;
+      const dd = document.createElement("dd");
+      if (colour !== undefined) {
+        const swatch = document.createElement("span");
+        swatch.className = "swatch";
+        swatch.style.background = `#${colour.toString(16).padStart(6, "0")}`;
+        dd.append(swatch);
+      }
+      dd.append(value);
+      return [dt, dd];
+    }),
+  );
+}
+
+function terrainInfo() {
+  const terrain = state.terrain;
+  const manifest = terrain.manifest;
+  const eyeGround = terrain.heightAt(camera.position.x, camera.position.z);
+  const rows = [
+    ["biome", manifest.splat.biome],
+    ["size", `${manifest.world_size_m} m (${manifest.resolution}², ${manifest.metres_per_pixel} m/px)`],
+    ["relief", `${manifest.height_range_m} m`],
+    ["sea level", `${manifest.water.sea_level_m} m`],
+    ["camera", `${(camera.position.y - eyeGround).toFixed(1)} m above ground`],
+  ];
+  for (const [kind, stats] of Object.entries(terrain.scatterStats)) {
+    rows.push([kind, `${stats.count.toLocaleString()} @ ${stats.spacing_m.toFixed(1)} m`]);
+  }
+  if (state.mode === "splat") {
+    for (const [layer, colour] of terrain.layerColours) {
+      rows.push(["layer", layer, colour]);
+    }
+  }
+  infoRows(rows);
+}
+
 function updateInfo() {
+  if (state.terrain) {
+    terrainInfo();
+    return;
+  }
   if (!state.asset) {
     infoList.replaceChildren();
     return;
@@ -250,15 +414,7 @@ function updateInfo() {
     ["depth", `${size.z.toFixed(2)} m`],
     ["height", `${size.y.toFixed(2)} m`],
   ];
-  infoList.replaceChildren(
-    ...rows.flatMap(([term, value]) => {
-      const dt = document.createElement("dt");
-      dt.textContent = term;
-      const dd = document.createElement("dd");
-      dd.textContent = value;
-      return [dt, dd];
-    }),
-  );
+  infoRows(rows);
   window.viewerState.triangles = triangles;
 }
 
@@ -281,6 +437,8 @@ async function loadAsset(name, wanted = {}) {
   }
   window.viewerState.ready = false;
   setStatus(`loading ${name}…`);
+  state.terrainLoading = null;
+  unloadTerrain();
   disposeRoot();
   state.asset = asset;
   assetSelect.value = name;
@@ -326,7 +484,61 @@ async function loadAsset(name, wanted = {}) {
     frameCamera();
   }
   setStatus("");
-  window.viewerState = { ready: true, asset: name, lod: state.lod, error: null, triangles: window.viewerState.triangles };
+  window.viewerState = { ready: true, asset: name, terrain: null, lod: state.lod, error: null, triangles: window.viewerState.triangles };
+}
+
+function unloadTerrain() {
+  if (!state.terrain) {
+    return;
+  }
+  scene.remove(state.terrain.group);
+  state.terrain.dispose();
+  state.terrain = null;
+  terrainSelect.value = "";
+  document.body.classList.remove("terrain-view");
+  assetStage();
+}
+
+async function showTerrain(name, wanted = {}) {
+  const entry = state.terrains.find((terrain) => terrain.name === name);
+  if (!entry) {
+    setStatus(`unknown terrain ${name}`);
+    return;
+  }
+  window.viewerState = { ready: false, asset: null, terrain: null, lod: null, error: null };
+  state.terrainLoading = name;
+  terrainSelect.value = name;
+  let terrain;
+  try {
+    terrain = await loadTerrain(entry, renderer, (stage) => setStatus(`loading ${name}: ${stage}…`));
+  } catch (error) {
+    window.viewerState.error = String(error);
+    setStatus(`failed to load ${name}: ${error}`);
+    return;
+  }
+  if (state.terrainLoading !== name) {
+    terrain.dispose();
+    return;
+  }
+  unloadTerrain();
+  disposeRoot();
+  state.asset = null;
+  terrain.overlay = new THREE.Mesh(terrain.surface.geometry, debugMaterials.backface);
+  terrain.overlay.visible = false;
+  terrain.surface.add(terrain.overlay);
+  state.terrain = terrain;
+  terrainSelect.value = name;
+  scene.add(terrain.group);
+  document.body.classList.add("terrain-view");
+  terrainStage(terrain);
+  applyTerrainMode();
+  if ((wanted.camera ?? state.camera) === "ground") {
+    groundTerrain();
+  } else {
+    frameTerrain();
+  }
+  setStatus("");
+  window.viewerState = { ready: true, asset: null, terrain: name, lod: null, error: null, scatter: terrain.scatterStats };
 }
 
 function resize() {
@@ -349,6 +561,22 @@ function tick() {
 assetSelect.addEventListener("change", () => {
   loadAsset(assetSelect.value, { camera: state.camera });
 });
+
+terrainSelect.addEventListener("change", () => {
+  if (terrainSelect.value) {
+    showTerrain(terrainSelect.value, { camera: state.camera });
+  } else if (state.assets.length > 0) {
+    loadAsset(state.assets[0].name, { camera: state.camera });
+  }
+});
+
+for (const box of [seaBox, waterTintBox, scatterBox]) {
+  box.addEventListener("change", () => {
+    if (state.terrain) {
+      applyTerrainMode();
+    }
+  });
+}
 
 lodSelect.addEventListener("change", () => {
   state.lod = Number(lodSelect.value.replace("LOD", ""));
@@ -374,10 +602,19 @@ humanBox.addEventListener("change", () => {
 });
 
 async function start() {
-  const response = await fetch("/api/assets");
-  state.assets = await response.json();
-  if (state.assets.length === 0) {
-    setStatus("no exported assets under out/assets/");
+  const [assetResponse, terrainResponse] = await Promise.all([fetch("/api/assets"), fetch("/api/terrains")]);
+  state.assets = await assetResponse.json();
+  state.terrains = await terrainResponse.json();
+  terrainSelect.append(
+    ...state.terrains.map((terrain) => {
+      const option = document.createElement("option");
+      option.value = terrain.name;
+      option.textContent = `${terrain.name} (${terrain.manifest.splat.biome})`;
+      return option;
+    }),
+  );
+  if (state.assets.length === 0 && state.terrains.length === 0) {
+    setStatus("no exported assets under out/assets/ and no exported terrains under out/terrain/");
     return;
   }
   assetSelect.replaceChildren(
@@ -393,9 +630,17 @@ async function start() {
 
 async function loadFromHash() {
   const wanted = readHash();
-  if (wanted.mode && ["textured", "backfaces", "normals", "wireframe"].includes(wanted.mode)) {
+  if (wanted.mode && MODES.includes(wanted.mode)) {
     state.mode = wanted.mode;
     document.querySelector(`input[name="mode"][value="${wanted.mode}"]`).checked = true;
+  }
+  if (wanted.terrain && state.terrains.some((terrain) => terrain.name === wanted.terrain)) {
+    await showTerrain(wanted.terrain, wanted);
+    return;
+  }
+  if (state.assets.length === 0) {
+    await showTerrain(state.terrains[0].name, wanted);
+    return;
   }
   const first = state.assets.some((asset) => asset.name === wanted.asset) ? wanted.asset : state.assets[0].name;
   await loadAsset(first, wanted);
@@ -403,6 +648,10 @@ async function loadFromHash() {
 
 window.addEventListener("hashchange", () => {
   const wanted = readHash();
+  const sameTerrain = state.terrain && wanted.terrain === state.terrain.name && wanted.mode === state.mode && wanted.camera === state.camera;
+  if (sameTerrain) {
+    return;
+  }
   const unchanged =
     state.asset &&
     wanted.asset === state.asset.name &&
@@ -426,7 +675,7 @@ function orbitTo(degrees) {
   controls.update();
 }
 
-window.viewerApi = { orbitTo, frameCamera, groundCamera, camera, controls, scene };
+window.viewerApi = { orbitTo, frameCamera, groundCamera, camera, controls, scene, terrain: () => state.terrain };
 
 tick();
 start();
