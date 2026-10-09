@@ -96,6 +96,22 @@ def test_build_defaults_scatter_and_normal_map_to_empty(biome):
     assert payload["colour_macro"] is None
 
 
+def test_validate_accepts_a_payload_written_before_water_surface(biome):
+    c = cfg()
+    payload = manifest.build(c, water(), splat.render(biome, stack(c)))
+    assert payload["water_surface"] is None
+    payload.pop("water_surface")
+    manifest.validate(payload)
+
+
+def test_validate_rejects_a_non_string_water_surface(biome):
+    c = cfg()
+    payload = manifest.build(c, water(), splat.render(biome, stack(c)))
+    payload["water_surface"] = 3
+    with pytest.raises(manifest.ManifestError):
+        manifest.validate(payload)
+
+
 def test_validate_accepts_a_payload_written_before_colour_macro(biome):
     c = cfg()
     payload = manifest.build(c, water(), splat.render(biome, stack(c)))

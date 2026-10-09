@@ -34,7 +34,13 @@ def _build_and_export(name: str = NAME, seed: int = 5) -> None:
     session.erode()
     session.build_channels()
     session.apply_biome(BIOME_NAME)
-    export.write(session.cfg, session.channels(), session.water, session.splat_result())
+    export.write(
+        session.cfg,
+        session.channels(),
+        session.water,
+        session.splat_result(),
+        water_surface_m=session.water_surface_m(),
+    )
 
 
 def test_diff_terrain_reports_no_drift_for_an_untouched_export():

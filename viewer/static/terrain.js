@@ -24,6 +24,12 @@ const NEUTRAL_TEXEL = {
   roughness: [235, 235, 235, 255],
 };
 const WATER_COLOUR = new THREE.Color(0x2b5d74);
+const WATER_SHALLOW = 0x3d8c86;
+const WATER_DEEP = 0x0b2c42;
+const WATER_SKY_ZENITH = 0x5b7fae;
+const WATER_CLARITY_M = 3.5;
+const WATER_MIN_WET = 0.01;
+const WATER_RENDER_ORDER = 1;
 const DEFAULT_MACRO_SCALE = 7.3;
 const DEFAULT_BLEND_CONTRAST = 0.3;
 const DEFAULT_BLEND_DEPTH = 0.08;
@@ -194,6 +200,23 @@ async function layerArray(urls, role, anisotropy, heightUrls = null) {
   return { texture, missing };
 }
 
+function bilinear(samples, resolution, px, pz) {
+  const last = resolution - 1;
+  const x = Math.min(Math.max(px, 0), last);
+  const z = Math.min(Math.max(pz, 0), last);
+  const x0 = Math.floor(x);
+  const z0 = Math.floor(z);
+  const x1 = Math.min(x0 + 1, last);
+  const z1 = Math.min(z0 + 1, last);
+  const fx = x - x0;
+  const fz = z - z0;
+  const row0 = z0 * resolution;
+  const row1 = z1 * resolution;
+  const top = samples[row0 + x0] * (1 - fx) + samples[row0 + x1] * fx;
+  const bottom = samples[row1 + x0] * (1 - fx) + samples[row1 + x1] * fx;
+  return top * (1 - fz) + bottom * fz;
+}
+
 class HeightField {
   constructor(raw, manifest) {
     this.resolution = raw.width;
@@ -204,20 +227,7 @@ class HeightField {
   }
 
   atPixel(px, pz) {
-    const last = this.resolution - 1;
-    const x = Math.min(Math.max(px, 0), last);
-    const z = Math.min(Math.max(pz, 0), last);
-    const x0 = Math.floor(x);
-    const z0 = Math.floor(z);
-    const x1 = Math.min(x0 + 1, last);
-    const z1 = Math.min(z0 + 1, last);
-    const fx = x - x0;
-    const fz = z - z0;
-    const row0 = z0 * this.resolution;
-    const row1 = z1 * this.resolution;
-    const top = this.samples[row0 + x0] * (1 - fx) + this.samples[row0 + x1] * fx;
-    const bottom = this.samples[row1 + x0] * (1 - fx) + this.samples[row1 + x1] * fx;
-    return ((top * (1 - fz) + bottom * fz) / 65535) * this.range;
+    return (bilinear(this.samples, this.resolution, px, pz) / 65535) * this.range;
   }
 
   toPixel(metres) {
@@ -421,7 +431,186 @@ function buildSurface(field, material) {
   }
   const half = field.worldSize / 2;
   const bounds = new THREE.Box3(new THREE.Vector3(-half, low, -half), new THREE.Vector3(half, high, half));
-  return { group, meshes, geometries, bounds };
+  return { group, meshes, geometries, bounds, grid };
+}
+
+const WATER_VERTEX = `
+attribute float aDepth;
+attribute float aWet;
+varying vec3 vWaterWorld;
+varying vec3 vWaterNormal;
+varying float vWaterDepth;
+varying float vWaterWet;
+#include <fog_pars_vertex>
+void main() {
+  vec4 world = modelMatrix * vec4(position, 1.0);
+  vWaterWorld = world.xyz;
+  vWaterNormal = normalize(mat3(modelMatrix) * normal);
+  vWaterDepth = aDepth;
+  vWaterWet = aWet;
+  vec4 mvPosition = viewMatrix * world;
+  gl_Position = projectionMatrix * mvPosition;
+  #include <fog_vertex>
+}
+`;
+
+const WATER_FRAGMENT = `
+#define WATER_OCTAVES 5
+#define WATER_STEEPNESS 0.055
+#define WATER_SWELL 0.35
+#define WATER_SHORE_FADE_M 0.2
+#define WATER_FOAM_DEPTH_M 0.5
+#define WATER_RAPIDS_START 0.06
+#define WATER_RAPIDS_FULL 0.2
+uniform float uTime;
+uniform vec3 uSunDirection;
+uniform vec3 uSunColour;
+uniform vec3 uSkyHorizon;
+uniform vec3 uSkyZenith;
+uniform vec3 uShallowColour;
+uniform vec3 uDeepColour;
+uniform float uClarity;
+varying vec3 vWaterWorld;
+varying vec3 vWaterNormal;
+varying float vWaterDepth;
+varying float vWaterWet;
+#include <fog_pars_fragment>
+float waterHash(vec2 p) {
+  vec3 q = fract(p.xyx * 0.1031);
+  q += dot(q, q.yzx + 33.33);
+  return fract((q.x + q.y) * q.z);
+}
+vec3 waterNoise(vec2 p) {
+  vec2 cell = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  vec2 du = 6.0 * f * (1.0 - f);
+  float a = waterHash(cell);
+  float b = waterHash(cell + vec2(1.0, 0.0));
+  float c = waterHash(cell + vec2(0.0, 1.0));
+  float d = waterHash(cell + vec2(1.0, 1.0));
+  float k = a - b - c + d;
+  float value = a + (b - a) * u.x + (c - a) * u.y + k * u.x * u.y;
+  vec2 slope = du * (vec2(b - a, c - a) + k * u.yx);
+  return vec3(value, slope);
+}
+vec2 waterRipples(vec2 world, float footprint) {
+  vec2 slope = vec2(0.0);
+  float frequency = 0.06;
+  float angle = 0.4;
+  for (int octave = 0; octave < WATER_OCTAVES; octave++) {
+    float fade = 1.0 - smoothstep(0.25, 0.75, footprint * frequency);
+    vec2 direction = vec2(cos(angle), sin(angle));
+    mat2 turn = mat2(direction.x, -direction.y, direction.y, direction.x);
+    float speed = WATER_SWELL * sqrt(9.81 / (6.2832 * frequency));
+    vec3 wave = waterNoise((turn * world + vec2(speed * uTime, 0.0)) * frequency + float(octave) * 17.0);
+    slope += fade * WATER_STEEPNESS * (wave.yz * turn);
+    frequency *= 2.3;
+    angle += 2.1;
+  }
+  return slope;
+}
+void main() {
+  float footprint = max(length(fwidth(vWaterWorld.xz)), 1e-4);
+  vec3 base = normalize(vWaterNormal);
+  vec2 ripple = waterRipples(vWaterWorld.xz, footprint);
+  vec3 normal = normalize(base - vec3(ripple.x, 0.0, ripple.y));
+  vec3 view = normalize(cameraPosition - vWaterWorld);
+  float facing = clamp(dot(normal, view), 0.0, 1.0);
+  float fresnel = 0.02 + 0.98 * pow(1.0 - facing, 5.0);
+  vec3 reflected = reflect(-view, normal);
+  vec3 sky = mix(uSkyHorizon, uSkyZenith, sqrt(clamp(reflected.y, 0.0, 1.0)));
+  float sunAlign = max(dot(reflected, uSunDirection), 0.0);
+  float sharpness = mix(1200.0, 150.0, smoothstep(0.05, 2.0, footprint));
+  float glint = pow(sunAlign, sharpness) * 6.0 + pow(sunAlign, 60.0) * 0.15;
+  float depth = max(vWaterDepth, 0.0);
+  float murk = 1.0 - exp(-depth / uClarity);
+  float lit = 0.4 + 0.6 * max(dot(base, uSunDirection), 0.0);
+  vec3 body = mix(uShallowColour, uDeepColour, murk) * uSunColour * lit;
+  float grade = length(base.xz) / max(base.y, 1e-3);
+  float churn = max(1.0 - smoothstep(0.0, WATER_FOAM_DEPTH_M, depth), smoothstep(WATER_RAPIDS_START, WATER_RAPIDS_FULL, grade));
+  float froth = waterNoise(vWaterWorld.xz * 0.9 + vec2(uTime * 0.35, uTime * 0.12)).x;
+  froth = 0.5 * froth + 0.5 * waterNoise(vWaterWorld.xz * 2.7 - vec2(uTime * 0.2, uTime * 0.45)).x;
+  float foam = smoothstep(0.45, 0.85, churn * (0.5 + 0.7 * froth));
+  vec3 colour = mix(body, sky, fresnel) + glint * uSunColour;
+  colour = mix(colour, vec3(0.9) * lit, foam);
+  float alpha = max(max(mix(0.3, 1.0, murk), fresnel), max(foam, min(glint, 1.0)));
+  alpha *= smoothstep(0.0, WATER_SHORE_FADE_M, depth) * clamp(vWaterWet, 0.0, 1.0);
+  gl_FragColor = vec4(colour, alpha);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+  #include <fog_fragment>
+}
+`;
+
+function waterMaterial() {
+  const uniforms = {
+    ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
+    uTime: { value: 0 },
+    uSunDirection: { value: new THREE.Vector3(0.4, 0.6, 0.3).normalize() },
+    uSunColour: { value: new THREE.Color(0xffffff) },
+    uSkyHorizon: { value: new THREE.Color(0xb9bcc2) },
+    uSkyZenith: { value: new THREE.Color(WATER_SKY_ZENITH) },
+    uShallowColour: { value: new THREE.Color(WATER_SHALLOW) },
+    uDeepColour: { value: new THREE.Color(WATER_DEEP) },
+    uClarity: { value: WATER_CLARITY_M },
+  };
+  const material = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: WATER_VERTEX,
+    fragmentShader: WATER_FRAGMENT,
+    transparent: true,
+    depthWrite: false,
+    fog: true,
+  });
+  return { material, uniforms };
+}
+
+function buildWater(grid, surfaceField, waterRaw, seaLevel, material) {
+  const count = grid.count;
+  const resolution = grid.field.resolution;
+  const total = count * count;
+  const positions = new Float32Array(total * 3);
+  const depths = new Float32Array(total);
+  const wets = new Float32Array(total);
+  for (let j = 0; j < count; j += 1) {
+    for (let i = 0; i < count; i += 1) {
+      const index = j * count + i;
+      const terrain = grid.heights[index];
+      const px = i * grid.step;
+      const pz = j * grid.step;
+      const level = surfaceField ? Math.max(surfaceField.atPixel(px, pz), terrain) : Math.max(seaLevel, terrain);
+      positions[index * 3] = grid.x(i);
+      positions[index * 3 + 1] = level;
+      positions[index * 3 + 2] = grid.x(j);
+      depths[index] = level - terrain;
+      wets[index] = surfaceField ? bilinear(waterRaw.data, resolution, px, pz) / 255 : Number(terrain < seaLevel);
+    }
+  }
+  const cells = [];
+  for (let j = 0; j < count - 1; j += 1) {
+    for (let i = 0; i < count - 1; i += 1) {
+      const a = j * count + i;
+      const b = a + 1;
+      const c = a + count;
+      const d = c + 1;
+      if (Math.max(wets[a], wets[b], wets[c], wets[d]) > WATER_MIN_WET) {
+        cells.push(a, c, b, b, c, d);
+      }
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("aDepth", new THREE.BufferAttribute(depths, 1));
+  geometry.setAttribute("aWet", new THREE.BufferAttribute(wets, 1));
+  geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(cells), 1));
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = "water_surface";
+  mesh.renderOrder = WATER_RENDER_ORDER;
+  mesh.raycast = () => {};
+  return mesh;
 }
 
 const SPLAT_GLSL = `
@@ -1066,6 +1255,7 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
   for (const texture of manifest.splat.textures) {
     splatRaws[texture] = await fetchRaw(`${entry.raw}${texture}`);
   }
+  const surfaceRaw = manifest.water_surface ? await fetchRaw(`${entry.raw}${manifest.water_surface}`) : null;
   const normalRaw = manifest.normal_map ? await fetchRaw(`${entry.raw}${manifest.normal_map}`) : null;
   const colourMacroRaw = manifest.colour_macro ? await fetchRaw(`${entry.raw}${manifest.colour_macro.path}`) : null;
   onProgress("materials");
@@ -1088,14 +1278,10 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
   group.add(surface.group);
 
   const seaLevel = manifest.water.sea_level_m;
-  const sea = new THREE.Mesh(
-    new THREE.PlaneGeometry(manifest.world_size_m, manifest.world_size_m),
-    new THREE.MeshStandardMaterial({ color: WATER_COLOUR, roughness: 0.08, metalness: 0, transparent: true, opacity: 0.82 }),
-  );
-  sea.name = "sea_level";
-  sea.rotation.x = -Math.PI / 2;
-  sea.position.y = seaLevel;
-  group.add(sea);
+  const surfaceField = surfaceRaw ? new HeightField(surfaceRaw, manifest) : null;
+  const { material: waterShader, uniforms: waterUniforms } = waterMaterial();
+  const water = buildWater(surface.grid, surfaceField, waterRaw, seaLevel, waterShader);
+  group.add(water);
 
   onProgress("scatter");
   const scatter = new THREE.Group();
@@ -1118,8 +1304,8 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
   const disposables = [
     ...surface.geometries,
     material,
-    sea.geometry,
-    sea.material,
+    water.geometry,
+    waterShader,
     waterMask,
     ...(macroNormal ? [macroNormal] : []),
     ...Object.values(layerArrays).map((array) => array.texture),
@@ -1151,7 +1337,8 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
         }
       }
     },
-    sea,
+    water,
+    waterUniforms,
     scatter,
     field,
     ground,

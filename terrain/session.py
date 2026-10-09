@@ -143,6 +143,13 @@ class TerrainSession:
         self.timings["channels_s"] = time.perf_counter() - started
         return self.save()
 
+    def water_surface_m(self) -> torch.Tensor:
+        """Sea, lake and river surface elevation in metres, the terrain itself where dry."""
+        result = self.eroded()
+        return channels_mod.water_surface_metres(
+            self.cfg, result.height, result.water_depth_m, self.water_params()
+        )
+
     def apply_biome(self, biome_file: str, sharpness: float | None = None) -> TerrainSession:
         """Evaluate a biome's rules over the channel stack and write its splat textures.
 

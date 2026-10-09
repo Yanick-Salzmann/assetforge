@@ -769,14 +769,14 @@ def river_depth_m(
     return smooth(dilate(depth, radius), 0.5 * radius)
 
 
-def water_depth_metres(
+def water_surface_metres(
     cfg: MapConfig,
     height: torch.Tensor,
     standing_m: torch.Tensor | None = None,
     params: WaterParams = WaterParams(),
     basin: Drainage | None = None,
 ) -> torch.Tensor:
-    """Depth of sea, lakes and rivers in metres, over the eroded height."""
+    """Elevation of the sea, lake and river surface in metres; equal to the terrain where dry."""
     basin = drainage(cfg, height, params) if basin is None else basin
     depth = basin.filled.sub(height).clamp_(min=0.0).mul_(cfg.height_range_m)
     carved = river_depth_m(cfg, basin.accumulated, params, basin.flow)
@@ -787,7 +787,19 @@ def water_depth_metres(
     surface = terrain_m.add(depth).clamp_(min=basin.level_m)
     if params.surface_smooth_m > 0.0:
         surface = smooth(surface, params.surface_smooth_m / cfg.metres_per_pixel)
-    return surface.sub_(terrain_m).clamp_(min=0.0)
+    return torch.maximum(surface, terrain_m)
+
+
+def water_depth_metres(
+    cfg: MapConfig,
+    height: torch.Tensor,
+    standing_m: torch.Tensor | None = None,
+    params: WaterParams = WaterParams(),
+    basin: Drainage | None = None,
+) -> torch.Tensor:
+    """Depth of sea, lakes and rivers in metres, over the eroded height."""
+    surface = water_surface_metres(cfg, height, standing_m, params, basin)
+    return surface.sub_(height.mul(cfg.height_range_m))
 
 
 def water_mask(depth_m: torch.Tensor, params: WaterParams = WaterParams()) -> torch.Tensor:

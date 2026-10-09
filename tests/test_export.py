@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 torch = pytest.importorskip("torch")
@@ -143,6 +144,31 @@ def test_write_skips_the_colour_macro_when_disabled(tmp_path, two_layer_biome):
 
     assert outcome.manifest["colour_macro"] is None
     assert not (tmp_path / "colour_macro.png").exists()
+
+
+def test_write_records_the_water_surface_when_given(tmp_path, two_layer_biome):
+    c = cfg()
+    built = stack(c)
+    result = splat.render(two_layer_biome, built)
+    surface_m = built["height"].mul(c.height_range_m).add(2.0)
+    outcome = export.write(c, built, water(), result, out_dir=tmp_path, water_surface_m=surface_m)
+
+    assert outcome.manifest["water_surface"] == manifest.WATER_SURFACE_NAME
+    with Image.open(tmp_path / manifest.WATER_SURFACE_NAME) as image:
+        assert image.mode in ("I;16", "I")
+        written = torch.from_numpy(np.asarray(image, dtype=np.float32))
+    expected = surface_m.div(c.height_range_m).clamp(0.0, 1.0).mul(65535.0)
+    assert torch.allclose(written, expected, atol=1.0)
+
+
+def test_write_omits_the_water_surface_by_default(tmp_path, two_layer_biome):
+    c = cfg()
+    built = stack(c)
+    result = splat.render(two_layer_biome, built)
+    outcome = export.write(c, built, water(), result, out_dir=tmp_path)
+
+    assert outcome.manifest["water_surface"] is None
+    assert not (tmp_path / manifest.WATER_SURFACE_NAME).exists()
 
 
 def test_write_defaults_to_cfg_out_dir(two_layer_biome):

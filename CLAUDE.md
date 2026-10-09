@@ -169,6 +169,10 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   from `patchiness_coarse`/`patchiness_mid`, `moisture` and `wetness` (`terrain/macro.py`).
   Low-frequency, no lighting or AO. `terrain.json` `colour_macro` records the path and the
   distance fade (`near_strength` up close, full strength past `far_distance_m`).
+- `water_surface.png` is the sea, lake and river surface elevation, encoded exactly like
+  the heightmap (16-bit, `0..65535` over `height_range_m`) and equal to the terrain where
+  dry. Optional in `terrain.json` (`water_surface`); without it the viewer falls back to
+  flat water at `sea_level_m`.
 - Output path is `out/terrain/<name>/`. Previews are kept as the visual
   changelog, not deleted between iterations.
 

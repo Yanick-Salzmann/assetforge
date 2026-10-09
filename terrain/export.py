@@ -74,6 +74,7 @@ def write(
     write_colour_macro: bool = True,
     macro_params: macro_mod.MacroParams = macro_mod.MacroParams(),
     scatter_params: scatter_mod.ScatterParams = scatter_mod.ScatterParams(),
+    water_surface_m: torch.Tensor | None = None,
 ) -> ExportResult:
     """Write the full terrain deliverable set plus terrain.json, then verify it end to end.
 
@@ -104,6 +105,13 @@ def write(
         normal_map_name = normal_mod.NORMAL_MAP_NAME
         written.append(normal_path)
 
+    water_surface_name = None
+    if water_surface_m is not None:
+        surface_path = target / manifest_mod.WATER_SURFACE_NAME
+        write_height(water_surface_m.div(cfg.height_range_m), surface_path)
+        water_surface_name = manifest_mod.WATER_SURFACE_NAME
+        written.append(surface_path)
+
     colour_macro = None
     if write_colour_macro:
         written.append(macro_mod.write(stack, target / macro_mod.COLOUR_MACRO_NAME, macro_params))
@@ -117,6 +125,7 @@ def write(
         normal_map=normal_map_name,
         scatter=scatter_entries,
         colour_macro=colour_macro,
+        water_surface=water_surface_name,
     )
     manifest_path = manifest_mod.write(payload, target)
     manifest_mod.verify(payload, target)

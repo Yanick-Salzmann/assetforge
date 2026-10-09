@@ -76,7 +76,7 @@ def regenerate_terrain(name: str, scratch_dir: Path, rule_path: str | None) -> e
     fresh.apply_biome(stored.biome_file, stored.sharpness_override)
     return export.write(
         fresh.cfg, fresh.channels(), fresh.water, fresh.splat_result(),
-        out_dir=scratch_dir, rule_path=rule_path,
+        out_dir=scratch_dir, rule_path=rule_path, water_surface_m=fresh.water_surface_m(),
     )
 
 

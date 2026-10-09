@@ -21,7 +21,7 @@ const TERRAIN_NEAR_MAX_M = 100;
 const canvas = document.getElementById("view");
 const assetSelect = document.getElementById("asset");
 const terrainSelect = document.getElementById("terrain");
-const seaBox = document.getElementById("sea");
+const waterBox = document.getElementById("water");
 const waterTintBox = document.getElementById("water-tint");
 const colourMacroBox = document.getElementById("colour-macro");
 const heightBlendBox = document.getElementById("height-blend");
@@ -190,7 +190,7 @@ function applyTerrainMode() {
   }
   terrain.uniforms.uFalseColour.value = state.mode === "splat" ? 1 : 0;
   terrain.showBackfaces(state.mode === "backfaces", debugMaterials.backface);
-  terrain.sea.visible = seaBox.checked;
+  terrain.water.visible = waterBox.checked;
   terrain.uniforms.uWaterTint.value = waterTintBox.checked ? 1 : 0;
   terrain.uniforms.uColourMacroOn.value = colourMacroBox.checked ? 1 : 0;
   terrain.uniforms.uHeightBlend.value = heightBlendBox.checked ? 1 : 0;
@@ -257,6 +257,8 @@ function terrainStage(terrain) {
   sun.castShadow = false;
   sun.position.set(size * 0.4, size * 0.6, size * 0.3);
   sun.target.position.set(0, 0, 0);
+  terrain.waterUniforms.uSunDirection.value.subVectors(sun.position, sun.target.position).normalize();
+  terrain.waterUniforms.uSkyHorizon.value.set(BACKGROUND);
 }
 
 function assetStage() {
@@ -737,6 +739,10 @@ function tick() {
   controls.update();
   if (state.terrain) {
     fitTerrainClip();
+    if (state.terrain.water.visible) {
+      state.terrain.waterUniforms.uTime.value = performance.now() / 1000;
+      view.dirty = true;
+    }
   }
   if (!view.dirty && !cameraMoved()) {
     return;
@@ -762,7 +768,7 @@ terrainSelect.addEventListener("change", () => {
   }
 });
 
-for (const box of [seaBox, waterTintBox, colourMacroBox, heightBlendBox, scatterBox, buildingsBox]) {
+for (const box of [waterBox, waterTintBox, colourMacroBox, heightBlendBox, scatterBox, buildingsBox]) {
   box.addEventListener("change", () => {
     if (state.terrain) {
       applyTerrainMode();

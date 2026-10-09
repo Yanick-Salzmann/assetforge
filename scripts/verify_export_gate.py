@@ -55,7 +55,9 @@ def run(resolution: int, seed: int, keep: bool) -> dict:
     session.build_channels()
     session.apply_biome("temperate")
     stack = session.channels()
-    result = export.write(session.cfg, stack, session.water, session.splat_result())
+    result = export.write(
+        session.cfg, stack, session.water, session.splat_result(), water_surface_m=session.water_surface_m()
+    )
 
     report: dict = {"resolution": resolution, "seed": seed, "out_dir": str(result.out_dir)}
     report["heightmap"] = _heightmap_check(result.out_dir, stack["height"].detach().to("cpu", dtype=torch.float32))

@@ -17,6 +17,7 @@ SCHEMA_VERSION = 1
 MANIFEST_NAME = "terrain.json"
 HEIGHTMAP_NAME = "height.png"
 WATER_MASK_NAME = "water.png"
+WATER_SURFACE_NAME = "water_surface.png"
 
 SCATTER_KINDS = ("rock", "tree", "grass", "debris")
 
@@ -31,6 +32,7 @@ TOP_LEVEL_KEYS = (
     "heightmap",
     "water_mask",
     "water",
+    "water_surface",
     "splat",
     "scatter",
     "normal_map",
@@ -82,6 +84,7 @@ def build(
     normal_map: str | None = None,
     scatter: Sequence[ScatterMask] = (),
     colour_macro: Mapping[str, Any] | None = None,
+    water_surface: str | None = None,
 ) -> dict[str, Any]:
     """Assemble the terrain.json payload: the engine binding contract for one map."""
     if rule_path is not None:
@@ -101,6 +104,7 @@ def build(
         "heightmap": heightmap,
         "water_mask": water_mask,
         "water": water.as_dict(),
+        "water_surface": water_surface,
         "splat": splat.as_dict(),
         "scatter": [mask.as_dict() for mask in scatter],
         "normal_map": normal_map,
@@ -179,6 +183,9 @@ def validate(payload: Mapping[str, Any]) -> None:
             raise ManifestError("scatter path must be a string")
 
     _require_optional_str(payload, "normal_map", label)
+    water_surface = payload.get("water_surface")
+    if water_surface is not None and not isinstance(water_surface, str):
+        raise ManifestError(f"{label} 'water_surface' must be a string or null")
     _require_optional_str(payload, "rule_path", label)
 
     colour_macro = payload.get("colour_macro")
@@ -231,6 +238,9 @@ def verify(payload: Mapping[str, Any], out_dir: Path) -> None:
     normal_map = payload.get("normal_map")
     if normal_map is not None:
         _verify_image(out_dir, normal_map, resolution)
+    water_surface = payload.get("water_surface")
+    if water_surface is not None:
+        _verify_image(out_dir, water_surface, resolution)
     colour_macro = payload.get("colour_macro")
     if colour_macro is not None:
         _verify_image(out_dir, colour_macro["path"], resolution)
