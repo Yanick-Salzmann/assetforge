@@ -292,7 +292,7 @@ def evaluate(
 
 BIOME_KEYS = ("biome", "layer")
 BIOME_META_KEYS = ("name", "description", "sharpness")
-LAYER_KEYS = ("material", "weight", "tiling_m", "variation", "variation_m")
+LAYER_KEYS = ("material", "weight", "tiling_m", "variation", "variation_m", "anti_tile", "macro_scale")
 DEFAULT_SHARPNESS = 4.0
 MIN_SHARPNESS = 0.1
 MAX_SHARPNESS = 64.0
@@ -301,6 +301,9 @@ MIN_VARIATION_STRENGTH = 0.0
 MAX_VARIATION_STRENGTH = 1.0
 MIN_VARIATION_M = 32.0
 MAX_VARIATION_M = 4096.0
+DEFAULT_MACRO_SCALE = 7.3
+MIN_MACRO_SCALE = 1.0
+MAX_MACRO_SCALE = 64.0
 
 
 @dataclass(frozen=True)
@@ -313,6 +316,8 @@ class Layer:
     tiling_m: float
     variation: float = 0.0
     variation_m: float = DEFAULT_VARIATION_M
+    anti_tile: bool = True
+    macro_scale: float = DEFAULT_MACRO_SCALE
 
     @property
     def channels(self) -> tuple[str, ...]:
@@ -328,6 +333,8 @@ class Layer:
             "tiling_m": self.tiling_m,
             "variation": self.variation,
             "variation_m": self.variation_m,
+            "anti_tile": self.anti_tile,
+            "macro_scale": self.macro_scale,
         }
 
 
@@ -419,6 +426,19 @@ def _layer_variation(name: str, entry: Mapping[str, Any]) -> tuple[float, float]
     return strength, variation_m
 
 
+def _layer_anti_tile(name: str, entry: Mapping[str, Any]) -> tuple[bool, float]:
+    anti_tile = entry.get("anti_tile", True)
+    if not isinstance(anti_tile, bool):
+        raise SplatRuleError(f"layer {name!r} anti_tile must be true or false")
+    macro_scale = float(entry.get("macro_scale", DEFAULT_MACRO_SCALE))
+    if not MIN_MACRO_SCALE <= macro_scale <= MAX_MACRO_SCALE:
+        raise SplatRuleError(
+            f"layer {name!r} macro_scale {macro_scale} lies outside "
+            f"[{MIN_MACRO_SCALE}, {MAX_MACRO_SCALE}]"
+        )
+    return anti_tile, macro_scale
+
+
 def _layer(
     name: str,
     entry: Mapping[str, Any],
@@ -442,6 +462,7 @@ def _layer(
     except SplatRuleError as error:
         raise SplatRuleError(f"{label}: {error}") from None
     variation, variation_m = _layer_variation(name, entry)
+    anti_tile, macro_scale = _layer_anti_tile(name, entry)
     return Layer(
         name,
         material,
@@ -449,6 +470,8 @@ def _layer(
         _layer_tiling(name, entry, index[material].tiling_m),
         variation,
         variation_m,
+        anti_tile,
+        macro_scale,
     )
 
 
@@ -542,6 +565,8 @@ def assignment(biome: Biome) -> tuple[dict, ...]:
                 "layer": layer.name,
                 "material": layer.material,
                 "tiling_m": layer.tiling_m,
+                "anti_tile": layer.anti_tile,
+                "macro_scale": layer.macro_scale,
                 "index": position,
                 "texture": _texture_name(texture),
                 "channel": SPLAT_CHANNELS[channel],

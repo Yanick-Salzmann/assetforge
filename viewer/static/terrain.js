@@ -19,6 +19,7 @@ const NEUTRAL_TEXEL = {
   roughness: [235, 235, 235, 255],
 };
 const WATER_COLOUR = new THREE.Color(0x2b5d74);
+const DEFAULT_MACRO_SCALE = 7.3;
 const LAYER_COLOURS = [0xd9a441, 0x4f9fd8, 0xe8dca0, 0x8c8478, 0x7fb24a, 0x6a4e42, 0x2e7d4f, 0xf2f2f2];
 
 const SCATTER_KINDS = {
@@ -241,6 +242,72 @@ function buildGeometry(field) {
   return geometry;
 }
 
+const SPLAT_GLSL = `
+#define SPLAT_HEX_DENSITY 1.25
+#define SPLAT_HEX_SHARPNESS 4.0
+#define SPLAT_MACRO_NEAR_TILES 6.0
+#define SPLAT_MACRO_FAR_TILES 60.0
+#define SPLAT_MACRO_MIX 0.5
+struct SplatTap {
+  vec3 albedo;
+  vec3 normal;
+  float roughness;
+};
+SplatTap splatTapPlain(float layer, vec2 uv, vec2 dx, vec2 dy) {
+  SplatTap tap;
+  tap.albedo = textureGrad(uLayerAlbedo, vec3(uv, layer), dx, dy).rgb;
+  tap.normal = textureGrad(uLayerNormal, vec3(uv, layer), dx, dy).xyz * 2.0 - 1.0;
+  tap.roughness = textureGrad(uLayerRoughness, vec3(uv, layer), dx, dy).r;
+  return tap;
+}
+vec2 splatHash(vec2 p) {
+  return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453);
+}
+SplatTap splatTapScrambled(float layer, vec2 uv, vec2 dx, vec2 dy, vec2 cell) {
+  vec2 h = splatHash(cell);
+  float angle = h.x * 6.2831853;
+  mat2 turn = mat2(cos(angle), sin(angle), -sin(angle), cos(angle));
+  SplatTap tap = splatTapPlain(layer, turn * uv + h.yx, turn * dx, turn * dy);
+  tap.normal.xy = transpose(turn) * tap.normal.xy;
+  return tap;
+}
+SplatTap splatBlend3(SplatTap a, SplatTap b, SplatTap c, vec3 w) {
+  SplatTap tap;
+  tap.albedo = a.albedo * w.x + b.albedo * w.y + c.albedo * w.z;
+  tap.normal = a.normal * w.x + b.normal * w.y + c.normal * w.z;
+  tap.roughness = a.roughness * w.x + b.roughness * w.y + c.roughness * w.z;
+  return tap;
+}
+SplatTap splatTapHex(float layer, vec2 uv, vec2 dx, vec2 dy) {
+  vec2 skewed = mat2(1.0, 0.0, -0.57735027, 1.15470054) * (uv * SPLAT_HEX_DENSITY);
+  vec2 base = floor(skewed);
+  vec3 f = vec3(fract(skewed), 0.0);
+  f.z = 1.0 - f.x - f.y;
+  float s = step(0.0, -f.z);
+  float s2 = 2.0 * s - 1.0;
+  vec3 w = max(vec3(-f.z * s2, s - f.y * s2, s - f.x * s2), 0.0);
+  w = pow(w, vec3(SPLAT_HEX_SHARPNESS));
+  w /= max(w.x + w.y + w.z, 1e-5);
+  SplatTap a = splatTapScrambled(layer, uv, dx, dy, base + vec2(s, s));
+  SplatTap b = splatTapScrambled(layer, uv, dx, dy, base + vec2(s, 1.0 - s));
+  SplatTap c = splatTapScrambled(layer, uv, dx, dy, base + vec2(1.0 - s, s));
+  return splatBlend3(a, b, c, w);
+}
+SplatTap splatTapAntiTiled(float layer, vec2 uv, vec2 dx, vec2 dy, float macroScale, float distanceTiles) {
+  SplatTap near = splatTapHex(layer, uv, dx, dy);
+  float macroMix = SPLAT_MACRO_MIX * smoothstep(SPLAT_MACRO_NEAR_TILES, SPLAT_MACRO_FAR_TILES, distanceTiles);
+  if (macroMix <= 0.0 || macroScale <= 1.0) {
+    return near;
+  }
+  SplatTap far = splatTapScrambled(layer, uv / macroScale, dx / macroScale, dy / macroScale, vec2(layer, -7.0));
+  SplatTap tap;
+  tap.albedo = mix(near.albedo, far.albedo, macroMix);
+  tap.normal = mix(near.normal, far.normal, macroMix);
+  tap.roughness = mix(near.roughness, far.roughness, macroMix);
+  return tap;
+}
+`;
+
 function splatShader(layers, splatSamplers) {
   const lines = [
     "vec3 splatAlbedo = vec3(0.0);",
@@ -248,7 +315,10 @@ function splatShader(layers, splatSamplers) {
     "float splatRoughness = 0.0;",
     "float splatTotal = 0.0;",
     "float splatWeight;",
-    "vec2 splatTile;",
+    "SplatTap splatTap;",
+    "float splatDistance = length(vViewPosition);",
+    "vec2 splatWorldDx = dFdx(vSplatWorld);",
+    "vec2 splatWorldDy = dFdy(vSplatWorld);",
   ];
   for (const name of splatSamplers) {
     lines.push(`vec4 ${name}Sample = texture2D(${name}, vSplatUv);`);
@@ -257,14 +327,20 @@ function splatShader(layers, splatSamplers) {
     const sampler = `uSplat${layer.texture.replace(/\D/g, "")}`;
     const colour = new THREE.Color(LAYER_COLOURS[index % LAYER_COLOURS.length]).convertSRGBToLinear();
     const tiling = Math.max(layer.tiling_m, 0.01).toFixed(4);
+    const antiTile = layer.anti_tile ?? true;
+    const macroScale = Math.max(layer.macro_scale ?? DEFAULT_MACRO_SCALE, 1).toFixed(4);
     lines.push(`splatWeight = ${sampler}Sample.${layer.channel};`);
     lines.push("if (splatWeight > 0.002) {");
-    lines.push(`  splatTile = vSplatWorld / ${tiling};`);
+    if (antiTile) {
+      lines.push(`  splatTap = splatTapAntiTiled(${index}.0, vSplatWorld / ${tiling}, splatWorldDx / ${tiling}, splatWorldDy / ${tiling}, ${macroScale}, splatDistance / ${tiling});`);
+    } else {
+      lines.push(`  splatTap = splatTapPlain(${index}.0, vSplatWorld / ${tiling}, splatWorldDx / ${tiling}, splatWorldDy / ${tiling});`);
+    }
     lines.push(
-      `  splatAlbedo += splatWeight * mix(texture(uLayerAlbedo, vec3(splatTile, ${index}.0)).rgb, vec3(${colour.r.toFixed(4)}, ${colour.g.toFixed(4)}, ${colour.b.toFixed(4)}), uFalseColour);`,
+      `  splatAlbedo += splatWeight * mix(splatTap.albedo, vec3(${colour.r.toFixed(4)}, ${colour.g.toFixed(4)}, ${colour.b.toFixed(4)}), uFalseColour);`,
     );
-    lines.push(`  splatTangentNormal += splatWeight * (texture(uLayerNormal, vec3(splatTile, ${index}.0)).xyz * 2.0 - 1.0);`);
-    lines.push(`  splatRoughness += splatWeight * texture(uLayerRoughness, vec3(splatTile, ${index}.0)).r;`);
+    lines.push("  splatTangentNormal += splatWeight * splatTap.normal;");
+    lines.push("  splatRoughness += splatWeight * splatTap.roughness;");
     lines.push("  splatTotal += splatWeight;");
     lines.push("}");
   });
@@ -330,6 +406,7 @@ function splatMaterial(manifest, splatTextures, layerArrays, waterMask, macroNor
     ...splatSamplers.map((name) => `uniform sampler2D ${name};`),
     "varying vec2 vSplatUv;",
     "varying vec2 vSplatWorld;",
+    SPLAT_GLSL,
   ].join("\n");
   const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0, envMapIntensity: 0.4 });
   material.onBeforeCompile = (shader) => {
@@ -349,7 +426,8 @@ function splatMaterial(manifest, splatTextures, layerArrays, waterMask, macroNor
       .replace("#include <roughnessmap_fragment>", ROUGHNESS_SHADER)
       .replace("#include <normal_fragment_maps>", normalShader(macroNormal !== null));
   };
-  material.customProgramCacheKey = () => `splat:${manifest.name}:${layers.length}:${macroNormal !== null}`;
+  const layerKey = layers.map((layer) => `${layer.tiling_m}/${layer.anti_tile ?? true}/${layer.macro_scale ?? DEFAULT_MACRO_SCALE}`).join(",");
+  material.customProgramCacheKey = () => `splat:${manifest.name}:${layerKey}:${macroNormal !== null}`;
   return { material, uniforms };
 }
 

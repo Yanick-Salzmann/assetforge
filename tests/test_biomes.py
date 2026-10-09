@@ -105,6 +105,34 @@ def test_variation_out_of_range_is_rejected(text, index):
         splat.parse_biome(text, index)
 
 
+def test_anti_tile_defaults_on(index):
+    biome = splat.parse_biome(RULES, index)
+    for layer in biome:
+        assert layer.anti_tile is True
+        assert layer.macro_scale == pytest.approx(splat.DEFAULT_MACRO_SCALE)
+
+
+def test_anti_tile_is_read_from_the_layer_table(index):
+    text = "[layer.a]\nmaterial = 'silt'\nweight = 'flow'\nanti_tile = false\nmacro_scale = 12.0\n"
+    biome = splat.parse_biome(text, index)
+    assert biome["a"].anti_tile is False
+    assert biome["a"].macro_scale == pytest.approx(12.0)
+    assert biome.as_dict()["layers"]["a"]["anti_tile"] is False
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "[layer.a]\nmaterial = 'silt'\nweight = 'flow'\nanti_tile = 1\n",
+        "[layer.a]\nmaterial = 'silt'\nweight = 'flow'\nmacro_scale = 0.5\n",
+        "[layer.a]\nmaterial = 'silt'\nweight = 'flow'\nmacro_scale = 100.0\n",
+    ],
+)
+def test_anti_tile_invalid_values_are_rejected(text, index):
+    with pytest.raises(MapConfigError):
+        splat.parse_biome(text, index)
+
+
 def test_referenced_channels_and_materials_are_reported(index):
     biome = splat.parse_biome(RULES, index)
     assert biome.materials() == ("cliff_rock", "river_rock", "silt")

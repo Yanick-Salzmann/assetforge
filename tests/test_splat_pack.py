@@ -231,6 +231,8 @@ def test_assignment_carries_the_material_and_tiling(biome, index):
     placed = splat.assignment(biome)
     assert placed[1]["material"] == "river_rock"
     assert placed[1]["tiling_m"] == pytest.approx(index["river_rock"].tiling_m)
+    assert placed[1]["anti_tile"] is True
+    assert placed[1]["macro_scale"] == pytest.approx(splat.DEFAULT_MACRO_SCALE)
 
 
 def test_coverage_sums_to_one_and_names_the_layers(biome):
