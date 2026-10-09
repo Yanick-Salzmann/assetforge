@@ -1,6 +1,11 @@
 import * as THREE from "three";
 
 const MAX_GRID_VERTICES = 1025;
+const CHUNK_CELLS = 64;
+const CHUNK_LOD_STRIDES = [1, 2, 4, 8, 16];
+const CHUNK_LOD_REACH = 1.5;
+const CHUNK_LOD_HYSTERESIS = 0.1;
+const SKIRT_MARGIN_M = 1;
 const MAX_SCATTER_CELLS = 4_000_000;
 const GROUND_FLAT_REACH_M = 20;
 const GROUND_MAX_SLOPE = 0.08;
@@ -202,44 +207,195 @@ class HeightField {
   }
 }
 
-function buildGeometry(field) {
-  const count = Math.min(field.resolution, MAX_GRID_VERTICES);
-  const step = (field.resolution - 1) / (count - 1);
-  const positions = new Float32Array(count * count * 3);
-  for (let j = 0; j < count; j += 1) {
-    const pz = j * step;
-    for (let i = 0; i < count; i += 1) {
-      const px = i * step;
-      const offset = (j * count + i) * 3;
-      positions[offset] = field.toWorld(px);
-      positions[offset + 1] = field.atPixel(px, pz);
-      positions[offset + 2] = field.toWorld(pz);
+class SurfaceGrid {
+  constructor(field) {
+    const wanted = Math.min(field.resolution, MAX_GRID_VERTICES) - 1;
+    this.cells = Math.max(CHUNK_CELLS, Math.round(wanted / CHUNK_CELLS) * CHUNK_CELLS);
+    this.count = this.cells + 1;
+    this.step = (field.resolution - 1) / this.cells;
+    this.spacing = this.step * field.metresPerPixel;
+    this.field = field;
+    this.heights = new Float32Array(this.count * this.count);
+    for (let j = 0; j < this.count; j += 1) {
+      for (let i = 0; i < this.count; i += 1) {
+        this.heights[j * this.count + i] = field.atPixel(i * this.step, j * this.step);
+      }
     }
   }
-  const indices = new Uint32Array((count - 1) * (count - 1) * 6);
+
+  height(i, j) {
+    const last = this.count - 1;
+    return this.heights[Math.min(Math.max(j, 0), last) * this.count + Math.min(Math.max(i, 0), last)];
+  }
+
+  x(i) {
+    return this.field.toWorld(i * this.step);
+  }
+
+  normal(i, j, target) {
+    const dx = (this.height(i + 1, j) - this.height(i - 1, j)) / (2 * this.spacing);
+    const dz = (this.height(i, j + 1) - this.height(i, j - 1)) / (2 * this.spacing);
+    return target.set(-dx, 1, -dz).normalize();
+  }
+
+  edgeError(i0, j0, di, dj, stride) {
+    let worst = 0;
+    for (let k = 0; k < CHUNK_CELLS; k += stride) {
+      const start = this.height(i0 + di * k, j0 + dj * k);
+      const end = this.height(i0 + di * (k + stride), j0 + dj * (k + stride));
+      for (let m = 1; m < stride; m += 1) {
+        const expected = start + ((end - start) * m) / stride;
+        worst = Math.max(worst, Math.abs(this.height(i0 + di * (k + m), j0 + dj * (k + m)) - expected));
+      }
+    }
+    return worst;
+  }
+
+  skirtDepth() {
+    const coarsest = CHUNK_LOD_STRIDES[CHUNK_LOD_STRIDES.length - 1];
+    let worst = 0;
+    for (let j = 0; j <= this.cells; j += CHUNK_CELLS) {
+      for (let i = 0; i < this.cells; i += CHUNK_CELLS) {
+        worst = Math.max(worst, this.edgeError(i, j, 1, 0, coarsest), this.edgeError(j, i, 0, 1, coarsest));
+      }
+    }
+    return worst + SKIRT_MARGIN_M;
+  }
+}
+
+function chunkPerimeter() {
+  const n = CHUNK_CELLS;
+  const loop = [];
+  for (let i = 0; i < n; i += 1) {
+    loop.push([i, 0]);
+  }
+  for (let j = 0; j < n; j += 1) {
+    loop.push([n, j]);
+  }
+  for (let i = n; i > 0; i -= 1) {
+    loop.push([i, n]);
+  }
+  for (let j = n; j > 0; j -= 1) {
+    loop.push([0, j]);
+  }
+  return loop;
+}
+
+function chunkIndices(stride, perimeter) {
+  const n = CHUNK_CELLS;
+  const side = n + 1;
+  const cells = n / stride;
+  const ring = perimeter.length;
+  const indices = new Uint16Array(cells * cells * 6 + (ring / stride) * 6);
   let cursor = 0;
-  for (let j = 0; j < count - 1; j += 1) {
-    for (let i = 0; i < count - 1; i += 1) {
-      const a = j * count + i;
-      const b = a + 1;
-      const c = a + count;
-      const d = c + 1;
-      indices[cursor] = a;
-      indices[cursor + 1] = c;
-      indices[cursor + 2] = b;
-      indices[cursor + 3] = b;
-      indices[cursor + 4] = c;
-      indices[cursor + 5] = d;
-      cursor += 6;
+  const push = (...values) => {
+    indices.set(values, cursor);
+    cursor += values.length;
+  };
+  for (let j = 0; j < n; j += stride) {
+    for (let i = 0; i < n; i += stride) {
+      const a = j * side + i;
+      const b = a + stride;
+      const c = a + stride * side;
+      const d = c + stride;
+      push(a, c, b, b, c, d);
     }
   }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
-  geometry.computeVertexNormals();
-  geometry.computeBoundingBox();
-  geometry.computeBoundingSphere();
-  return geometry;
+  const skirtBase = side * side;
+  for (let k = 0; k < ring; k += stride) {
+    const next = (k + stride) % ring;
+    const e0 = perimeter[k][1] * side + perimeter[k][0];
+    const e1 = perimeter[next][1] * side + perimeter[next][0];
+    push(e0, e1, skirtBase + k, e1, skirtBase + next, skirtBase + k);
+  }
+  return new THREE.BufferAttribute(indices, 1);
+}
+
+function chunkAttributes(grid, ci, cj, perimeter, skirt) {
+  const n = CHUNK_CELLS;
+  const side = n + 1;
+  const i0 = ci * n;
+  const j0 = cj * n;
+  let low = Infinity;
+  let high = -Infinity;
+  for (let j = 0; j <= n; j += 1) {
+    for (let i = 0; i <= n; i += 1) {
+      const elevation = grid.height(i0 + i, j0 + j);
+      low = Math.min(low, elevation);
+      high = Math.max(high, elevation);
+    }
+  }
+  const centre = new THREE.Vector3((grid.x(i0) + grid.x(i0 + n)) / 2, (low + high) / 2, (grid.x(j0) + grid.x(j0 + n)) / 2);
+  const total = side * side + perimeter.length;
+  const positions = new Float32Array(total * 3);
+  const normals = new Float32Array(total * 3);
+  const normal = new THREE.Vector3();
+  const write = (index, i, j, drop) => {
+    positions[index * 3] = grid.x(i0 + i) - centre.x;
+    positions[index * 3 + 1] = grid.height(i0 + i, j0 + j) - drop - centre.y;
+    positions[index * 3 + 2] = grid.x(j0 + j) - centre.z;
+    grid.normal(i0 + i, j0 + j, normal).toArray(normals, index * 3);
+  };
+  for (let j = 0; j <= n; j += 1) {
+    for (let i = 0; i <= n; i += 1) {
+      write(j * side + i, i, j, 0);
+    }
+  }
+  perimeter.forEach(([i, j], k) => write(side * side + k, i, j, skirt));
+  return {
+    centre,
+    position: new THREE.BufferAttribute(positions, 3),
+    normal: new THREE.BufferAttribute(normals, 3),
+  };
+}
+
+function buildSurface(field, material) {
+  const grid = new SurfaceGrid(field);
+  const perimeter = chunkPerimeter();
+  const indices = CHUNK_LOD_STRIDES.map((stride) => chunkIndices(stride, perimeter));
+  const skirt = grid.skirtDepth();
+  const chunkSize = CHUNK_CELLS * grid.spacing;
+  const chunks = grid.cells / CHUNK_CELLS;
+  const group = new THREE.Group();
+  group.name = "terrain_surface";
+  const meshes = [];
+  const geometries = [];
+  for (let cj = 0; cj < chunks; cj += 1) {
+    for (let ci = 0; ci < chunks; ci += 1) {
+      const { centre, position, normal } = chunkAttributes(grid, ci, cj, perimeter, skirt);
+      const lod = new THREE.LOD();
+      lod.name = `terrain_chunk_${ci}_${cj}`;
+      lod.position.copy(centre);
+      let sphere = null;
+      CHUNK_LOD_STRIDES.forEach((stride, level) => {
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", position);
+        geometry.setAttribute("normal", normal);
+        geometry.setIndex(indices[level]);
+        if (!sphere) {
+          geometry.computeBoundingSphere();
+          sphere = geometry.boundingSphere;
+        }
+        geometry.boundingSphere = sphere.clone();
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.name = `${lod.name}_lod${level}`;
+        const reach = level === 0 ? 0 : chunkSize * CHUNK_LOD_REACH * 2 ** (level - 1);
+        lod.addLevel(mesh, reach, CHUNK_LOD_HYSTERESIS);
+        meshes.push(mesh);
+        geometries.push(geometry);
+      });
+      group.add(lod);
+    }
+  }
+  let low = Infinity;
+  let high = -Infinity;
+  for (const elevation of grid.heights) {
+    low = Math.min(low, elevation);
+    high = Math.max(high, elevation);
+  }
+  const half = field.worldSize / 2;
+  const bounds = new THREE.Box3(new THREE.Vector3(-half, low, -half), new THREE.Vector3(half, high, half));
+  return { group, meshes, geometries, bounds };
 }
 
 const SPLAT_GLSL = `
@@ -751,12 +907,10 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
   const waterMask = dataTexture(waterRaw);
   const macroNormal = normalRaw ? dataTexture(normalRaw) : null;
   const { material, uniforms } = splatMaterial(manifest, splatTextures, layerArrays, waterMask, macroNormal);
-  const geometry = buildGeometry(field);
+  const surface = buildSurface(field, material);
   const group = new THREE.Group();
   group.name = `terrain_${manifest.name}`;
-  const surface = new THREE.Mesh(geometry, material);
-  surface.name = "terrain_surface";
-  group.add(surface);
+  group.add(surface.group);
 
   const seaLevel = manifest.water.sea_level_m;
   const sea = new THREE.Mesh(
@@ -787,7 +941,7 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
   const peak = highestPoint(field);
 
   const disposables = [
-    geometry,
+    ...surface.geometries,
     material,
     sea.geometry,
     sea.material,
@@ -806,7 +960,27 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
     name: manifest.name,
     manifest,
     group,
-    surface,
+    surface: surface.group,
+    bounds: surface.bounds,
+    setSurfaceMaterial(surfaceMaterial) {
+      for (const mesh of surface.meshes) {
+        mesh.material = surfaceMaterial;
+      }
+    },
+    showBackfaces(visible, backfaceMaterial) {
+      for (const mesh of surface.meshes) {
+        let overlay = mesh.userData.overlay;
+        if (!overlay && visible) {
+          overlay = new THREE.Mesh(mesh.geometry, backfaceMaterial);
+          overlay.raycast = () => {};
+          mesh.userData.overlay = overlay;
+          mesh.add(overlay);
+        }
+        if (overlay) {
+          overlay.visible = visible;
+        }
+      }
+    },
     sea,
     scatter,
     field,

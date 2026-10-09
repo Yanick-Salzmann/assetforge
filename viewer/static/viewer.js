@@ -179,16 +179,15 @@ function applyLod() {
 
 function applyTerrainMode() {
   const terrain = state.terrain;
-  const surface = terrain.surface;
   if (state.mode === "normals") {
-    surface.material = debugMaterials.normals;
+    terrain.setSurfaceMaterial(debugMaterials.normals);
   } else if (state.mode === "wireframe") {
-    surface.material = debugMaterials.wireframe;
+    terrain.setSurfaceMaterial(debugMaterials.wireframe);
   } else {
-    surface.material = terrain.splatMaterial;
+    terrain.setSurfaceMaterial(terrain.splatMaterial);
   }
   terrain.uniforms.uFalseColour.value = state.mode === "splat" ? 1 : 0;
-  terrain.overlay.visible = state.mode === "backfaces";
+  terrain.showBackfaces(state.mode === "backfaces", debugMaterials.backface);
   terrain.sea.visible = seaBox.checked;
   terrain.uniforms.uWaterTint.value = waterTintBox.checked ? 1 : 0;
   terrain.scatter.visible = scatterBox.checked;
@@ -281,7 +280,7 @@ function frameTerrain() {
   state.camera = "frame";
   const terrain = state.terrain;
   const size = terrain.manifest.world_size_m;
-  const box = terrain.surface.geometry.boundingBox;
+  const box = terrain.bounds;
   const centre = new THREE.Vector3(0, (box.min.y + box.max.y) / 2, 0);
   const direction = new THREE.Vector3(1, 0.75, 1.2).normalize();
   unlockControls();
@@ -671,9 +670,6 @@ async function showTerrain(name, wanted = {}) {
   unloadTerrain();
   disposeRoot();
   state.asset = null;
-  terrain.overlay = new THREE.Mesh(terrain.surface.geometry, debugMaterials.backface);
-  terrain.overlay.visible = false;
-  terrain.surface.add(terrain.overlay);
   state.terrain = terrain;
   terrainSelect.value = name;
   scene.add(terrain.group);
