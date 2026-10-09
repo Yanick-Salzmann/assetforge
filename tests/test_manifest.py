@@ -93,6 +93,14 @@ def test_build_defaults_scatter_and_normal_map_to_empty(biome):
     payload = manifest.build(c, water(), splat.render(biome, stack(c)))
     assert payload["scatter"] == []
     assert payload["normal_map"] is None
+    assert payload["colour_macro"] is None
+
+
+def test_validate_accepts_a_payload_written_before_colour_macro(biome):
+    c = cfg()
+    payload = manifest.build(c, water(), splat.render(biome, stack(c)))
+    payload.pop("colour_macro")
+    manifest.validate(payload)
 
 
 def test_build_accepts_scatter_masks_and_normal_map(biome):
@@ -121,6 +129,8 @@ def test_scatter_mask_rejects_unknown_kind():
         lambda payload: payload["splat"]["layers"][0].pop("material"),
         lambda payload: payload.__setitem__("scatter", [{"kind": "cloud", "path": "x.png"}]),
         lambda payload: payload.__setitem__("normal_map", 3),
+        lambda payload: payload.__setitem__("colour_macro", "colour_macro.png"),
+        lambda payload: payload.__setitem__("colour_macro", {"path": "colour_macro.png"}),
     ],
 )
 def test_validate_rejects_malformed_payloads(biome, mutate):

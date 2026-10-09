@@ -161,6 +161,10 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   `splat_1.png` layers 4-7. Layer weights across all textures sum to 1 per pixel.
 - Scatter masks are single-channel 8-bit: `scatter_rock.png`, `scatter_tree.png`,
   `scatter_grass.png`, `scatter_debris.png`.
+- `colour_macro.png` is an 8-bit RGB albedo multiplier (`byte / 128`, neutral 128) built
+  from `patchiness_coarse`/`patchiness_mid`, `moisture` and `wetness` (`terrain/macro.py`).
+  Low-frequency, no lighting or AO. `terrain.json` `colour_macro` records the path and the
+  distance fade (`near_strength` up close, full strength past `far_distance_m`).
 - Output path is `out/terrain/<name>/`. Previews are kept as the visual
   changelog, not deleted between iterations.
 

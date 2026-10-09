@@ -34,10 +34,12 @@ TOP_LEVEL_KEYS = (
     "splat",
     "scatter",
     "normal_map",
+    "colour_macro",
     "rule_path",
 )
 
 WATER_KEYS = ("sea_level_m", "covered_fraction", "mean_depth_m", "max_depth_m", "depth_reference_m")
+COLOUR_MACRO_KEYS = ("path", "encoding", "near_strength", "near_distance_m", "far_distance_m")
 SPLAT_LAYER_KEYS = ("layer", "material", "tiling_m", "index", "texture", "channel")
 
 
@@ -79,6 +81,7 @@ def build(
     rule_path: str | Path | None = None,
     normal_map: str | None = None,
     scatter: Sequence[ScatterMask] = (),
+    colour_macro: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble the terrain.json payload: the engine binding contract for one map."""
     if rule_path is not None:
@@ -101,6 +104,7 @@ def build(
         "splat": splat.as_dict(),
         "scatter": [mask.as_dict() for mask in scatter],
         "normal_map": normal_map,
+        "colour_macro": dict(colour_macro) if colour_macro is not None else None,
         "rule_path": rule,
     }
     validate(payload)
@@ -177,6 +181,15 @@ def validate(payload: Mapping[str, Any]) -> None:
     _require_optional_str(payload, "normal_map", label)
     _require_optional_str(payload, "rule_path", label)
 
+    colour_macro = payload.get("colour_macro")
+    if colour_macro is not None:
+        if not isinstance(colour_macro, dict):
+            raise ManifestError(f"{label} 'colour_macro' must be a table or null")
+        _require(colour_macro, "path", str, "colour_macro")
+        _require(colour_macro, "encoding", str, "colour_macro")
+        for key in COLOUR_MACRO_KEYS[2:]:
+            _require(colour_macro, key, (int, float), "colour_macro")
+
 
 def write(payload: Mapping[str, Any], out_dir: Path) -> Path:
     validate(payload)
@@ -218,6 +231,9 @@ def verify(payload: Mapping[str, Any], out_dir: Path) -> None:
     normal_map = payload.get("normal_map")
     if normal_map is not None:
         _verify_image(out_dir, normal_map, resolution)
+    colour_macro = payload.get("colour_macro")
+    if colour_macro is not None:
+        _verify_image(out_dir, colour_macro["path"], resolution)
     rule_path = payload.get("rule_path")
     if rule_path is not None and not (config.REPO_ROOT / rule_path).is_file():
         raise ManifestError(f"rule file {rule_path} does not exist")

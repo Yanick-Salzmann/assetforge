@@ -548,7 +548,7 @@ SplatTap splatTriplanar(SplatTap top, SplatTap sideX, SplatTap sideZ, vec2 sideW
 }
 `;
 
-function splatShader(layers, splatSamplers, hasMacroNormal) {
+function splatShader(layers, splatSamplers, hasMacroNormal, hasColourMacro) {
   const macro = hasMacroNormal
     ? "vec3 splatMacroPacked = texture2D(uMacroNormal, vSplatUv).xyz * 2.0 - 1.0;\nvec3 splatMacroWorld = normalize(vec3(splatMacroPacked.x, splatMacroPacked.z, splatMacroPacked.y));"
     : "vec3 splatMacroWorld = normalize(vSplatNormal);";
@@ -616,6 +616,11 @@ function splatShader(layers, splatSamplers, hasMacroNormal) {
   lines.push("splatAlbedo /= max(splatTotal, 1e-4);");
   lines.push("splatRoughness = splatTotal > 1e-4 ? splatRoughness / splatTotal : 0.92;");
   lines.push("splatTangentNormal = splatTotal > 1e-4 ? splatTangentNormal / splatTotal : vec3(0.0, 0.0, 1.0);");
+  if (hasColourMacro) {
+    lines.push("vec3 splatTint = texture2D(uColourMacro, vSplatUv).rgb * (255.0 / 128.0);");
+    lines.push("float splatTintStrength = mix(uColourMacroRange.x, 1.0, smoothstep(uColourMacroRange.y, uColourMacroRange.z, splatDistance));");
+    lines.push("splatAlbedo *= mix(vec3(1.0), splatTint, splatTintStrength * uColourMacroOn * (1.0 - uFalseColour));");
+  }
   lines.push("float waterAmount = smoothstep(0.3, 0.7, texture2D(uWaterMask, vSplatUv).r) * uWaterTint;");
   lines.push("splatAlbedo = mix(splatAlbedo, uWaterColour, waterAmount);");
   lines.push("splatRoughness = mix(splatRoughness, 0.35, waterAmount);");
@@ -634,7 +639,14 @@ const NORMAL_SHADER = [
   "normal = normalize((viewMatrix * vec4(shadedWorld, 0.0)).xyz);",
 ].join("\n");
 
-function splatMaterial(manifest, splatTextures, layerArrays, waterMask, macroNormal) {
+function colourMacroRange(spec) {
+  if (!spec) {
+    return new THREE.Vector3(0, 0, 1);
+  }
+  return new THREE.Vector3(spec.near_strength, spec.near_distance_m, spec.far_distance_m);
+}
+
+function splatMaterial(manifest, splatTextures, layerArrays, waterMask, macroNormal, colourMacro) {
   const layers = manifest.splat.layers;
   const uniforms = {
     uWorldSize: { value: manifest.world_size_m },
@@ -647,6 +659,9 @@ function splatMaterial(manifest, splatTextures, layerArrays, waterMask, macroNor
     uLayerAlbedo: { value: layerArrays.albedo.texture },
     uLayerNormal: { value: layerArrays.normal.texture },
     uLayerRoughness: { value: layerArrays.roughness.texture },
+    uColourMacro: { value: colourMacro },
+    uColourMacroOn: { value: 1 },
+    uColourMacroRange: { value: colourMacroRange(manifest.colour_macro) },
   };
   const splatSamplers = [];
   for (const [name, texture] of Object.entries(splatTextures)) {
@@ -661,6 +676,9 @@ function splatMaterial(manifest, splatTextures, layerArrays, waterMask, macroNor
     "uniform vec3 uWaterColour;",
     "uniform sampler2D uWaterMask;",
     "uniform sampler2D uMacroNormal;",
+    "uniform sampler2D uColourMacro;",
+    "uniform float uColourMacroOn;",
+    "uniform vec3 uColourMacroRange;",
     "uniform highp sampler2DArray uLayerAlbedo;",
     "uniform highp sampler2DArray uLayerNormal;",
     "uniform highp sampler2DArray uLayerRoughness;",
@@ -685,12 +703,12 @@ function splatMaterial(manifest, splatTextures, layerArrays, waterMask, macroNor
       );
     shader.fragmentShader = shader.fragmentShader
       .replace("#include <common>", `#include <common>\n${declarations}`)
-      .replace("#include <map_fragment>", splatShader(layers, splatSamplers, macroNormal !== null))
+      .replace("#include <map_fragment>", splatShader(layers, splatSamplers, macroNormal !== null, colourMacro !== null))
       .replace("#include <roughnessmap_fragment>", ROUGHNESS_SHADER)
       .replace("#include <normal_fragment_maps>", NORMAL_SHADER);
   };
   const layerKey = layers.map((layer) => `${layer.tiling_m}/${layer.anti_tile ?? true}/${layer.macro_scale ?? DEFAULT_MACRO_SCALE}`).join(",");
-  material.customProgramCacheKey = () => `splat:${manifest.name}:${layerKey}:${macroNormal !== null}`;
+  material.customProgramCacheKey = () => `splat:${manifest.name}:${layerKey}:${macroNormal !== null}:${colourMacro !== null}`;
   return { material, uniforms };
 }
 
@@ -986,6 +1004,7 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
     splatRaws[texture] = await fetchRaw(`${entry.raw}${texture}`);
   }
   const normalRaw = manifest.normal_map ? await fetchRaw(`${entry.raw}${manifest.normal_map}`) : null;
+  const colourMacroRaw = manifest.colour_macro ? await fetchRaw(`${entry.raw}${manifest.colour_macro.path}`) : null;
   onProgress("materials");
   const anisotropy = renderer.capabilities.getMaxAnisotropy();
   const layerArrays = {};
@@ -997,7 +1016,8 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
   const splatTextures = Object.fromEntries(Object.entries(splatRaws).map(([name, raw]) => [name, dataTexture(raw)]));
   const waterMask = dataTexture(waterRaw);
   const macroNormal = normalRaw ? dataTexture(normalRaw) : null;
-  const { material, uniforms } = splatMaterial(manifest, splatTextures, layerArrays, waterMask, macroNormal);
+  const colourMacro = colourMacroRaw ? dataTexture(colourMacroRaw) : null;
+  const { material, uniforms } = splatMaterial(manifest, splatTextures, layerArrays, waterMask, macroNormal, colourMacro);
   const surface = buildSurface(field, material);
   const group = new THREE.Group();
   group.name = `terrain_${manifest.name}`;

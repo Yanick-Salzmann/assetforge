@@ -6,7 +6,7 @@ description: Walk a new terrain end to end through the terrain-forge MCP server 
 # terrain-new
 
 Produces one full deliverable set under `out/terrain/<name>/`: `height.png`, `splat_*.png`,
-`scatter_*.png`, `normal.png`, `water_mask.png`, `terrain.json`. Every generation tool below
+`scatter_*.png`, `normal.png`, `colour_macro.png`, `water_mask.png`, `terrain.json`. Every generation tool below
 returns a preview image alongside its summary - **read the image and judge it against the
 acceptance check before calling the next tool.** Chaining calls without looking is how a
 noise field or a honeycomb of belts survives to the final export.

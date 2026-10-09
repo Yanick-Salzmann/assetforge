@@ -8,6 +8,7 @@ import numpy as np
 import torch
 from PIL import Image
 
+from terrain import macro as macro_mod
 from terrain import manifest as manifest_mod
 from terrain import normal as normal_mod
 from terrain import scatter as scatter_mod
@@ -70,6 +71,8 @@ def write(
     out_dir: Path | None = None,
     rule_path: str | Path | None = None,
     write_normal: bool = True,
+    write_colour_macro: bool = True,
+    macro_params: macro_mod.MacroParams = macro_mod.MacroParams(),
     scatter_params: scatter_mod.ScatterParams = scatter_mod.ScatterParams(),
 ) -> ExportResult:
     """Write the full terrain deliverable set plus terrain.json, then verify it end to end.
@@ -101,6 +104,11 @@ def write(
         normal_map_name = normal_mod.NORMAL_MAP_NAME
         written.append(normal_path)
 
+    colour_macro = None
+    if write_colour_macro:
+        written.append(macro_mod.write(stack, target / macro_mod.COLOUR_MACRO_NAME, macro_params))
+        colour_macro = macro_params.as_dict()
+
     payload = manifest_mod.build(
         cfg,
         water,
@@ -108,6 +116,7 @@ def write(
         rule_path=rule_path,
         normal_map=normal_map_name,
         scatter=scatter_entries,
+        colour_macro=colour_macro,
     )
     manifest_path = manifest_mod.write(payload, target)
     manifest_mod.verify(payload, target)

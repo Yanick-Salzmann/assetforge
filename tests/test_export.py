@@ -106,6 +106,7 @@ def test_write_produces_the_full_deliverable_set(tmp_path, two_layer_biome):
         "scatter_grass.png",
         "scatter_debris.png",
         "normal.png",
+        "colour_macro.png",
     }
     for path in outcome.files:
         with Image.open(path) as image:
@@ -114,6 +115,7 @@ def test_write_produces_the_full_deliverable_set(tmp_path, two_layer_biome):
     assert outcome.manifest_path == tmp_path / manifest.MANIFEST_NAME
     assert manifest.load(outcome.manifest_path) == outcome.manifest
     assert outcome.manifest["normal_map"] == "normal.png"
+    assert outcome.manifest["colour_macro"]["path"] == "colour_macro.png"
     assert {entry["kind"] for entry in outcome.manifest["scatter"]} == {
         "rock",
         "tree",
@@ -131,6 +133,16 @@ def test_write_skips_the_normal_map_when_disabled(tmp_path, two_layer_biome):
     assert outcome.manifest["normal_map"] is None
     assert not (tmp_path / "normal.png").exists()
     assert "normal.png" not in {path.name for path in outcome.files}
+
+
+def test_write_skips_the_colour_macro_when_disabled(tmp_path, two_layer_biome):
+    c = cfg()
+    built = stack(c)
+    result = splat.render(two_layer_biome, built)
+    outcome = export.write(c, built, water(), result, out_dir=tmp_path, write_colour_macro=False)
+
+    assert outcome.manifest["colour_macro"] is None
+    assert not (tmp_path / "colour_macro.png").exists()
 
 
 def test_write_defaults_to_cfg_out_dir(two_layer_biome):

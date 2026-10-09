@@ -164,6 +164,7 @@ splat_0.png     RGBA, layers 0-3      splat_1.png  RGBA, layers 4-7
 scatter_rock.png  scatter_tree.png  scatter_grass.png  scatter_debris.png
 water.png       8-bit water mask; terrain.json carries the water level in metres
 normal.png      optional, derived from height at world scale, if your engine won't derive it
+colour_macro.png  RGB albedo multiplier (byte/128), low-frequency tint from patchiness and climate
 terrain.json    world size (m), height range (m), m/px, water level, layer→material+tiling map,
                 splat channel assignment, scatter list, seed, rule file — versioned, with a
                 validator so an export can be checked rather than trusted
