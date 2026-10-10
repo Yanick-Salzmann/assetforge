@@ -3,6 +3,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { loadTerrain } from "./terrain.js";
+import { Atmosphere, TONE_MAPPING, hazeDensity } from "./sky.js";
 
 const EYE_HEIGHT_M = 1.7;
 const HUMAN_HEIGHT_M = 1.8;
@@ -17,6 +18,16 @@ const MAX_PIXEL_RATIO = 1.5;
 const TERRAIN_NEAR_FRACTION = 0.25;
 const TERRAIN_NEAR_MIN_M = 0.1;
 const TERRAIN_NEAR_MAX_M = 100;
+const DAY_CYCLE_SECONDS = 120;
+const LIGHT_REFRESH_H = 1 / 60;
+const SHADOW_MAP_SIZE = 4096;
+const SHADOW_MIN_HALF_M = 150;
+const SHADOW_CLEARANCE_REACH = 8;
+const SHADOW_MAX_HALF_FRACTION = 0.75;
+const SHADOW_LEAD = 0.6;
+const ASSET_SUN_INTENSITY = 2.2;
+const ASSET_HEMISPHERE_INTENSITY = 0.6;
+const TERRAIN_ENV_INTENSITY = 0.4;
 
 const canvas = document.getElementById("view");
 const assetSelect = document.getElementById("asset");
@@ -30,6 +41,11 @@ const buildingsBox = document.getElementById("buildings");
 const lodSelect = document.getElementById("lod");
 const spinBox = document.getElementById("spin");
 const humanBox = document.getElementById("human");
+const atmosphereBox = document.getElementById("atmosphere");
+const shadowsBox = document.getElementById("shadows");
+const dayCycleBox = document.getElementById("day-cycle");
+const timeSlider = document.getElementById("time");
+const timeLabel = document.getElementById("time-label");
 const infoList = document.getElementById("info");
 const statusLine = document.getElementById("status");
 
@@ -48,16 +64,22 @@ controls.enableDamping = true;
 controls.autoRotateSpeed = 1.5;
 
 const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+const roomEnvironment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environment = roomEnvironment;
 scene.environmentIntensity = 0.8;
 pmrem.dispose();
-scene.add(new THREE.HemisphereLight(0xf2f4ff, 0x6b665c, 0.6));
-const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+const hemisphere = new THREE.HemisphereLight(0xf2f4ff, 0x6b665c, ASSET_HEMISPHERE_INTENSITY);
+scene.add(hemisphere);
+const sun = new THREE.DirectionalLight(0xffffff, ASSET_SUN_INTENSITY);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.bias = -0.0005;
 scene.add(sun);
 scene.add(sun.target);
+const atmosphere = new Atmosphere(renderer);
+atmosphere.group.visible = false;
+scene.add(atmosphere.group);
+const lighting = { time: 10, lastUpdate: null, lastTick: performance.now() };
 
 const ground = new THREE.Mesh(
   new THREE.PlaneGeometry(1, 1),
@@ -111,12 +133,13 @@ function readHash() {
     lod: params.get("lod"),
     mode: params.get("mode"),
     camera: params.get("cam"),
+    time: params.get("time"),
   };
 }
 
 function writeHash() {
   if (state.terrain) {
-    const params = new URLSearchParams({ terrain: state.terrain.name, mode: state.mode, cam: state.camera });
+    const params = new URLSearchParams({ terrain: state.terrain.name, mode: state.mode, cam: state.camera, time: lighting.time.toFixed(2) });
     history.replaceState(null, "", `#${params}`);
     return;
   }
@@ -244,21 +267,135 @@ function fitStage(box) {
   shadow.updateProjectionMatrix();
 }
 
-function terrainStage(terrain) {
+function formatTime(hours) {
+  const minutes = Math.round(hours * 60) % (24 * 60);
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+function flatTerrainLighting(terrain) {
+  const size = terrain.manifest.world_size_m;
+  atmosphere.group.visible = false;
+  renderer.toneMapping = THREE.NoToneMapping;
+  renderer.toneMappingExposure = 1;
+  scene.environment = roomEnvironment;
+  scene.environmentIntensity = 0.8;
+  scene.background = new THREE.Color(BACKGROUND);
+  scene.fog = new THREE.Fog(BACKGROUND, size * 0.9, size * 3);
+  hemisphere.intensity = ASSET_HEMISPHERE_INTENSITY;
+  sun.color.set(0xffffff);
+  sun.intensity = ASSET_SUN_INTENSITY;
+  sun.castShadow = false;
+  sun.position.set(size * 0.4, size * 0.6, size * 0.3);
+  sun.target.position.set(0, 0, 0);
+  terrain.splatMaterial.envMapIntensity = TERRAIN_ENV_INTENSITY;
+  const water = terrain.waterUniforms;
+  water.uSunDirection.value.subVectors(sun.position, sun.target.position).normalize();
+  water.uSunColour.value.set(0xffffff);
+  water.uAmbient.value.setRGB(0.4, 0.4, 0.4);
+  water.uSkyHorizon.value.set(BACKGROUND);
+}
+
+function skyTerrainLighting(terrain) {
+  const lit = atmosphere.update(lighting.time);
+  lighting.lastUpdate = lighting.time;
+  atmosphere.group.visible = true;
+  renderer.toneMapping = TONE_MAPPING;
+  renderer.toneMappingExposure = lit.exposure;
+  scene.environment = lit.environment;
+  scene.environmentIntensity = 1;
+  scene.background = lit.fogColour;
+  scene.fog = new THREE.FogExp2(lit.fogColour, lit.fogDensity);
+  hemisphere.intensity = 0;
+  sun.color.copy(lit.keyColour);
+  sun.intensity = lit.keyIntensity;
+  sun.castShadow = shadowsBox.checked && lit.keyIntensity > 0;
+  terrain.splatMaterial.envMapIntensity = 1;
+  const water = terrain.waterUniforms;
+  water.uSunDirection.value.copy(lit.keyDirection);
+  water.uSunColour.value.copy(lit.keyColour).multiplyScalar(lit.keyIntensity / Math.PI);
+  water.uAmbient.value.copy(lit.zenith).lerp(lit.horizon, 0.5).multiplyScalar(0.6);
+  water.uSkyHorizon.value.copy(lit.horizon);
+  water.uSkyZenith.value.copy(lit.zenith);
+  placeShadow();
+}
+
+function applyLighting() {
+  const terrain = state.terrain;
+  if (!terrain) {
+    return;
+  }
+  timeSlider.value = lighting.time;
+  timeLabel.textContent = formatTime(lighting.time);
+  if (atmosphereBox.checked) {
+    skyTerrainLighting(terrain);
+  } else {
+    flatTerrainLighting(terrain);
+  }
+  invalidate();
+}
+
+function placeShadow() {
+  const terrain = state.terrain;
+  if (!terrain || !sun.castShadow || !atmosphere.state) {
+    return;
+  }
+  const size = terrain.manifest.world_size_m;
+  const clearance = Math.max(camera.position.y - terrain.heightAt(camera.position.x, camera.position.z), 1);
+  const half = THREE.MathUtils.clamp(clearance * SHADOW_CLEARANCE_REACH, SHADOW_MIN_HALF_M, size * SHADOW_MAX_HALF_FRACTION);
+  const forward = new THREE.Vector3();
+  camera.getWorldDirection(forward);
+  forward.setY(0);
+  if (forward.lengthSq() > 1e-6) {
+    forward.normalize();
+  }
+  const texel = (2 * half) / SHADOW_MAP_SIZE;
+  const limit = size / 2;
+  const centre = new THREE.Vector3(
+    THREE.MathUtils.clamp(camera.position.x + forward.x * half * SHADOW_LEAD, -limit, limit),
+    0,
+    THREE.MathUtils.clamp(camera.position.z + forward.z * half * SHADOW_LEAD, -limit, limit),
+  );
+  if (half >= size * SHADOW_MAX_HALF_FRACTION) {
+    centre.set(0, 0, 0);
+  }
+  centre.x = Math.round(centre.x / texel) * texel;
+  centre.z = Math.round(centre.z / texel) * texel;
+  centre.y = terrain.heightAt(centre.x, centre.z);
+  const reach = size * 1.5 + terrain.manifest.height_range_m;
+  sun.target.position.copy(centre);
+  sun.position.copy(centre).addScaledVector(atmosphere.state.keyDirection, reach);
+  const shadow = sun.shadow;
+  if (shadow.mapSize.x !== SHADOW_MAP_SIZE) {
+    shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+    if (shadow.map) {
+      shadow.map.dispose();
+      shadow.map = null;
+    }
+  }
+  shadow.camera.left = -half;
+  shadow.camera.right = half;
+  shadow.camera.top = half;
+  shadow.camera.bottom = -half;
+  shadow.camera.near = 1;
+  shadow.camera.far = reach * 2;
+  shadow.camera.updateProjectionMatrix();
+  shadow.bias = -0.0002;
+  shadow.normalBias = texel * 1.5;
+}
+
+function terrainStage(terrain, wanted = {}) {
   const size = terrain.manifest.world_size_m;
   camera.near = 0.1;
   camera.far = size * 4;
   camera.updateProjectionMatrix();
-  scene.fog = new THREE.Fog(BACKGROUND, size * 0.9, size * 3);
   ground.visible = false;
   if (grid) {
     grid.visible = false;
   }
-  sun.castShadow = false;
-  sun.position.set(size * 0.4, size * 0.6, size * 0.3);
-  sun.target.position.set(0, 0, 0);
-  terrain.waterUniforms.uSunDirection.value.subVectors(sun.position, sun.target.position).normalize();
-  terrain.waterUniforms.uSkyHorizon.value.set(BACKGROUND);
+  atmosphere.configure(terrain.manifest.atmosphere);
+  const requested = Number.parseFloat(wanted.time ?? "");
+  lighting.time = Number.isFinite(requested) ? ((requested % 24) + 24) % 24 : atmosphere.time;
+  applyLighting();
 }
 
 function assetStage() {
@@ -266,6 +403,24 @@ function assetStage() {
   camera.far = 2000;
   camera.updateProjectionMatrix();
   scene.fog = null;
+  scene.background = new THREE.Color(BACKGROUND);
+  scene.environment = roomEnvironment;
+  scene.environmentIntensity = 0.8;
+  renderer.toneMapping = THREE.NoToneMapping;
+  renderer.toneMappingExposure = 1;
+  atmosphere.group.visible = false;
+  hemisphere.intensity = ASSET_HEMISPHERE_INTENSITY;
+  sun.color.set(0xffffff);
+  sun.intensity = ASSET_SUN_INTENSITY;
+  if (sun.shadow.mapSize.x !== 2048) {
+    sun.shadow.mapSize.set(2048, 2048);
+    if (sun.shadow.map) {
+      sun.shadow.map.dispose();
+      sun.shadow.map = null;
+    }
+  }
+  sun.shadow.bias = -0.0005;
+  sun.shadow.normalBias = 0;
   ground.visible = true;
   if (grid) {
     grid.visible = true;
@@ -457,6 +612,11 @@ function terrainInfo() {
     ["sea level", `${manifest.water.sea_level_m} m`],
     ["camera", `${(camera.position.y - eyeGround).toFixed(1)} m above ground`],
   ];
+  if (atmosphereBox.checked && atmosphere.state) {
+    const lit = atmosphere.state;
+    rows.push(["time", `${formatTime(lit.time)} (lat ${atmosphere.settings.latitude_deg}\u00b0, day ${atmosphere.settings.day_of_year})`]);
+    rows.push(["sun", `${THREE.MathUtils.radToDeg(lit.sun.elevation).toFixed(1)}\u00b0 up, ${THREE.MathUtils.radToDeg(lit.sun.azimuth).toFixed(0)}\u00b0 az`]);
+  }
   for (const [kind, stats] of Object.entries(terrain.scatterStats)) {
     rows.push([kind, `${stats.count.toLocaleString()} @ ${stats.spacing_m.toFixed(1)} m`]);
   }
@@ -624,6 +784,8 @@ async function loadBuildings(terrain) {
     root.traverse((node) => {
       if (node.isMesh) {
         node.visible = lodIndexOf(node) === 0;
+        node.castShadow = true;
+        node.receiveShadow = true;
       }
     });
     root.position.set(site.x, site.base, site.z);
@@ -680,7 +842,7 @@ async function showTerrain(name, wanted = {}) {
   terrainSelect.value = name;
   scene.add(terrain.group);
   document.body.classList.add("terrain-view");
-  terrainStage(terrain);
+  terrainStage(terrain, wanted);
   applyTerrainMode();
   const wantedCamera = wanted.camera ?? state.camera;
   if (wantedCamera === "ground") {
@@ -722,6 +884,9 @@ function fitTerrainClip() {
     camera.near = near;
     camera.updateProjectionMatrix();
   }
+  if (scene.fog && scene.fog.isFogExp2 && atmosphere.state) {
+    scene.fog.density = hazeDensity(atmosphere.state.fogDensity, clearance);
+  }
 }
 
 function invalidate() {
@@ -733,10 +898,23 @@ function cameraMoved() {
   return !camera.matrixWorld.equals(view.matrix) || !camera.projectionMatrix.equals(view.projection);
 }
 
+function advanceDay(now) {
+  const elapsed = (now - lighting.lastTick) / 1000;
+  lighting.lastTick = now;
+  if (!state.terrain || !dayCycleBox.checked) {
+    return;
+  }
+  lighting.time = (lighting.time + (elapsed * 24) / DAY_CYCLE_SECONDS) % 24;
+  if (Math.abs(lighting.time - lighting.lastUpdate) >= LIGHT_REFRESH_H) {
+    applyLighting();
+  }
+}
+
 function tick() {
   requestAnimationFrame(tick);
   resize();
   controls.update();
+  advanceDay(performance.now());
   if (state.terrain) {
     fitTerrainClip();
     if (state.terrain.water.visible) {
@@ -752,6 +930,8 @@ function tick() {
   view.projection.copy(camera.projectionMatrix);
   if (state.terrain) {
     state.terrain.cullScatter(camera.position);
+    atmosphere.follow(camera);
+    placeShadow();
   }
   renderer.render(scene, camera);
 }
@@ -797,6 +977,30 @@ document.getElementById("village").addEventListener("click", () => {
     frameBuildings();
   }
 });
+function setTime(hours) {
+  lighting.time = ((hours % 24) + 24) % 24;
+  applyLighting();
+  writeHash();
+  updateInfo();
+}
+
+timeSlider.addEventListener("input", () => {
+  setTime(Number(timeSlider.value));
+});
+for (const box of [atmosphereBox, shadowsBox]) {
+  box.addEventListener("change", () => {
+    applyLighting();
+    updateInfo();
+  });
+}
+dayCycleBox.addEventListener("change", () => {
+  lighting.lastTick = performance.now();
+  if (!dayCycleBox.checked && state.terrain) {
+    writeHash();
+    updateInfo();
+  }
+});
+
 spinBox.addEventListener("change", () => {
   controls.autoRotate = spinBox.checked;
 });
@@ -853,6 +1057,10 @@ window.addEventListener("hashchange", () => {
   const wanted = readHash();
   const sameTerrain = state.terrain && wanted.terrain === state.terrain.name && wanted.mode === state.mode && wanted.camera === state.camera;
   if (sameTerrain) {
+    const requested = Number.parseFloat(wanted.time ?? "");
+    if (Number.isFinite(requested) && Math.abs(requested - lighting.time) > 1e-3) {
+      setTime(requested);
+    }
     return;
   }
   const unchanged =
@@ -878,7 +1086,7 @@ function orbitTo(degrees) {
   controls.update();
 }
 
-window.viewerApi = { orbitTo, frameCamera, groundCamera, frameBuildings, camera, controls, scene, renderer, invalidate, terrain: () => state.terrain };
+window.viewerApi = { orbitTo, frameCamera, groundCamera, frameBuildings, setTime, camera, controls, scene, renderer, invalidate, atmosphere, terrain: () => state.terrain };
 
 for (const type of ["change", "input", "click"]) {
   document.addEventListener(type, invalidate, true);

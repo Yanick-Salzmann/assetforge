@@ -208,6 +208,14 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   the heightmap (16-bit, `0..65535` over `height_range_m`) and equal to the terrain where
   dry. Optional in `terrain.json` (`water_surface`); without it the viewer falls back to
   flat water at `sea_level_m`.
+- Lighting is per biome: an optional `[atmosphere]` table in `biomes/*.toml`
+  (`terrain/atmosphere.py`: `latitude_deg`, `day_of_year`, `time_of_day_h`, `turbidity`,
+  `rayleigh`, `visibility_km`, `haze_colour`, `ground_albedo`) is recorded as `terrain.json`
+  `atmosphere` (optional on read). The viewer (`viewer/static/sky.js`) derives everything else
+  from it: sun and full-moon positions from latitude/day/time, sun colour from air mass, a
+  single-scattering Rayleigh/Mie sky in the same units as the sun light, the sky-captured
+  environment map, Koschmieder haze thinned with camera altitude, white balance and exposure
+  adaptation, and shadows. `#time=<hours>` in the viewer URL pins the time of day.
 - Output path is `out/terrain/<name>/`. Previews are kept as the visual
   changelog, not deleted between iterations.
 

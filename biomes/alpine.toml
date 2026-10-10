@@ -3,6 +3,16 @@ name = "alpine"
 description = "High mountain: talus and bare rock above the treeline, tundra and meadow turf below it, permanent snow on the coldest ground."
 sharpness = 3.0
 
+[atmosphere]
+latitude_deg = 46.5
+day_of_year = 172
+time_of_day_h = 11.0
+turbidity = 1.8
+rayleigh = 2.2
+visibility_km = 90.0
+haze_colour = "#d2deeb"
+ground_albedo = "#8a8e8c"
+
 [layer.glacial_wash]
 material = "river_rock"
 blend_contrast = 0.5

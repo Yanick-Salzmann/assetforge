@@ -11,7 +11,7 @@ from terrain import channels as channel_module
 from terrain import manifest
 from terrain import splat
 from terrain.channels import WaterLevel
-from terrain.config import CHANNEL_NAMES, MapConfig
+from terrain.config import CHANNEL_NAMES, MapConfig, MapConfigError
 
 CPU = "cpu"
 SIZE = 8
@@ -231,3 +231,31 @@ def test_verify_fails_when_a_declared_file_has_the_wrong_size(tmp_path, biome):
     payload = manifest.build(c, water(), result)
     with pytest.raises(manifest.ManifestError):
         manifest.verify(payload, tmp_path)
+
+
+def test_build_records_the_biome_atmosphere(index):
+    shaded = splat.parse_biome(ONE_LAYER + "\n[atmosphere]\nturbidity = 8.0\n", index)
+    c = cfg()
+    payload = manifest.build(c, water(), splat.render(shaded, stack(c)))
+    assert payload["atmosphere"]["turbidity"] == 8.0
+    assert payload["atmosphere"]["latitude_deg"] == shaded.atmosphere.latitude_deg
+
+
+def test_validate_accepts_a_payload_written_before_atmosphere(biome):
+    c = cfg()
+    payload = manifest.build(c, water(), splat.render(biome, stack(c)))
+    payload.pop("atmosphere")
+    manifest.validate(payload)
+
+
+def test_validate_rejects_an_out_of_range_atmosphere(biome):
+    c = cfg()
+    payload = manifest.build(c, water(), splat.render(biome, stack(c)))
+    payload["atmosphere"]["visibility_km"] = 0.0
+    with pytest.raises(manifest.ManifestError):
+        manifest.validate(payload)
+
+
+def test_parse_biome_rejects_a_malformed_atmosphere(index):
+    with pytest.raises(MapConfigError):
+        splat.parse_biome(ONE_LAYER + "\n[atmosphere]\nlatitude_deg = 120.0\n", index)

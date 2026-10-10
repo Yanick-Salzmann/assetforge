@@ -7,6 +7,7 @@ from typing import Any, Mapping, Sequence
 
 from PIL import Image
 
+from terrain import atmosphere as atmosphere_mod
 from terrain import config
 from terrain.channels import WaterLevel
 from terrain.config import MapConfig, MapConfigError
@@ -40,6 +41,7 @@ TOP_LEVEL_KEYS = (
     "scatter",
     "normal_map",
     "colour_macro",
+    "atmosphere",
     "rule_path",
 )
 
@@ -163,6 +165,7 @@ def build(
         "scatter": [mask.as_dict() for mask in scatter],
         "normal_map": normal_map,
         "colour_macro": dict(colour_macro) if colour_macro is not None else None,
+        "atmosphere": splat.biome.atmosphere.as_dict(),
         "rule_path": rule,
     }
     validate(payload)
@@ -276,6 +279,13 @@ def validate(payload: Mapping[str, Any]) -> None:
         _require(colour_macro, "encoding", str, "colour_macro")
         for key in COLOUR_MACRO_KEYS[2:]:
             _require(colour_macro, key, (int, float), "colour_macro")
+
+    atmosphere = payload.get("atmosphere")
+    if atmosphere is not None:
+        try:
+            atmosphere_mod.validate(atmosphere)
+        except atmosphere_mod.AtmosphereError as error:
+            raise ManifestError(f"{label} {error}") from None
 
 
 def write(payload: Mapping[str, Any], out_dir: Path) -> Path:

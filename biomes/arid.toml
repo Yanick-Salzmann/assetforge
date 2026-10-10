@@ -3,6 +3,16 @@ name = "arid"
 description = "Arid desert: dune sand and rock pavement on the flats, dry wash gravel in the drainage, canyon cliffs on the steep ground."
 sharpness = 3.0
 
+[atmosphere]
+latitude_deg = 31.0
+day_of_year = 200
+time_of_day_h = 9.0
+turbidity = 7.0
+rayleigh = 1.1
+visibility_km = 18.0
+haze_colour = "#d9c8aa"
+ground_albedo = "#b0956b"
+
 [layer.dry_wash]
 material = "river_rock"
 blend_contrast = 0.5

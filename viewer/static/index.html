@@ -30,6 +30,14 @@
     <label><input type="checkbox" id="scatter" checked> scatter instances</label>
     <label><input type="checkbox" id="buildings" checked> buildings</label>
   </fieldset>
+  <fieldset id="lighting" class="terrain-only">
+    <legend>Lighting</legend>
+    <label><input type="checkbox" id="atmosphere" checked> sky &amp; atmosphere</label>
+    <label><input type="checkbox" id="shadows" checked> shadows</label>
+    <label>time <output id="time-label">10:00</output></label>
+    <input type="range" id="time" min="0" max="24" step="0.05" value="10">
+    <label><input type="checkbox" id="day-cycle"> day cycle (2 min/day)</label>
+  </fieldset>
   <fieldset id="mode">
     <legend>Shading</legend>
     <label><input type="radio" name="mode" value="textured" checked> textured</label>

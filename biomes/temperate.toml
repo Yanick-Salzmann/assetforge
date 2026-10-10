@@ -3,6 +3,16 @@ name = "temperate"
 description = "Temperate lowlands: river gravel and silt near water, grass and forest on the flats, bare rock and snow on the peaks."
 sharpness = 3.0
 
+[atmosphere]
+latitude_deg = 47.0
+day_of_year = 172
+time_of_day_h = 10.0
+turbidity = 3.0
+rayleigh = 1.6
+visibility_km = 35.0
+haze_colour = "#c3cfdb"
+ground_albedo = "#5f6a44"
+
 [layer.riverbed_gravel]
 material = "river_rock"
 blend_contrast = 0.5

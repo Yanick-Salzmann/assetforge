@@ -437,6 +437,8 @@ function buildSurface(field, material) {
         geometry.boundingSphere = sphere.clone();
         const mesh = new THREE.Mesh(geometry, material);
         mesh.name = `${lod.name}_lod${level}`;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
         const reach = level === 0 ? 0 : chunkSize * CHUNK_LOD_REACH * 2 ** (level - 1);
         lod.addLevel(mesh, reach, CHUNK_LOD_HYSTERESIS);
         meshes.push(mesh);
@@ -487,6 +489,7 @@ const WATER_FRAGMENT = `
 uniform float uTime;
 uniform vec3 uSunDirection;
 uniform vec3 uSunColour;
+uniform vec3 uAmbient;
 uniform vec3 uSkyHorizon;
 uniform vec3 uSkyZenith;
 uniform vec3 uShallowColour;
@@ -547,8 +550,8 @@ void main() {
   float glint = pow(sunAlign, sharpness) * 6.0 + pow(sunAlign, 60.0) * 0.15;
   float depth = max(vWaterDepth, 0.0);
   float murk = 1.0 - exp(-depth / uClarity);
-  float lit = 0.4 + 0.6 * max(dot(base, uSunDirection), 0.0);
-  vec3 body = mix(uShallowColour, uDeepColour, murk) * uSunColour * lit;
+  vec3 lit = uAmbient + 0.6 * max(dot(base, uSunDirection), 0.0) * uSunColour;
+  vec3 body = mix(uShallowColour, uDeepColour, murk) * lit;
   float grade = length(base.xz) / max(base.y, 1e-3);
   float churn = max(1.0 - smoothstep(0.0, WATER_FOAM_DEPTH_M, depth), smoothstep(WATER_RAPIDS_START, WATER_RAPIDS_FULL, grade));
   float froth = waterNoise(vWaterWorld.xz * 0.9 + vec2(uTime * 0.35, uTime * 0.12)).x;
@@ -571,6 +574,7 @@ function waterMaterial() {
     uTime: { value: 0 },
     uSunDirection: { value: new THREE.Vector3(0.4, 0.6, 0.3).normalize() },
     uSunColour: { value: new THREE.Color(0xffffff) },
+    uAmbient: { value: new THREE.Color(0.4, 0.4, 0.4) },
     uSkyHorizon: { value: new THREE.Color(0xb9bcc2) },
     uSkyZenith: { value: new THREE.Color(WATER_SKY_ZENITH) },
     uShallowColour: { value: new THREE.Color(WATER_SHALLOW) },
@@ -1122,6 +1126,8 @@ function tileScatter(group) {
       }
       for (const [geometry, material] of parts) {
         const mesh = new THREE.InstancedMesh(geometry, material, chosen.length);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
         writePlacements(mesh, chosen);
         tile.add(mesh);
       }
