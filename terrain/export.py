@@ -11,6 +11,7 @@ from PIL import Image
 from terrain import macro as macro_mod
 from terrain import manifest as manifest_mod
 from terrain import normal as normal_mod
+from terrain import placement as placement_mod
 from terrain import scatter as scatter_mod
 from terrain import splat as splat_mod
 from terrain.channels import ChannelStack, WaterLevel
@@ -23,12 +24,16 @@ class ExportError(MapConfigError):
     """Raised when the terrain deliverable set cannot be written or verified."""
 
 
+def height_u16(height: torch.Tensor) -> np.ndarray:
+    """The exact 16-bit samples write_height stores."""
+    values = height.detach().to(device="cpu", dtype=torch.float32).clamp(0.0, 1.0).numpy()
+    return np.ascontiguousarray((values * HEIGHTMAP_MAX + 0.5).astype(np.uint16))
+
+
 def write_height(height: torch.Tensor, path: Path) -> Path:
     """16-bit grayscale, non-colour: row-major, no flip. Blender's own UV convention lives in beauty.py, not here."""
-    values = height.detach().to(device="cpu", dtype=torch.float32).clamp(0.0, 1.0).numpy()
-    scaled = (values * HEIGHTMAP_MAX + 0.5).astype(np.uint16)
     path.parent.mkdir(parents=True, exist_ok=True)
-    Image.fromarray(np.ascontiguousarray(scaled)).save(path)
+    Image.fromarray(height_u16(height)).save(path)
     return path
 
 
@@ -80,12 +85,26 @@ def write(
     written.extend(splat_mod.write(splat, target))
 
     masks = scatter_mod.build(stack, splat)
-    for stale in target.glob(f"{scatter_mod.MASK_PREFIX}*.png"):
-        stale.unlink()
+    for pattern in ("*.png", f"*{placement_mod.INSTANCE_SUFFIX}"):
+        for stale in target.glob(f"{scatter_mod.MASK_PREFIX}{pattern}"):
+            stale.unlink()
     written.extend(scatter_mod.write(masks, target))
+    placements = placement_mod.place(
+        cfg,
+        splat.biome.species,
+        {name: scatter_mod.to_image(field) for name, field in masks.items()},
+        height_u16(stack["height"]),
+    )
+    written.extend(placement_mod.write(placements, target))
     scatter_entries = tuple(
-        manifest_mod.ScatterMask.of(species, scatter_mod.mask_name(species.name))
-        for species in splat.biome.species
+        manifest_mod.ScatterMask.of(
+            placed.species,
+            scatter_mod.mask_name(placed.species.name),
+            placement_mod.instance_name(placed.species.name),
+            placed.count,
+            placed.spacing_m,
+        )
+        for placed in placements
     )
 
     normal_map_name = None

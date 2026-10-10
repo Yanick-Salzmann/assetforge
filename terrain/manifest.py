@@ -20,7 +20,8 @@ WATER_MASK_NAME = "water.png"
 WATER_SURFACE_NAME = "water_surface.png"
 
 SCATTER_KINDS = config.SCATTER_KINDS
-SCATTER_NUMBER_KEYS = ("spacing_m", "slope_align", "exclusion_m", "water_buffer_m")
+SCATTER_NUMBER_KEYS = ("spacing_m", "placed_spacing_m", "slope_align", "exclusion_m", "water_buffer_m")
+INSTANCE_RECORD_BYTES = 20
 
 TOP_LEVEL_KEYS = (
     "schema_version",
@@ -63,6 +64,9 @@ class ScatterMask:
     slope_align: float = 0.0
     exclusion_m: float = 0.0
     water_buffer_m: float = 0.0
+    instances: str = ""
+    count: int = 0
+    placed_spacing_m: float = 0.0
 
     def __post_init__(self) -> None:
         if self.kind not in SCATTER_KINDS:
@@ -71,7 +75,14 @@ class ScatterMask:
             )
 
     @classmethod
-    def of(cls, species: Species, path: str) -> ScatterMask:
+    def of(
+        cls,
+        species: Species,
+        path: str,
+        instances: str = "",
+        count: int = 0,
+        placed_spacing_m: float = 0.0,
+    ) -> ScatterMask:
         return cls(
             species=species.name,
             kind=species.kind,
@@ -82,6 +93,9 @@ class ScatterMask:
             slope_align=species.slope_align,
             exclusion_m=species.exclusion_m,
             water_buffer_m=species.water_buffer_m,
+            instances=instances,
+            count=count,
+            placed_spacing_m=placed_spacing_m,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -95,6 +109,9 @@ class ScatterMask:
             "slope_align": self.slope_align,
             "exclusion_m": self.exclusion_m,
             "water_buffer_m": self.water_buffer_m,
+            "instances": self.instances,
+            "count": self.count,
+            "placed_spacing_m": self.placed_spacing_m,
         }
 
 
@@ -219,6 +236,10 @@ def validate(payload: Mapping[str, Any]) -> None:
             )
         _require(entry, "path", str, f"scatter {species!r}")
         _require(entry, "density", str, f"scatter {species!r}")
+        _require(entry, "instances", str, f"scatter {species!r}")
+        count = _require(entry, "count", int, f"scatter {species!r}")
+        if count < 0:
+            raise ManifestError(f"scatter {species!r} count must not be negative")
         for key in SCATTER_NUMBER_KEYS:
             _require(entry, key, (int, float), f"scatter {species!r}")
         scale = _require(entry, "scale", list, f"scatter {species!r}")
@@ -270,6 +291,17 @@ def _verify_image(out_dir: Path, name: str, resolution: int) -> None:
             )
 
 
+def _verify_instances(out_dir: Path, name: str, count: int) -> None:
+    target = out_dir / name
+    if not target.is_file():
+        raise ManifestError(f"{name} is declared in terrain.json but missing at {target}")
+    size = target.stat().st_size
+    if size != count * INSTANCE_RECORD_BYTES:
+        raise ManifestError(
+            f"{name} holds {size} bytes, expected {count} instances of {INSTANCE_RECORD_BYTES} bytes"
+        )
+
+
 def verify(payload: Mapping[str, Any], out_dir: Path) -> None:
     """Check every path terrain.json declares exists on disk at the declared resolution."""
     validate(payload)
@@ -280,6 +312,7 @@ def verify(payload: Mapping[str, Any], out_dir: Path) -> None:
         _verify_image(out_dir, texture, resolution)
     for entry in payload["scatter"]:
         _verify_image(out_dir, entry["path"], resolution)
+        _verify_instances(out_dir, entry["instances"], entry["count"])
     normal_map = payload.get("normal_map")
     if normal_map is not None:
         _verify_image(out_dir, normal_map, resolution)

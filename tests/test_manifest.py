@@ -136,6 +136,9 @@ def test_build_accepts_scatter_masks_and_normal_map(biome):
             "slope_align": 0.0,
             "exclusion_m": 0.0,
             "water_buffer_m": 0.0,
+            "instances": "",
+            "count": 0,
+            "placed_spacing_m": 0.0,
         }
     ]
     assert payload["normal_map"] == "normal.png"
@@ -170,6 +173,8 @@ def _with_duplicate_scatter(payload):
         lambda payload: _with_scatter(payload, kind="cloud"),
         lambda payload: _with_scatter(payload, scale=[1.0]),
         lambda payload: _with_scatter(payload, spacing_m="wide"),
+        lambda payload: _with_scatter(payload, count=-1),
+        lambda payload: _with_scatter(payload, count=1.5),
         _with_duplicate_scatter,
         lambda payload: payload.__setitem__("normal_map", 3),
         lambda payload: payload.__setitem__("colour_macro", "colour_macro.png"),

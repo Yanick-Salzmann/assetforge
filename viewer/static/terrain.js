@@ -6,7 +6,6 @@ const CHUNK_LOD_STRIDES = [1, 2, 4, 8, 16];
 const CHUNK_LOD_REACH = 1.5;
 const CHUNK_LOD_HYSTERESIS = 0.1;
 const SKIRT_MARGIN_M = 1;
-const MAX_SCATTER_CELLS = 4_000_000;
 const GROUND_FLAT_REACH_M = 20;
 const GROUND_MAX_SLOPE = 0.08;
 const LAYER_MAP_SIZE = 1024;
@@ -35,6 +34,8 @@ const DEFAULT_BLEND_CONTRAST = 0.3;
 const DEFAULT_BLEND_DEPTH = 0.08;
 const NEUTRAL_HEIGHT = 128;
 const LAYER_COLOURS = [0xd9a441, 0x4f9fd8, 0xe8dca0, 0x8c8478, 0x7fb24a, 0x6a4e42, 0x2e7d4f, 0xf2f2f2];
+
+const INSTANCE_FIELDS = 5;
 
 const SCATTER_KINDS = {
   conifer: { cap: 50000, sink_m: 0.3, tile_m: 768, reach_m: Infinity, parts: coniferParts },
@@ -109,26 +110,6 @@ function grassParts() {
 function debrisParts() {
   const piece = new THREE.DodecahedronGeometry(0.25, 0);
   return [[piece, new THREE.MeshStandardMaterial({ color: 0x6e655a, roughness: 0.95, flatShading: true })]];
-}
-
-function mulberry32(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function hashString(text) {
-  let hash = 2166136261;
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
 }
 
 export async function fetchRaw(url) {
@@ -1017,46 +998,23 @@ function alignedUp(field, x, z, align) {
   return [nx / length, 1 / length, nz / length];
 }
 
-function scatterPlacements(entry, mask, field, manifest) {
-  const spec = SCATTER_KINDS[entry.kind];
-  const resolution = mask.width;
-  let total = 0;
-  for (let index = 0; index < mask.data.length; index += 1) {
-    total += mask.data[index];
+async function scatterPlacements(entry, mask, field) {
+  const response = await fetch(`${entry.files}${mask.instances}`);
+  if (!response.ok) {
+    throw new Error(`${mask.instances}: HTTP ${response.status}`);
   }
-  const meanDensity = total / (255 * mask.data.length);
-  const worldSize = manifest.world_size_m;
-  let spacing = entry.spacing_m;
-  const expected = meanDensity * (worldSize / spacing) ** 2;
-  if (expected > spec.cap) {
-    spacing *= Math.sqrt(expected / spec.cap);
+  const records = new Float32Array(await response.arrayBuffer());
+  if (records.length !== mask.count * INSTANCE_FIELDS) {
+    throw new Error(`${mask.instances}: ${records.length / INSTANCE_FIELDS} instances, expected ${mask.count}`);
   }
-  spacing = Math.max(spacing, worldSize / Math.sqrt(MAX_SCATTER_CELLS));
-  const cells = Math.floor(worldSize / spacing);
-  const random = mulberry32(manifest.seed ^ hashString(entry.species));
+  const sink = SCATTER_KINDS[mask.kind].sink_m;
   const placements = [];
-  for (let j = 0; j < cells; j += 1) {
-    for (let i = 0; i < cells; i += 1) {
-      const x = (i + random()) * spacing - worldSize / 2;
-      const z = (j + random()) * spacing - worldSize / 2;
-      const px = Math.min(resolution - 1, Math.max(0, Math.round(field.toPixel(x))));
-      const pz = Math.min(resolution - 1, Math.max(0, Math.round(field.toPixel(z))));
-      const density = mask.data[pz * resolution + px] / 255;
-      const roll = random();
-      const yaw = random() * Math.PI * 2;
-      const scaleRoll = random();
-      if (roll >= density) {
-        continue;
-      }
-      if (placements.length >= spec.cap) {
-        continue;
-      }
-      const scale = entry.scale[0] + (entry.scale[1] - entry.scale[0]) * scaleRoll;
-      const [nx, ny, nz] = alignedUp(field, x, z, entry.slope_align);
-      placements.push([x, field.at(x, z) - spec.sink_m * scale, z, yaw, scale, nx, ny, nz]);
-    }
+  for (let offset = 0; offset < records.length; offset += INSTANCE_FIELDS) {
+    const [x, z, elevation, yaw, scale] = records.subarray(offset, offset + INSTANCE_FIELDS);
+    const [nx, ny, nz] = alignedUp(field, x, z, mask.slope_align);
+    placements.push([x, elevation - sink * scale, z, yaw, scale, nx, ny, nz]);
   }
-  return { placements, spacing, meanDensity };
+  return placements;
 }
 
 function writePlacements(mesh, placements) {
@@ -1348,10 +1306,9 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
     if (!(mask.kind in SCATTER_KINDS)) {
       continue;
     }
-    const raw = await fetchRaw(`${entry.raw}${mask.path}`);
-    const { placements, spacing, meanDensity } = scatterPlacements(mask, raw, field, manifest);
+    const placements = await scatterPlacements(entry, mask, field);
     scatter.add(scatterGroup(mask.species, mask.kind, placements, manifest.world_size_m));
-    scatterStats[mask.species] = { kind: mask.kind, count: placements.length, spacing_m: spacing, mean_density: meanDensity };
+    scatterStats[mask.species] = { kind: mask.kind, count: placements.length, spacing_m: mask.placed_spacing_m };
   }
   group.add(scatter);
 

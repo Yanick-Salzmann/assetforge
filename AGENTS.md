@@ -234,8 +234,18 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   species) and `water_buffer_m`. Layer names may not shadow channel names.
 - Scatter masks are single-channel 8-bit, one per species: `scatter_<species>.png`.
   `terrain.json` `scatter[]` records `species`, `kind`, `path`, `density`, `spacing_m`,
-  `scale`, `slope_align`, `exclusion_m`, `water_buffer_m` (schema_version 2), validated by
-  `terrain/manifest.py`. Export removes stale `scatter_*.png` from the map directory.
+  `scale`, `slope_align`, `exclusion_m`, `water_buffer_m`, `instances`, `count`,
+  `placed_spacing_m` (schema_version 2), validated by `terrain/manifest.py`. Export removes
+  stale `scatter_*` files from the map directory.
+- Instances are placed in Python, never in the engine or viewer (`terrain/placement.py`):
+  Poisson-disc per species in declaration order, seeded by `cfg.derive_seed("scatter",
+  species)`, thinned by the 8-bit mask, capped per kind (`placement.KIND_CAPS`, which can
+  widen the spacing - the result is `placed_spacing_m`), and dropped within
+  `max(exclusion_m, other.exclusion_m)` of any earlier species' instance. Written as
+  `scatter_<species>.bin`: little-endian float32 records `(x, y, z, yaw, scale)`, x along
+  image columns and y along image rows in metres from the map centre, z the elevation in
+  metres sampled bilinearly from `height.png`. Slope alignment is applied at load time from
+  the heightfield normal and `slope_align`.
 - `colour_macro.png` is an 8-bit RGB albedo multiplier (`byte / 128`, neutral 128) built
   from `patchiness_coarse`/`patchiness_mid`, `moisture` and `wetness` (`terrain/macro.py`).
   Low-frequency, no lighting or AO. `terrain.json` `colour_macro` records the path and the

@@ -95,8 +95,10 @@ def test_write_removes_stale_scatter_masks(tmp_path, two_layer_biome):
     c = cfg()
     built = stack(c)
     (tmp_path / "scatter_tree.png").write_bytes(b"stale")
+    (tmp_path / "scatter_tree.bin").write_bytes(b"stale")
     export.write(c, built, water(), splat.render(two_layer_biome, built), out_dir=tmp_path)
     assert not (tmp_path / "scatter_tree.png").exists()
+    assert not (tmp_path / "scatter_tree.bin").exists()
 
 
 def test_write_without_species_writes_no_scatter(tmp_path, no_grass_biome):
@@ -104,7 +106,7 @@ def test_write_without_species_writes_no_scatter(tmp_path, no_grass_biome):
     built = stack(c)
     outcome = export.write(c, built, water(), splat.render(no_grass_biome, built), out_dir=tmp_path)
     assert outcome.manifest["scatter"] == []
-    assert not list(tmp_path.glob("scatter_*.png"))
+    assert not list(tmp_path.glob("scatter_*"))
 
 
 def test_write_produces_the_full_deliverable_set(tmp_path, two_layer_biome):
@@ -120,10 +122,12 @@ def test_write_produces_the_full_deliverable_set(tmp_path, two_layer_biome):
         "splat_0.png",
         "scatter_tuft.png",
         "scatter_boulder.png",
+        "scatter_tuft.bin",
+        "scatter_boulder.bin",
         "normal.png",
         "colour_macro.png",
     }
-    for path in outcome.files:
+    for path in (path for path in outcome.files if path.suffix == ".png"):
         with Image.open(path) as image:
             assert image.size == (SIZE, SIZE)
 
@@ -139,6 +143,8 @@ def test_write_produces_the_full_deliverable_set(tmp_path, two_layer_biome):
     assert boulder["scale"] == [0.6, 2.0]
     assert boulder["slope_align"] == pytest.approx(0.7)
     assert boulder["exclusion_m"] == pytest.approx(1.5)
+    assert boulder["instances"] == "scatter_boulder.bin"
+    assert (tmp_path / "scatter_boulder.bin").stat().st_size == boulder["count"] * 20
 
 
 def test_write_skips_the_normal_map_when_disabled(tmp_path, two_layer_biome):
