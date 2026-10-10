@@ -215,7 +215,11 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   from it: sun and full-moon positions from latitude/day/time, sun colour from air mass, a
   single-scattering Rayleigh/Mie sky in the same units as the sun light, the sky-captured
   environment map, Koschmieder haze thinned with camera altitude, white balance and exposure
-  adaptation, and shadows. `#time=<hours>` in the viewer URL pins the time of day.
+  adaptation, and shadows. `#time=<hours>` in the viewer URL pins the time of day. The
+  Blender beauty render reads the same entry (`terrain/beauty.py` `lighting_args`): sun and
+  moon from `terrain.atmosphere.sun_position`/`moon_position` (map +y is north, i.e. the image
+  top), a multiple-scattering sky texture with its sun disc as the key light, a moon lamp at
+  night, and per-view metered exposure.
 - Output path is `out/terrain/<name>/`. Previews are kept as the visual
   changelog, not deleted between iterations.
 

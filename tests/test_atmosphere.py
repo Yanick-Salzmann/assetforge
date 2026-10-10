@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from terrain import atmosphere
@@ -47,3 +49,31 @@ def test_validate_requires_every_key():
     recorded.pop("rayleigh")
     with pytest.raises(atmosphere.AtmosphereError):
         atmosphere.validate(recorded)
+
+
+def test_sun_stands_due_south_at_solar_noon_in_the_north():
+    sun = atmosphere.sun_position(atmosphere.Atmosphere(latitude_deg=45.0, day_of_year=172, time_of_day_h=12.0))
+    assert math.degrees(sun.azimuth_rad) == pytest.approx(180.0)
+    assert math.degrees(sun.elevation_rad) == pytest.approx(90.0 - 45.0 + 23.44, abs=0.1)
+
+
+def test_sun_rises_in_the_east_and_sets_in_the_west():
+    morning = atmosphere.sun_position(atmosphere.Atmosphere(time_of_day_h=7.0))
+    evening = atmosphere.sun_position(atmosphere.Atmosphere(time_of_day_h=17.0))
+    assert 0.0 < math.degrees(morning.azimuth_rad) < 180.0
+    assert 180.0 < math.degrees(evening.azimuth_rad) < 360.0
+    assert morning.direction()[0] > 0.0
+    assert evening.direction()[0] < 0.0
+
+
+def test_full_moon_mirrors_the_sun():
+    settings = atmosphere.Atmosphere(time_of_day_h=23.0)
+    sun = atmosphere.sun_position(settings)
+    moon = atmosphere.moon_position(settings)
+    assert sun.elevation_rad < 0.0
+    assert moon.elevation_rad == pytest.approx(-sun.elevation_rad)
+
+
+def test_direction_is_a_unit_vector_pointing_north_at_zero_azimuth():
+    direction = atmosphere.CelestialPosition(elevation_rad=0.0, azimuth_rad=0.0).direction()
+    assert direction == pytest.approx((0.0, 1.0, 0.0))

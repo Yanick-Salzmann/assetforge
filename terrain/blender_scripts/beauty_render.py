@@ -58,24 +58,36 @@ def _set_cycles_device(requested: str) -> dict:
     return {"device": "CPU", "gpus": []}
 
 
-def _build_world() -> None:
+def _build_world(sky_args: dict) -> None:
     world = bpy.data.worlds.new("Sky")
     world.use_nodes = True
-    background = world.node_tree.nodes["Background"]
-    background.inputs["Color"].default_value = (0.55, 0.68, 0.85, 1.0)
+    tree = world.node_tree
+    sky = tree.nodes.new("ShaderNodeTexSky")
+    sky.sky_type = "MULTIPLE_SCATTERING"
+    sky.sun_disc = True
+    sky.sun_elevation = float(sky_args["sun_elevation_rad"])
+    sky.sun_rotation = float(sky_args["sun_rotation_rad"])
+    sky.air_density = float(sky_args["air_density"])
+    sky.aerosol_density = float(sky_args["aerosol_density"])
+    background = tree.nodes["Background"]
+    tree.links.new(sky.outputs["Color"], background.inputs["Color"])
     background.inputs["Strength"].default_value = 1.0
     bpy.context.scene.world = world
 
 
-def _build_sun(sun_args: dict) -> None:
-    light = bpy.data.lights.new("Sun", type="SUN")
-    light.energy = float(sun_args.get("energy", 4.0))
-    light.angle = math.radians(1.0)
-    obj = bpy.data.objects.new("Sun", light)
+def _build_moon(moon_args: dict) -> None:
+    """A full-moon sun lamp, present only when the moon is the key light."""
+    energy = float(moon_args.get("energy", 0.0))
+    if energy <= 0.0:
+        return
+    light = bpy.data.lights.new("Moon", type="SUN")
+    light.energy = energy
+    light.color = tuple(moon_args["colour"])
+    light.angle = math.radians(0.5)
+    obj = bpy.data.objects.new("Moon", light)
     bpy.context.collection.objects.link(obj)
-    altitude = math.radians(float(sun_args.get("altitude_deg", 45.0)))
-    azimuth = math.radians(float(sun_args.get("azimuth_deg", 315.0)))
-    obj.rotation_euler = (math.pi / 2.0 - altitude, 0.0, azimuth)
+    toward_light = -Vector(moon_args["direction"])
+    obj.rotation_euler = toward_light.to_track_quat("-Z", "Y").to_euler()
 
 
 def _build_terrain(args: dict) -> bpy.types.Object:
@@ -207,15 +219,69 @@ def _look_at(obj: bpy.types.Object, target: Vector) -> None:
     obj.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
 
 
-def _render(scene, resolution_x: int, resolution_y: int, samples: int, filepath: str) -> None:
+def _render(scene, resolution_x: int, resolution_y: int, samples: int, filepath: str, file_format: str) -> None:
     scene.render.resolution_x = resolution_x
     scene.render.resolution_y = resolution_y
     scene.render.resolution_percentage = 100
-    scene.render.image_settings.file_format = "PNG"
+    scene.render.image_settings.file_format = file_format
     scene.render.image_settings.color_mode = "RGB"
     scene.cycles.samples = samples
     scene.render.filepath = filepath
     bpy.ops.render.render(write_still=True)
+
+
+def _luminances(path: str) -> list[float]:
+    image = bpy.data.images.load(path)
+    pixels = list(image.pixels)
+    bpy.data.images.remove(image)
+    return sorted(
+        0.2126 * pixels[index] + 0.7152 * pixels[index + 1] + 0.0722 * pixels[index + 2]
+        for index in range(0, len(pixels), 4)
+    )
+
+
+def _adapt_exposure(scene, exposure_args: dict, resolution_x: int, resolution_y: int, probe_path: str) -> float:
+    """Meter a small, quick render of this view and expose its log-average luminance to the key,
+    held back where that would push the brightest few percent past the highlight white.
+
+    The physical sky spans several orders of magnitude between noon and moonlight, so a fixed
+    exposure would leave every render but one time of day blown out or black.
+    """
+    scene.view_settings.exposure = 0.0
+    divisor = int(exposure_args["probe_divisor"])
+    _render(
+        scene,
+        max(resolution_x // divisor, 16),
+        max(resolution_y // divisor, 16),
+        int(exposure_args["probe_samples"]),
+        probe_path,
+        "OPEN_EXR",
+    )
+    luminances = _luminances(probe_path)
+    average = math.exp(sum(math.log(1.0e-6 + value) for value in luminances) / max(len(luminances), 1))
+    highlight_index = min(int(len(luminances) * float(exposure_args["highlight_percentile"])), len(luminances) - 1)
+    highlight = max(luminances[highlight_index], 1.0e-6)
+    stops = min(
+        math.log2(float(exposure_args["key"]) / average),
+        math.log2(float(exposure_args["highlight_white"]) / highlight),
+    )
+    stops = min(max(stops, float(exposure_args["min_stops"])), float(exposure_args["max_stops"]))
+    scene.view_settings.exposure = stops
+    return stops
+
+
+def _render_view(
+    scene,
+    exposure_args: dict,
+    resolution_x: int,
+    resolution_y: int,
+    samples: int,
+    filepath: str,
+    probe_path: str,
+) -> float:
+    stops = _adapt_exposure(scene, exposure_args, resolution_x, resolution_y, probe_path)
+    _render(scene, resolution_x, resolution_y, samples, filepath, "PNG")
+    return stops
 
 
 def main() -> None:
@@ -223,13 +289,16 @@ def main() -> None:
     _clear_scene()
 
     device_info = _set_cycles_device(args.get("render", {}).get("device", "OPTIX"))
-    _build_world()
-    _build_sun(args.get("sun", {}))
+    lighting = args["lighting"]
+    _build_world(lighting["sky"])
+    _build_moon(lighting["moon"])
     terrain = _build_terrain(args)
     terrain.data.materials.append(_build_material(args))
 
     scene = bpy.context.scene
     camera_data = bpy.data.cameras.new("BeautyCam")
+    camera_data.clip_start = 0.1
+    camera_data.clip_end = 4.0 * (float(args["world_size_m"]) + float(args["height_range_m"]))
     camera = bpy.data.objects.new("BeautyCam", camera_data)
     bpy.context.collection.objects.link(camera)
     scene.camera = camera
@@ -249,6 +318,9 @@ def main() -> None:
     resolution_x = int(render_args.get("resolution_x", 960))
     resolution_y = int(render_args.get("resolution_y", 540))
     outputs = args["output"]
+    exposure_args = lighting["exposure"]
+    probe_path = str(Path(args["result_json"]).with_name("exposure_probe.exr"))
+    exposure_stops = {}
 
     three_quarter = camera_args.get("three_quarter", {})
     height_range = float(args["height_range_m"])
@@ -260,7 +332,9 @@ def main() -> None:
     ) * distance
     camera.location = target + offset
     _look_at(camera, target)
-    _render(scene, resolution_x, resolution_y, samples, outputs["three_quarter"])
+    exposure_stops["three_quarter"] = _render_view(
+        scene, exposure_args, resolution_x, resolution_y, samples, outputs["three_quarter"], probe_path
+    )
 
     ground = camera_args.get("ground", {})
     look_azimuth = math.radians(float(ground.get("look_azimuth_deg", three_quarter.get("azimuth_deg", 45.0))))
@@ -271,9 +345,15 @@ def main() -> None:
     eye_height = float(ground.get("eye_height_m", 1.8))
     camera.location = Vector((ground_x, ground_y, ground_z + eye_height))
     _look_at(camera, Vector((centre_x, centre_y, centre_z + eye_height * 0.5)))
-    _render(scene, resolution_x, resolution_y, samples, outputs["ground"])
+    exposure_stops["ground"] = _render_view(
+        scene, exposure_args, resolution_x, resolution_y, samples, outputs["ground"], probe_path
+    )
 
-    result = {"device": device_info, "centre_world_m": [centre_x, centre_y, centre_z]}
+    result = {
+        "device": device_info,
+        "centre_world_m": [centre_x, centre_y, centre_z],
+        "exposure_stops": exposure_stops,
+    }
     Path(args["result_json"]).write_text(json.dumps(result), encoding="utf-8")
 
 

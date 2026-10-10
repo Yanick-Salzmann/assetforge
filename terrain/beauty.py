@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -13,9 +14,9 @@ from PIL import Image
 
 from assets.blender import require_blender
 from library.materials import MaterialIndex
+from terrain import atmosphere as atmosphere_mod
 from terrain.budget import DEFAULT_BUDGET, Preview, PreviewBudget, deliver_file
 from terrain.config import HEIGHTMAP_MAX, MapConfig, MapConfigError
-from terrain.preview import DEFAULT_ALTITUDE_DEG, DEFAULT_AZIMUTH_DEG
 from terrain.splat import SplatResult
 
 SCRIPT_PATH = Path(__file__).resolve().parent / "blender_scripts" / "beauty_render.py"
@@ -34,6 +35,23 @@ DEFAULT_GROUND_EYE_HEIGHT_M = 1.8
 DEFAULT_DEVICE = "OPTIX"
 LOG_TAIL_CHARS = 4000
 
+RAYLEIGH_REFERENCE = 1.5
+MIE_CLEAN = 4e-6
+MIE_PER_TURBIDITY = 7e-6
+SKY_MIE_COEFFICIENT = 2e-5
+SKY_DENSITY_MAX = 10.0
+SUN_KEY_MIN_SIN = -0.05
+MOON_IRRADIANCE = 3.3
+MOON_COLOUR = (0.66, 0.76, 1.0)
+EXPOSURE_KEY = 0.18
+EXPOSURE_NIGHT_KEY_SCALE = 0.2
+EXPOSURE_HIGHLIGHT_PERCENTILE = 0.98
+EXPOSURE_HIGHLIGHT_WHITE = 2.0
+EXPOSURE_MIN_STOPS = -12.0
+EXPOSURE_MAX_STOPS = 10.0
+EXPOSURE_PROBE_DIVISOR = 4
+EXPOSURE_PROBE_SAMPLES = 16
+
 
 class BeautyRenderError(MapConfigError):
     """Raised when the headless Blender beauty render cannot be produced."""
@@ -47,7 +65,60 @@ class BeautyRender:
     ground: Path
     centre_world_m: tuple[float, float, float]
     device: dict[str, Any]
+    lighting: dict[str, Any]
     log: str
+
+
+def _smoothstep(edge0: float, edge1: float, x: float) -> float:
+    t = min(max((x - edge0) / (edge1 - edge0), 0.0), 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def lighting_args(atmosphere: atmosphere_mod.Atmosphere) -> dict[str, Any]:
+    """Sun, sky and moon for the Blender render, from the same atmosphere the viewer reads.
+
+    The sky is Blender's multiple-scattering model with its sun disc as the key light, so the
+    sun's colour and the sky's brightness come from one physical model. Air and aerosol
+    densities scale from the viewer's Rayleigh and Mie coefficients. Once the sun is below the
+    horizon a full-moon sun lamp takes over as the key, faded in exactly as the viewer fades it,
+    and the exposure key drops so night still reads as night after metering.
+    """
+    sun = atmosphere_mod.sun_position(atmosphere)
+    moon = atmosphere_mod.moon_position(atmosphere)
+    mie = MIE_CLEAN + MIE_PER_TURBIDITY * (atmosphere.turbidity - 1.0)
+    sin_sun = math.sin(sun.elevation_rad)
+    night = 1.0 - _smoothstep(-0.15, -0.05, sin_sun)
+    moon_up = _smoothstep(-0.02, 0.12, math.sin(moon.elevation_rad))
+    moon_energy = MOON_IRRADIANCE * night * moon_up if sin_sun <= SUN_KEY_MIN_SIN else 0.0
+    return {
+        "sky": {
+            "sun_elevation_rad": sun.elevation_rad,
+            "sun_rotation_rad": sun.azimuth_rad,
+            "air_density": min(atmosphere.rayleigh / RAYLEIGH_REFERENCE, SKY_DENSITY_MAX),
+            "aerosol_density": min(mie / SKY_MIE_COEFFICIENT, SKY_DENSITY_MAX),
+        },
+        "moon": {
+            "direction": list(moon.direction()),
+            "energy": moon_energy,
+            "colour": list(MOON_COLOUR),
+        },
+        "exposure": {
+            "key": EXPOSURE_KEY * (1.0 - night * (1.0 - EXPOSURE_NIGHT_KEY_SCALE)),
+            "highlight_percentile": EXPOSURE_HIGHLIGHT_PERCENTILE,
+            "highlight_white": EXPOSURE_HIGHLIGHT_WHITE,
+            "min_stops": EXPOSURE_MIN_STOPS,
+            "max_stops": EXPOSURE_MAX_STOPS,
+            "probe_divisor": EXPOSURE_PROBE_DIVISOR,
+            "probe_samples": EXPOSURE_PROBE_SAMPLES,
+        },
+        "summary": {
+            "time_of_day_h": atmosphere.time_of_day_h,
+            "sun_elevation_deg": math.degrees(sun.elevation_rad),
+            "sun_azimuth_deg": math.degrees(sun.azimuth_rad),
+            "moon_elevation_deg": math.degrees(moon.elevation_rad),
+            "key": "sun" if sin_sun > SUN_KEY_MIN_SIN else "moon",
+        },
+    }
 
 
 def _texture_index(texture_name: str) -> int:
@@ -113,8 +184,8 @@ def render(
     grid_resolution: int = DEFAULT_GRID_RESOLUTION,
     samples: int = DEFAULT_SAMPLES,
     resolution: tuple[int, int] = DEFAULT_RESOLUTION,
-    sun_azimuth_deg: float = DEFAULT_AZIMUTH_DEG,
-    sun_altitude_deg: float = DEFAULT_ALTITUDE_DEG,
+    atmosphere: atmosphere_mod.Atmosphere | None = None,
+    time_of_day_h: float | None = None,
     three_quarter_azimuth_deg: float = DEFAULT_THREE_QUARTER_AZIMUTH_DEG,
     three_quarter_altitude_deg: float = DEFAULT_THREE_QUARTER_ALTITUDE_DEG,
     ground_eye_height_m: float = DEFAULT_GROUND_EYE_HEIGHT_M,
@@ -124,6 +195,8 @@ def render(
 ) -> BeautyRender:
     """Blender headless: displace a grid by the height field, bind the splat's real tiling
     materials, and render one 3/4 view and one ground-level view at a chosen map position.
+
+    Lit by the biome's [atmosphere] unless one is handed in; time_of_day_h overrides its time.
 
     Reads only what is handed in - no dependency on export.py's terrain.json, since this is the
     Phase 2 gate and must run before the export contract exists.
@@ -145,6 +218,10 @@ def render(
     assignment = splat.assignment()
     materials_used = sorted({entry["material"] for entry in assignment})
     materials_meta = _material_metadata(materials_used, material_index)
+    sky = splat.biome.atmosphere if atmosphere is None else atmosphere
+    if time_of_day_h is not None:
+        sky = atmosphere_mod.parse({**sky.as_dict(), "time_of_day_h": time_of_day_h}, "time_of_day_h")
+    lighting = lighting_args(sky)
 
     with tempfile.TemporaryDirectory(prefix="beauty_") as scratch_name:
         scratch = Path(scratch_name)
@@ -172,11 +249,7 @@ def render(
                 }
                 for entry in assignment
             ],
-            "sun": {
-                "azimuth_deg": sun_azimuth_deg,
-                "altitude_deg": sun_altitude_deg,
-                "energy": 4.0,
-            },
+            "lighting": lighting,
             "camera": {
                 "centre_frac": [centre_x, centre_y],
                 "patch_size_m": patch_size_m,
@@ -228,6 +301,7 @@ def render(
         ground=ground_path,
         centre_world_m=tuple(payload.get("centre_world_m", (0.0, 0.0, 0.0))),
         device=payload.get("device", {}),
+        lighting={**lighting["summary"], "exposure_stops": payload.get("exposure_stops", {})},
         log=log,
     )
 

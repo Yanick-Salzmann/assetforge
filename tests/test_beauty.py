@@ -10,7 +10,7 @@ Image = pytest.importorskip("PIL.Image")
 
 from assets import blender as blender_discovery
 from library import materials
-from terrain import beauty
+from terrain import atmosphere, beauty
 from terrain import channels as channel_module
 from terrain import splat
 from terrain.config import CHANNEL_NAMES, MapConfig
@@ -86,6 +86,34 @@ def test_render_rejects_a_non_positive_patch_size(material_index, splat_result):
         beauty.render(cfg(), stack()["height"], splat_result, material_index, patch_size_m=0.0)
 
 
+def test_lighting_args_key_the_sun_by_day():
+    lighting = beauty.lighting_args(atmosphere.Atmosphere(time_of_day_h=10.0))
+    assert lighting["summary"]["key"] == "sun"
+    assert lighting["sky"]["sun_elevation_rad"] > 0.0
+    assert lighting["moon"]["energy"] == 0.0
+    assert lighting["exposure"]["key"] == pytest.approx(beauty.EXPOSURE_KEY)
+
+
+def test_lighting_args_key_the_moon_by_night():
+    lighting = beauty.lighting_args(atmosphere.Atmosphere(time_of_day_h=23.0))
+    assert lighting["summary"]["key"] == "moon"
+    assert lighting["moon"]["energy"] == pytest.approx(beauty.MOON_IRRADIANCE)
+    assert lighting["exposure"]["key"] < beauty.EXPOSURE_KEY
+
+
+def test_lighting_args_scale_sky_densities_from_the_atmosphere():
+    clean = beauty.lighting_args(atmosphere.Atmosphere(turbidity=1.0, rayleigh=1.5))["sky"]
+    hazy = beauty.lighting_args(atmosphere.Atmosphere(turbidity=8.0, rayleigh=3.0))["sky"]
+    assert clean["air_density"] == pytest.approx(1.0)
+    assert hazy["air_density"] == pytest.approx(2.0)
+    assert hazy["aerosol_density"] > clean["aerosol_density"]
+
+
+def test_render_rejects_an_out_of_range_time_of_day(material_index, splat_result):
+    with pytest.raises(atmosphere.AtmosphereError):
+        beauty.render(cfg(), stack()["height"], splat_result, material_index, time_of_day_h=30.0)
+
+
 def test_write_height_png_flips_vertically_and_scales_to_16_bit(tmp_path):
     height = torch.zeros((4, 4), device=CPU)
     height[0, :] = 1.0
@@ -111,6 +139,8 @@ def test_render_produces_both_views_end_to_end(material_index, splat_result, tmp
         resolution=(160, 90),
         timeout_s=180.0,
     )
+    assert result.lighting["key"] in ("sun", "moon")
+    assert set(result.lighting["exposure_stops"]) == {"three_quarter", "ground"}
     assert result.three_quarter.is_file()
     assert result.ground.is_file()
     with Image.open(result.three_quarter) as image:

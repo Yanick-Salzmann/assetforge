@@ -241,23 +241,28 @@ def preview_beauty(
     centre: list[float] | None = None,
     patch_size_m: float = beauty.DEFAULT_PATCH_SIZE_M,
     samples: int = beauty.DEFAULT_SAMPLES,
+    time_of_day_h: float | None = None,
 ) -> list:
     """Render a headless Blender beauty view of the terrain, real materials and all.
 
     view is "three_quarter" or "ground". centre is [x, y] fractions of the map, defaulting to
     its middle. Rendering is not cached: each call re-renders both views and returns the one
-    asked for. Applies the biome from the last apply_rules call, replaying it if needed.
+    asked for. Applies the biome from the last apply_rules call, replaying it if needed. Lit by
+    the biome's [atmosphere]; time_of_day_h (0-24, local solar time) overrides its time of day.
     """
     current = session.open_session(name)
     kwargs: dict[str, Any] = {"patch_size_m": patch_size_m, "samples": samples}
     if centre is not None:
         kwargs["centre"] = tuple(centre)
+    if time_of_day_h is not None:
+        kwargs["time_of_day_h"] = time_of_day_h
     result, rendered = session.beauty_view(current, view, **kwargs)
     summary = {
         "name": current.name,
         "view": view,
         "centre_world_m": list(result.centre_world_m),
         "device": result.device,
+        "lighting": result.lighting,
     }
     return _result(summary, rendered)
 

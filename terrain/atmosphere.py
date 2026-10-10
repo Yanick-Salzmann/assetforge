@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from typing import Any, Mapping
@@ -24,6 +25,7 @@ NUMBER_RANGES = {
     "visibility_km": (1.0, 300.0),
 }
 DAY_RANGE = (1, 365)
+AXIAL_TILT_DEG = 23.44
 COLOUR_KEYS = ("haze_colour", "ground_albedo")
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
@@ -102,3 +104,52 @@ def validate(payload: Any, label: str = "atmosphere") -> None:
     if missing:
         raise AtmosphereError(f"{label} is missing {', '.join(missing)}")
     parse(payload, label)
+
+
+@dataclass(frozen=True)
+class CelestialPosition:
+    """Where a body sits in the sky: elevation above the horizon and compass azimuth, clockwise from north."""
+
+    elevation_rad: float
+    azimuth_rad: float
+
+    def direction(self) -> tuple[float, float, float]:
+        """Unit vector toward the body in map space: +x east (image columns), +y north (image top), +z up."""
+        flat = math.cos(self.elevation_rad)
+        return (
+            math.sin(self.azimuth_rad) * flat,
+            math.cos(self.azimuth_rad) * flat,
+            math.sin(self.elevation_rad),
+        )
+
+
+def declination(day_of_year: int) -> float:
+    return math.radians(-AXIAL_TILT_DEG) * math.cos(2.0 * math.pi / 365.0 * (day_of_year + 10))
+
+
+def celestial_position(latitude_deg: float, declination_rad: float, hours: float) -> CelestialPosition:
+    """The same local-solar-time model the viewer's sky.js uses, so both renders agree on the sky."""
+    latitude = math.radians(latitude_deg)
+    hour_angle = math.radians(15.0 * (hours - 12.0))
+    sin_elevation = math.sin(latitude) * math.sin(declination_rad) + math.cos(latitude) * math.cos(
+        declination_rad
+    ) * math.cos(hour_angle)
+    elevation = math.asin(max(-1.0, min(1.0, sin_elevation)))
+    azimuth = math.atan2(
+        -math.sin(hour_angle),
+        math.tan(declination_rad) * math.cos(latitude) - math.sin(latitude) * math.cos(hour_angle),
+    )
+    return CelestialPosition(elevation, azimuth % (2.0 * math.pi))
+
+
+def sun_position(atmosphere: Atmosphere) -> CelestialPosition:
+    return celestial_position(
+        atmosphere.latitude_deg, declination(atmosphere.day_of_year), atmosphere.time_of_day_h
+    )
+
+
+def moon_position(atmosphere: Atmosphere) -> CelestialPosition:
+    """A full moon: opposite the sun in declination and twelve hours round."""
+    return celestial_position(
+        atmosphere.latitude_deg, -declination(atmosphere.day_of_year), atmosphere.time_of_day_h + 12.0
+    )
