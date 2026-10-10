@@ -104,7 +104,7 @@ slope_align = 0.5
 
 [species.boulder]
 kind = "rock"
-meshes = ["nature/rock_largeA", "nature/rock_largeB", "nature/rock_largeC", "nature/rock_largeD"]
+meshes = ["scatter/boulder_a", "scatter/boulder_b", "scatter/boulder_c"]
 density = "0.7 * exposed_rock * smoothstep(wear, 0.5, 0.85) * (1 - smoothstep(slope, 0.4, 0.6)) * (1 - smoothstep(flow, 0.55, 0.75))"
 spacing_m = 5.0
 scale = [0.6, 2.2]
@@ -113,7 +113,7 @@ exclusion_m = 1.5
 
 [species.deadwood]
 kind = "debris"
-meshes = ["nature/log", "nature/log_large", "nature/stump_old", "nature/stump_round"]
+meshes = ["scatter/log_a", "scatter/stump_a", "scatter/stump_b"]
 density = "forest_floor * smoothstep(patchiness_fine, 0.48, 0.62) * (1 - smoothstep(slope, 0.35, 0.55))"
 spacing_m = 4.0
 scale = [0.6, 1.4]
@@ -122,7 +122,7 @@ exclusion_m = 0.5
 
 [species.river_pebbles]
 kind = "debris"
-meshes = ["nature/rock_smallFlatA", "nature/rock_smallFlatB", "nature/rock_smallFlatC", "nature/rock_smallA"]
+meshes = ["scatter/stone_a", "scatter/stone_b"]
 density = "max(riverbed_gravel, 0.5 * silt_flat) * (1 - smoothstep(slope, 0.4, 0.6))"
 spacing_m = 2.0
 scale = [0.5, 1.5]

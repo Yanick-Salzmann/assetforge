@@ -30,3 +30,8 @@ category = "vegetation"
 source = "kenney"
 slug = "graveyard-kit"
 category = "prop"
+
+[pack.scatter]
+source = "assetforge"
+slug = "scatter"
+category = "vegetation"

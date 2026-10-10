@@ -233,10 +233,18 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   `slope_align` (0 upright .. 1 surface-normal), `exclusion_m` (clearance from every other
   species), `water_buffer_m` and `meshes` (1-4 `<pack>/<model>` kit props from
   `library/kits.lock.json`, the mesh variants). Layer names may not shadow channel names.
-- Mesh variants are resolved by `terrain/vegetation.py`: each is scaled by `unit_scale` so its
-  largest extent equals `vegetation.KIND_SIZE_M[kind]` at instance scale 1, and must stay
-  within `vegetation.KIND_TRI_BUDGET[kind]` (conifer/broadleaf 600, cactus 300, grass 250,
-  debris 250, shrub/rock/flower 200) - `tests/test_vegetation.py` enforces both.
+- Mesh variants are resolved by `terrain/vegetation.py`: a prop from a metric source
+  (`vegetation.METRIC_SOURCES`, i.e. our own generated packs) keeps its modelled size
+  (`unit_scale` 1); any other is scaled so its largest extent equals
+  `vegetation.KIND_SIZE_M[kind]` at instance scale 1. Every variant must stay within
+  `vegetation.KIND_TRI_BUDGET[kind]` (cactus 1200, conifer/broadleaf 600, rock 500, debris 400,
+  grass 250, shrub/flower 200) - `tests/test_vegetation.py` enforces both.
+- Generated scatter props are a kit pack with `source = "assetforge"` in `library/kits.toml`:
+  the slug is the asset-name prefix, and `python -m library.generated` copies every approved
+  `out/assets/<slug>_<model>/` into `library/kits/<pack>/<model>.glb` and locks it (sha256 and
+  recipe path) in `kits.lock.json`. The `scatter` pack is rebuilt by
+  `blender --background --python assets/blender_scripts/scatter_set_build.py` (geometry from
+  `assets/organic.py`), then approved and pulled.
 - Scatter masks are single-channel 8-bit, one per species: `scatter_<species>.png`.
   `terrain.json` `scatter[]` records `species`, `kind`, `path`, `density`, `spacing_m`,
   `scale`, `slope_align`, `exclusion_m`, `water_buffer_m`, `instances`, `count`,

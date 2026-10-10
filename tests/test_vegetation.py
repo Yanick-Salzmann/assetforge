@@ -95,3 +95,11 @@ def test_shipped_species_have_locked_variants_within_budget(name, index):
         assert len(variants) >= 2, species.name
         for variant in variants:
             assert variant.tris <= vegetation.KIND_TRI_BUDGET[species.kind], (species.name, variant.mesh)
+
+
+def test_props_from_a_metric_source_keep_their_modelled_size(index):
+    metric = [name for name in index if index[name].source in vegetation.METRIC_SOURCES]
+    if not metric:
+        pytest.skip("no generated pack is locked")
+    species = parse(RULES.replace('meshes = ["nature/tree_pineTallA", "nature/tree_oak"]', f'meshes = ["{metric[0]}"]'))[0]
+    assert vegetation.resolve(species, index)[0].unit_scale == 1.0

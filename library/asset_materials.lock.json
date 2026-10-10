@@ -1,5 +1,56 @@
 {
   "materials": {
+    "bark_cc0": {
+      "categories": [
+        "bark",
+        "natural",
+        "outdoor",
+        "wood"
+      ],
+      "dimensions_mm": [
+        999.9990463256836,
+        999.998927116394
+      ],
+      "files": {
+        "albedo": {
+          "map": "Diffuse",
+          "md5": "11a2a6039bb5b93f12dcf1689838545b",
+          "path": "bark_cc0/albedo.jpg",
+          "sha256": "285051e34826ace29f4ab438ad35cc1201b2aae0a6157a5f3c0bf6667bbc539e",
+          "size": 2356592,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/bark_brown_02/bark_brown_02_diff_2k.jpg"
+        },
+        "ao": {
+          "map": "AO",
+          "md5": "17656666d7bc41f21899e710007101c3",
+          "path": "bark_cc0/ao.jpg",
+          "sha256": "7efd7e23faf79d17cd906e542028020fac0aed0e0ef7f7b996ab3f980a417951",
+          "size": 1919982,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/bark_brown_02/bark_brown_02_ao_2k.jpg"
+        },
+        "normal": {
+          "map": "nor_gl",
+          "md5": "39db6c4574fb58de1ad164442e9d6287",
+          "path": "bark_cc0/normal.jpg",
+          "sha256": "aaba4529c3167a7811b4dbf5b4327d054a166c2fc8ea08ebd249a2692adace41",
+          "size": 3707907,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/bark_brown_02/bark_brown_02_nor_gl_2k.jpg"
+        },
+        "roughness": {
+          "map": "Rough",
+          "md5": "1c17004a7262d26d3867198a8fd0e8c1",
+          "path": "bark_cc0/roughness.jpg",
+          "sha256": "adafcab150c1ca99150c77198329e251437dc00fa1f66019f75624366926996e",
+          "size": 1236654,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/bark_brown_02/bark_brown_02_rough_2k.jpg"
+        }
+      },
+      "format": "jpg",
+      "license": "CC0",
+      "resolution": "2k",
+      "slug": "bark_brown_02",
+      "source": "https://polyhaven.com/a/bark_brown_02"
+    },
     "brick_cc0": {
       "categories": [
         "brick",

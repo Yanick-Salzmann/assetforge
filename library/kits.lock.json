@@ -8927,6 +8927,206 @@
       "source_url": "https://kenney.nl/assets/nature-kit",
       "zip_sha256": "fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d",
       "zip_url": "https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip"
+    },
+    "scatter": {
+      "category": "vegetation",
+      "license": "CC0",
+      "models": {
+        "barrel_cactus_a": {
+          "bbox_max_m": [
+            0.35000038146972656,
+            0.7300000190734863,
+            0.3412247598171234
+          ],
+          "bbox_min_m": [
+            -0.35000038146972656,
+            0.0,
+            -0.3412247598171234
+          ],
+          "path": "kits/scatter/barrel_cactus_a.glb",
+          "recipe": "out/assets/scatter_barrel_cactus_a/recipe.py",
+          "sha256": "5581c63f17ba9beb9c346330df949e52704adc9a90127db9507dd35a5044567c",
+          "tris": 390
+        },
+        "barrel_cactus_b": {
+          "bbox_max_m": [
+            0.3082733154296875,
+            0.8868706226348877,
+            0.2924783527851105
+          ],
+          "bbox_min_m": [
+            -0.3082714080810547,
+            0.0,
+            -0.2924783527851105
+          ],
+          "path": "kits/scatter/barrel_cactus_b.glb",
+          "recipe": "out/assets/scatter_barrel_cactus_b/recipe.py",
+          "sha256": "28889885e7edaa22abd5cefea18ca6bebfdb72ab312fb6dcb1b16d8fc6e80396",
+          "tris": 390
+        },
+        "boulder_a": {
+          "bbox_max_m": [
+            0.8273282945156097,
+            0.8800611509941518,
+            0.7104279100894928
+          ],
+          "bbox_min_m": [
+            -0.8273282945156097,
+            0.0,
+            -0.7104279100894928
+          ],
+          "path": "kits/scatter/boulder_a.glb",
+          "recipe": "out/assets/scatter_boulder_a/recipe.py",
+          "sha256": "998a1a2c47d2e48491932c76a4d6408f6a1b306450ae242efb4f303bd40cac16",
+          "tris": 450
+        },
+        "boulder_b": {
+          "bbox_max_m": [
+            0.8226170539855957,
+            0.5445489125413587,
+            0.5994336009025574
+          ],
+          "bbox_min_m": [
+            -0.8226168155670166,
+            0.0,
+            -0.5994336009025574
+          ],
+          "path": "kits/scatter/boulder_b.glb",
+          "recipe": "out/assets/scatter_boulder_b/recipe.py",
+          "sha256": "a0785ccd7595aac98a0fb08bcf9516b3f15f31a9023c7f0fb99eeb10a57cec1b",
+          "tris": 450
+        },
+        "boulder_c": {
+          "bbox_max_m": [
+            0.5155768394470215,
+            1.4785462348372675,
+            0.4058547168970108
+          ],
+          "bbox_min_m": [
+            -0.5155768394470215,
+            0.0,
+            -0.4058547168970108
+          ],
+          "path": "kits/scatter/boulder_c.glb",
+          "recipe": "out/assets/scatter_boulder_c/recipe.py",
+          "sha256": "c96586c8a0d3faea897d1eedcdc17cffc798b5332ae65429190ad56b3586f744",
+          "tris": 450
+        },
+        "log_a": {
+          "bbox_max_m": [
+            1.2104930877685547,
+            0.35005809366703033,
+            0.1889696791768074
+          ],
+          "bbox_min_m": [
+            -1.2104930877685547,
+            0.0,
+            -0.1889696791768074
+          ],
+          "path": "kits/scatter/log_a.glb",
+          "recipe": "out/assets/scatter_log_a/recipe.py",
+          "sha256": "ac962eee783b0f4c99722b286b2450d8d83754f8264cac1bbddeebd6227aa815",
+          "tris": 220
+        },
+        "saguaro_a": {
+          "bbox_max_m": [
+            0.6747455596923828,
+            3.890000104904175,
+            0.2331123948097229
+          ],
+          "bbox_min_m": [
+            -0.67474365234375,
+            0.0,
+            -0.2331123948097229
+          ],
+          "path": "kits/scatter/saguaro_a.glb",
+          "recipe": "out/assets/scatter_saguaro_a/recipe.py",
+          "sha256": "723a48cf541bbdb1feaf8174bcdddc4216335feb9e912fb085febc9ab11125be",
+          "tris": 1084
+        },
+        "saguaro_b": {
+          "bbox_max_m": [
+            0.2627830505371094,
+            3.390000104904175,
+            0.4369875639677048
+          ],
+          "bbox_min_m": [
+            -0.2627830505371094,
+            0.0,
+            -0.4369875490665436
+          ],
+          "path": "kits/scatter/saguaro_b.glb",
+          "recipe": "out/assets/scatter_saguaro_b/recipe.py",
+          "sha256": "c59eaf6b71edc5ecbc554743b26c5a07794bd93e5cc9751171cb78154c7ea6e4",
+          "tris": 786
+        },
+        "stone_a": {
+          "bbox_max_m": [
+            0.20687198638916016,
+            0.20080962486645149,
+            0.17279646545648575
+          ],
+          "bbox_min_m": [
+            -0.20687198638916016,
+            0.0,
+            -0.17279646545648575
+          ],
+          "path": "kits/scatter/stone_a.glb",
+          "recipe": "out/assets/scatter_stone_a/recipe.py",
+          "sha256": "34c2092a0de2e5475be0557b1152fcf28e288047c81108094e64ddb5db232370",
+          "tris": 260
+        },
+        "stone_b": {
+          "bbox_max_m": [
+            0.2340717315673828,
+            0.12388876808108762,
+            0.1813277006149292
+          ],
+          "bbox_min_m": [
+            -0.2340707778930664,
+            0.0,
+            -0.1813277006149292
+          ],
+          "path": "kits/scatter/stone_b.glb",
+          "recipe": "out/assets/scatter_stone_b/recipe.py",
+          "sha256": "dd04e9f6c0a2d5f45fa9e7b55d4b99b45ffc999784b7b3bfaba4985e460b15e4",
+          "tris": 260
+        },
+        "stump_a": {
+          "bbox_max_m": [
+            0.40122318267822266,
+            0.4399999976158142,
+            0.4188358038663864
+          ],
+          "bbox_min_m": [
+            -0.40122318267822266,
+            0.0,
+            -0.4188358038663864
+          ],
+          "path": "kits/scatter/stump_a.glb",
+          "recipe": "out/assets/scatter_stump_a/recipe.py",
+          "sha256": "16400158b6cfdd275b8b9da459a400f8703bdcd863d4a3a70aedd5b39be8d0f2",
+          "tris": 220
+        },
+        "stump_b": {
+          "bbox_max_m": [
+            0.3555927276611328,
+            0.7705205455422401,
+            0.36191190779209137
+          ],
+          "bbox_min_m": [
+            -0.3555927276611328,
+            0.0,
+            -0.36191190779209137
+          ],
+          "path": "kits/scatter/stump_b.glb",
+          "recipe": "out/assets/scatter_stump_b/recipe.py",
+          "sha256": "3a9da4b2a5387220490739f3f3002afd9f396b620eaae917f570900652d0c1c9",
+          "tris": 220
+        }
+      },
+      "slug": "scatter",
+      "source": "assetforge"
     }
   },
   "version": 1

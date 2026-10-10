@@ -19,13 +19,14 @@ KIND_SIZE_M: dict[str, float] = {
 KIND_TRI_BUDGET: dict[str, int] = {
     "conifer": 600,
     "broadleaf": 600,
-    "cactus": 300,
+    "cactus": 1200,
     "shrub": 200,
-    "rock": 200,
+    "rock": 500,
     "grass": 250,
     "flower": 200,
-    "debris": 250,
+    "debris": 400,
 }
+METRIC_SOURCES = ("assetforge",)
 
 
 @dataclass(frozen=True)
@@ -53,7 +54,8 @@ def default_index() -> Any:
 
 
 def resolve(species: Species, index: Any) -> tuple[Variant, ...]:
-    """The species' meshes as variants, each scaled so its largest extent is the kind's size."""
+    """The species' meshes as variants: props from a metric source keep their modelled size,
+    any other is scaled so its largest extent is the kind's size."""
     variants = []
     for mesh in species.meshes:
         if mesh not in index:
@@ -62,7 +64,8 @@ def resolve(species: Species, index: Any) -> tuple[Variant, ...]:
         extent = max(prop.dimensions_m)
         if extent <= 0.0:
             raise MapConfigError(f"kit prop {mesh!r} has no extent")
-        variants.append(Variant(mesh, prop.glb, prop.tris, KIND_SIZE_M[species.kind] / extent))
+        unit_scale = 1.0 if prop.source in METRIC_SOURCES else KIND_SIZE_M[species.kind] / extent
+        variants.append(Variant(mesh, prop.glb, prop.tris, unit_scale))
     return tuple(variants)
 
 

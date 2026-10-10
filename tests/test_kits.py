@@ -67,7 +67,7 @@ def test_every_prop_carries_provenance():
     for name in index:
         prop = index[name]
         assert prop.licence == "CC0"
-        assert prop.source == "kenney"
+        assert prop.source in ("kenney", "quaternius", "assetforge")
         assert prop.category in index.categories()
         assert prop.tris > 0
 

@@ -22,3 +22,6 @@ slug = "oak_wood_planks"
 
 [material.roofing_cc0]
 slug = "clay_roof_tiles"
+
+[material.bark_cc0]
+slug = "bark_brown_02"

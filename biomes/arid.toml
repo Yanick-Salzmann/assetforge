@@ -41,7 +41,7 @@ weight = "max(smoothstep(slope, 0.4, 0.7), bedrock * wear)"
 
 [species.saguaro]
 kind = "cactus"
-meshes = ["nature/cactus_tall", "nature/cactus_short"]
+meshes = ["scatter/saguaro_a", "scatter/saguaro_b"]
 density = "max(dune_sand, desert_pavement) * smoothstep(patchiness_coarse, 0.48, 0.6) * (1 - smoothstep(slope, 0.2, 0.35))"
 spacing_m = 12.0
 scale = [0.7, 1.4]
@@ -49,10 +49,10 @@ exclusion_m = 2.0
 
 [species.barrel_cactus]
 kind = "cactus"
-meshes = ["nature/cactus_short", "nature/cactus_tall"]
+meshes = ["scatter/barrel_cactus_a", "scatter/barrel_cactus_b"]
 density = "desert_pavement * smoothstep(patchiness_fine, 0.45, 0.6)"
 spacing_m = 5.0
-scale = [0.25, 0.5]
+scale = [0.6, 1.2]
 exclusion_m = 0.8
 
 [species.mesquite]
@@ -83,7 +83,7 @@ slope_align = 0.5
 
 [species.desert_boulder]
 kind = "rock"
-meshes = ["nature/rock_largeE", "nature/rock_largeF", "nature/rock_tallA", "nature/rock_tallB"]
+meshes = ["scatter/boulder_a", "scatter/boulder_b", "scatter/boulder_c"]
 density = "0.7 * exposed_rock * smoothstep(wear, 0.5, 0.85) * (1 - smoothstep(slope, 0.4, 0.6))"
 spacing_m = 6.0
 scale = [0.6, 2.4]
@@ -92,7 +92,7 @@ exclusion_m = 1.5
 
 [species.deadwood]
 kind = "debris"
-meshes = ["nature/log", "nature/stump_old", "nature/stump_square"]
+meshes = ["scatter/log_a", "scatter/stump_a", "scatter/stump_b"]
 density = "dry_wash * smoothstep(patchiness_fine, 0.5, 0.62)"
 spacing_m = 6.0
 scale = [0.5, 1.2]
@@ -100,7 +100,7 @@ slope_align = 1.0
 
 [species.pebbles]
 kind = "debris"
-meshes = ["nature/rock_smallB", "nature/rock_smallC", "nature/rock_smallD", "nature/rock_smallFlatA"]
+meshes = ["scatter/stone_a", "scatter/stone_b"]
 density = "max(desert_pavement, dry_wash) * (1 - smoothstep(slope, 0.4, 0.6))"
 spacing_m = 2.0
 scale = [0.4, 1.2]
