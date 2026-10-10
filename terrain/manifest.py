@@ -10,16 +10,17 @@ from PIL import Image
 from terrain import config
 from terrain.channels import WaterLevel
 from terrain.config import MapConfig, MapConfigError
-from terrain.splat import SplatResult
+from terrain.splat import Species, SplatResult
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 MANIFEST_NAME = "terrain.json"
 HEIGHTMAP_NAME = "height.png"
 WATER_MASK_NAME = "water.png"
 WATER_SURFACE_NAME = "water_surface.png"
 
-SCATTER_KINDS = ("rock", "tree", "grass", "debris")
+SCATTER_KINDS = config.SCATTER_KINDS
+SCATTER_NUMBER_KEYS = ("spacing_m", "slope_align", "exclusion_m", "water_buffer_m")
 
 TOP_LEVEL_KEYS = (
     "schema_version",
@@ -51,10 +52,17 @@ class ManifestError(MapConfigError):
 
 @dataclass(frozen=True)
 class ScatterMask:
-    """One scatter density mask, as terrain.json records it."""
+    """One species' scatter density mask and its placement parameters, as terrain.json records it."""
 
+    species: str
     kind: str
     path: str
+    density: str = ""
+    spacing_m: float = 1.0
+    scale: tuple[float, float] = (1.0, 1.0)
+    slope_align: float = 0.0
+    exclusion_m: float = 0.0
+    water_buffer_m: float = 0.0
 
     def __post_init__(self) -> None:
         if self.kind not in SCATTER_KINDS:
@@ -62,8 +70,32 @@ class ScatterMask:
                 f"scatter kind {self.kind!r} must be one of {', '.join(SCATTER_KINDS)}"
             )
 
-    def as_dict(self) -> dict[str, str]:
-        return {"kind": self.kind, "path": self.path}
+    @classmethod
+    def of(cls, species: Species, path: str) -> ScatterMask:
+        return cls(
+            species=species.name,
+            kind=species.kind,
+            path=path,
+            density=species.density.source,
+            spacing_m=species.spacing_m,
+            scale=species.scale,
+            slope_align=species.slope_align,
+            exclusion_m=species.exclusion_m,
+            water_buffer_m=species.water_buffer_m,
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "species": self.species,
+            "kind": self.kind,
+            "path": self.path,
+            "density": self.density,
+            "spacing_m": self.spacing_m,
+            "scale": list(self.scale),
+            "slope_align": self.slope_align,
+            "exclusion_m": self.exclusion_m,
+            "water_buffer_m": self.water_buffer_m,
+        }
 
 
 def _relative(path: Path) -> str:
@@ -172,15 +204,28 @@ def validate(payload: Mapping[str, Any]) -> None:
             raise ManifestError(f"splat layer entry is missing {', '.join(missing)}")
 
     scatter = _require(payload, "scatter", list, label)
+    seen: set[str] = set()
     for entry in scatter:
-        if not isinstance(entry, dict) or "kind" not in entry or "path" not in entry:
-            raise ManifestError("scatter entries must carry kind and path")
-        if entry["kind"] not in SCATTER_KINDS:
+        if not isinstance(entry, dict):
+            raise ManifestError("scatter entries must be tables")
+        species = _require(entry, "species", str, "scatter entry")
+        if species in seen:
+            raise ManifestError(f"scatter species {species!r} is declared twice")
+        seen.add(species)
+        kind = _require(entry, "kind", str, f"scatter {species!r}")
+        if kind not in SCATTER_KINDS:
             raise ManifestError(
-                f"scatter kind {entry['kind']!r} must be one of {', '.join(SCATTER_KINDS)}"
+                f"scatter kind {kind!r} must be one of {', '.join(SCATTER_KINDS)}"
             )
-        if not isinstance(entry["path"], str):
-            raise ManifestError("scatter path must be a string")
+        _require(entry, "path", str, f"scatter {species!r}")
+        _require(entry, "density", str, f"scatter {species!r}")
+        for key in SCATTER_NUMBER_KEYS:
+            _require(entry, key, (int, float), f"scatter {species!r}")
+        scale = _require(entry, "scale", list, f"scatter {species!r}")
+        if len(scale) != 2 or not all(
+            isinstance(value, (int, float)) and not isinstance(value, bool) for value in scale
+        ):
+            raise ManifestError(f"scatter {species!r} scale must be a [min, max] pair")
 
     _require_optional_str(payload, "normal_map", label)
     water_surface = payload.get("water_surface")

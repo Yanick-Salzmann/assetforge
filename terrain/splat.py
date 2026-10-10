@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import operator
+import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,7 +17,9 @@ from terrain import synth
 from terrain.config import (
     BIOMES_DIR,
     CHANNEL_NAMES,
+    MAX_SCATTER_SPECIES,
     MAX_SPLAT_LAYERS,
+    SCATTER_KINDS,
     SPLAT_LAYERS_PER_TEXTURE,
     MapConfigError,
 )
@@ -145,7 +148,7 @@ def _arity(function: _Function) -> str:
     return f"{function.lowest} to {function.highest} arguments"
 
 
-def _validate(node: ast.expr, names: set[str]) -> None:
+def _validate(node: ast.expr, names: set[str], allowed: tuple[str, ...] = CHANNEL_NAMES) -> None:
     if isinstance(node, ast.Constant):
         if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
             raise SplatRuleError(f"only numeric literals are allowed, got {node.value!r}")
@@ -153,34 +156,34 @@ def _validate(node: ast.expr, names: set[str]) -> None:
     if isinstance(node, ast.Name):
         if node.id in FUNCTIONS:
             raise SplatRuleError(f"{node.id} is a helper function and must be called")
-        if node.id not in CHANNEL_NAMES:
+        if node.id not in allowed:
             raise SplatRuleError(
-                f"unknown channel {node.id!r}; expected one of {', '.join(CHANNEL_NAMES)}"
+                f"unknown channel {node.id!r}; expected one of {', '.join(allowed)}"
             )
         names.add(node.id)
         return
     if isinstance(node, ast.BinOp):
         if type(node.op) not in _BINARY:
             raise SplatRuleError(f"operator {_describe(node)} is not allowed")
-        _validate(node.left, names)
-        _validate(node.right, names)
+        _validate(node.left, names, allowed)
+        _validate(node.right, names, allowed)
         return
     if isinstance(node, ast.UnaryOp):
         if not isinstance(node.op, ast.Not) and type(node.op) not in _UNARY:
             raise SplatRuleError(f"operator {_describe(node)} is not allowed")
-        _validate(node.operand, names)
+        _validate(node.operand, names, allowed)
         return
     if isinstance(node, ast.BoolOp):
         for value in node.values:
-            _validate(value, names)
+            _validate(value, names, allowed)
         return
     if isinstance(node, ast.Compare):
         for op in node.ops:
             if type(op) not in _COMPARE:
                 raise SplatRuleError(f"comparison {type(op).__name__.lower()} is not allowed")
-        _validate(node.left, names)
+        _validate(node.left, names, allowed)
         for comparator in node.comparators:
-            _validate(comparator, names)
+            _validate(comparator, names, allowed)
         return
     if isinstance(node, ast.Call):
         if not isinstance(node.func, ast.Name):
@@ -199,7 +202,7 @@ def _validate(node: ast.expr, names: set[str]) -> None:
         if count < function.lowest or (function.highest is not None and count > function.highest):
             raise SplatRuleError(f"{node.func.id} takes {_arity(function)}, got {count}")
         for argument in node.args:
-            _validate(argument, names)
+            _validate(argument, names, allowed)
         return
     raise SplatRuleError(f"{_describe(node)} is not allowed in a weight expression")
 
@@ -267,8 +270,12 @@ class Expression:
         return torch.full_like(reference, float(value), dtype=torch.float32)
 
 
-def parse(source: str) -> Expression:
-    """Compile a weight expression, rejecting everything outside the rule grammar."""
+def parse(source: str, allowed: tuple[str, ...] = CHANNEL_NAMES) -> Expression:
+    """Compile a weight expression, rejecting everything outside the rule grammar.
+
+    `allowed` is the set of variable names the expression may read; species density rules
+    widen it with the biome's splat layer names.
+    """
     text = source.strip()
     if not text:
         raise SplatRuleError("a weight expression must not be empty")
@@ -277,7 +284,7 @@ def parse(source: str) -> Expression:
     except SyntaxError as error:
         raise SplatRuleError(f"cannot parse weight expression {source!r}: {error.msg}") from None
     names: set[str] = set()
-    _validate(tree.body, names)
+    _validate(tree.body, names, allowed)
     return Expression(text, tuple(sorted(names)), tree.body)
 
 
@@ -290,7 +297,7 @@ def evaluate(
     return parse(source).evaluate(channels, like)
 
 
-BIOME_KEYS = ("biome", "layer")
+BIOME_KEYS = ("biome", "layer", "species")
 BIOME_META_KEYS = ("name", "description", "sharpness", "blend_depth")
 LAYER_KEYS = (
     "material",
@@ -363,6 +370,56 @@ class Layer:
         }
 
 
+SPECIES_KEYS = (
+    "kind",
+    "density",
+    "spacing_m",
+    "scale",
+    "slope_align",
+    "exclusion_m",
+    "water_buffer_m",
+)
+SPECIES_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_]{0,47}$")
+MIN_SPACING_M = 0.25
+MAX_SPACING_M = 100.0
+MIN_SCALE = 0.05
+MAX_SCALE = 20.0
+MAX_EXCLUSION_M = 100.0
+MAX_WATER_BUFFER_M = 500.0
+
+
+@dataclass(frozen=True)
+class Species:
+    """One scatter species: where it grows (a density rule) and how its instances are laid out.
+
+    The density rule reads the channel stack plus the biome's blended splat layer weights by
+    layer name. spacing_m is the mean distance between instances at full density, scale the
+    uniform size range, slope_align how far an instance tilts from upright toward the surface
+    normal (0 upright, 1 normal-aligned), exclusion_m the clearance kept from instances of every
+    other species, and water_buffer_m a hard no-plant band around the water mask.
+    """
+
+    name: str
+    kind: str
+    density: Expression
+    spacing_m: float
+    scale: tuple[float, float]
+    slope_align: float = 0.0
+    exclusion_m: float = 0.0
+    water_buffer_m: float = 0.0
+
+    def as_dict(self) -> dict:
+        return {
+            "kind": self.kind,
+            "density": self.density.source,
+            "spacing_m": self.spacing_m,
+            "scale": list(self.scale),
+            "slope_align": self.slope_align,
+            "exclusion_m": self.exclusion_m,
+            "water_buffer_m": self.water_buffer_m,
+        }
+
+
 @dataclass(frozen=True)
 class Biome:
     """A rule set: the ordered layers a map is painted with, in declaration order."""
@@ -373,6 +430,7 @@ class Biome:
     layers: tuple[Layer, ...]
     path: Path | None = None
     blend_depth: float = DEFAULT_BLEND_DEPTH
+    species: tuple[Species, ...] = ()
 
     def __len__(self) -> int:
         return len(self.layers)
@@ -408,6 +466,7 @@ class Biome:
             "sharpness": self.sharpness,
             "blend_depth": self.blend_depth,
             "layers": {layer.name: layer.as_dict() for layer in self.layers},
+            "species": {entry.name: entry.as_dict() for entry in self.species},
         }
 
 
@@ -517,6 +576,69 @@ def _layer(
     )
 
 
+def _scale_range(value: Any, label: str) -> tuple[float, float]:
+    if not isinstance(value, list) or len(value) != 2:
+        raise SplatRuleError(f"{label} must be a [min, max] pair")
+    low = _ranged(value[0], MIN_SCALE, MAX_SCALE, f"{label} min")
+    high = _ranged(value[1], MIN_SCALE, MAX_SCALE, f"{label} max")
+    if low > high:
+        raise SplatRuleError(f"{label} min {low} exceeds max {high}")
+    return low, high
+
+
+def _species(
+    name: str,
+    entry: Mapping[str, Any],
+    allowed: tuple[str, ...],
+    label: str,
+) -> Species:
+    if not SPECIES_NAME_PATTERN.match(name):
+        raise SplatRuleError(f"{label} name must match {SPECIES_NAME_PATTERN.pattern}")
+    if not isinstance(entry, Mapping):
+        raise SplatRuleError(f"{label} must be a table, got {type(entry).__name__}")
+    _reject_unknown(entry, SPECIES_KEYS, label)
+    for key in ("kind", "density", "spacing_m", "scale"):
+        if key not in entry:
+            raise SplatRuleError(f"{label} is missing {key}")
+    kind = str(entry["kind"])
+    if kind not in SCATTER_KINDS:
+        raise SplatRuleError(f"{label} kind {kind!r} must be one of {', '.join(SCATTER_KINDS)}")
+    try:
+        density = parse(str(entry["density"]), allowed)
+    except SplatRuleError as error:
+        raise SplatRuleError(f"{label}: {error}") from None
+    return Species(
+        name=name,
+        kind=kind,
+        density=density,
+        spacing_m=_ranged(entry["spacing_m"], MIN_SPACING_M, MAX_SPACING_M, f"{label} spacing_m"),
+        scale=_scale_range(entry["scale"], f"{label} scale"),
+        slope_align=_ranged(entry.get("slope_align", 0.0), 0.0, 1.0, f"{label} slope_align"),
+        exclusion_m=_ranged(entry.get("exclusion_m", 0.0), 0.0, MAX_EXCLUSION_M, f"{label} exclusion_m"),
+        water_buffer_m=_ranged(
+            entry.get("water_buffer_m", 0.0), 0.0, MAX_WATER_BUFFER_M, f"{label} water_buffer_m"
+        ),
+    )
+
+
+def _species_set(
+    declared: Mapping[str, Any],
+    layers: tuple[Layer, ...],
+    where: str,
+) -> tuple[Species, ...]:
+    if not isinstance(declared, Mapping):
+        raise SplatRuleError(f"{where} species must be [species.<name>] tables")
+    if len(declared) > MAX_SCATTER_SPECIES:
+        raise SplatRuleError(
+            f"{where} declares {len(declared)} species; at most {MAX_SCATTER_SPECIES} are allowed"
+        )
+    allowed = CHANNEL_NAMES + tuple(layer.name for layer in layers)
+    return tuple(
+        _species(name, entry, allowed, f"{where} [species.{name}]")
+        for name, entry in declared.items()
+    )
+
+
 def _sharpness(meta: Mapping[str, Any], label: str) -> float:
     sharpness = float(meta.get("sharpness", DEFAULT_SHARPNESS))
     if not MIN_SHARPNESS <= sharpness <= MAX_SHARPNESS:
@@ -548,9 +670,15 @@ def parse_biome(
         raise SplatRuleError(
             f"{where} declares {len(declared)} layers; the splat textures hold {MAX_SPLAT_LAYERS}"
         )
+    clashing = sorted(set(declared) & set(CHANNEL_NAMES))
+    if clashing:
+        raise SplatRuleError(
+            f"{where} layer names {', '.join(clashing)} clash with channel names"
+        )
     layers = tuple(
         _layer(name, entry, index, f"{where} [layer.{name}]") for name, entry in declared.items()
     )
+    species = _species_set(data.get("species", {}), layers, where)
     name = str(meta.get("name", path.stem if path is not None else "biome"))
     return Biome(
         name=name,
@@ -564,6 +692,7 @@ def parse_biome(
             MAX_BLEND_DEPTH,
             f"{where} blend_depth",
         ),
+        species=species,
     )
 
 

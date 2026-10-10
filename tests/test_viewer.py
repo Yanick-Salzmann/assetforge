@@ -104,7 +104,7 @@ def _write_terrain(root, name, resolution=4):
     Image.fromarray(splat, "RGBA").save(directory / "splat_0.png")
     Image.fromarray(np.full((resolution, resolution), 128, np.uint8), "L").save(directory / "scatter_rock.png")
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "name": name,
         "seed": 3,
         "resolution": resolution,
@@ -123,7 +123,7 @@ def _write_terrain(root, name, resolution=4):
                 {"layer": "sand", "material": "unknown_sand", "tiling_m": 4.0, "index": 1, "texture": "splat_0.png", "channel": "a"},
             ],
         },
-        "scatter": [{"kind": "rock", "path": "scatter_rock.png"}],
+        "scatter": [{"species": "boulder", "kind": "rock", "path": "scatter_rock.png", "density": "wear", "spacing_m": 5.0, "scale": [0.6, 2.0], "slope_align": 0.7, "exclusion_m": 1.5, "water_buffer_m": 0.0}],
         "normal_map": None,
         "rule_path": None,
     }

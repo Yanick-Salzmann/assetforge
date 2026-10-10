@@ -38,3 +38,62 @@ variation_m = 800.0
 material = "cliff_rock"
 blend_contrast = 0.45
 weight = "max(smoothstep(slope, 0.4, 0.7), bedrock * wear)"
+
+[species.saguaro]
+kind = "cactus"
+density = "max(dune_sand, desert_pavement) * smoothstep(patchiness_coarse, 0.48, 0.6) * (1 - smoothstep(slope, 0.2, 0.35))"
+spacing_m = 12.0
+scale = [0.7, 1.4]
+exclusion_m = 2.0
+
+[species.barrel_cactus]
+kind = "cactus"
+density = "desert_pavement * smoothstep(patchiness_fine, 0.45, 0.6)"
+spacing_m = 5.0
+scale = [0.25, 0.5]
+exclusion_m = 0.8
+
+[species.mesquite]
+kind = "broadleaf"
+density = "smoothstep(flow, 0.4, 0.6) * smoothstep(moisture, 0.5, 0.75) * (1 - smoothstep(slope, 0.2, 0.35))"
+spacing_m = 9.0
+scale = [0.5, 0.9]
+exclusion_m = 2.5
+water_buffer_m = 4.0
+
+[species.creosote]
+kind = "shrub"
+density = "(scrub + 0.5 * dry_wash) * (1 - smoothstep(slope, 0.3, 0.5))"
+spacing_m = 4.0
+scale = [0.5, 1.1]
+slope_align = 0.2
+exclusion_m = 1.0
+
+[species.bunchgrass]
+kind = "grass"
+density = "max(scrub, 0.3 * dune_sand) * smoothstep(patchiness_fine, 0.38, 0.55)"
+spacing_m = 2.5
+scale = [0.5, 1.0]
+slope_align = 0.5
+
+[species.desert_boulder]
+kind = "rock"
+density = "0.7 * exposed_rock * smoothstep(wear, 0.5, 0.85) * (1 - smoothstep(slope, 0.4, 0.6))"
+spacing_m = 6.0
+scale = [0.6, 2.4]
+slope_align = 0.7
+exclusion_m = 1.5
+
+[species.deadwood]
+kind = "debris"
+density = "dry_wash * smoothstep(patchiness_fine, 0.5, 0.62)"
+spacing_m = 6.0
+scale = [0.5, 1.2]
+slope_align = 1.0
+
+[species.pebbles]
+kind = "debris"
+density = "max(desert_pavement, dry_wash) * (1 - smoothstep(slope, 0.4, 0.6))"
+spacing_m = 2.0
+scale = [0.4, 1.2]
+slope_align = 1.0

@@ -121,29 +121,56 @@ def test_validate_accepts_a_payload_written_before_colour_macro(biome):
 
 def test_build_accepts_scatter_masks_and_normal_map(biome):
     c = cfg()
-    masks = [manifest.ScatterMask("rock", "scatter_rock.png")]
+    masks = [manifest.ScatterMask("boulder", "rock", "scatter_boulder.png", "wear", 5.0, (0.6, 2.0))]
     payload = manifest.build(
         c, water(), splat.render(biome, stack(c)), normal_map="normal.png", scatter=masks
     )
-    assert payload["scatter"] == [{"kind": "rock", "path": "scatter_rock.png"}]
+    assert payload["scatter"] == [
+        {
+            "species": "boulder",
+            "kind": "rock",
+            "path": "scatter_boulder.png",
+            "density": "wear",
+            "spacing_m": 5.0,
+            "scale": [0.6, 2.0],
+            "slope_align": 0.0,
+            "exclusion_m": 0.0,
+            "water_buffer_m": 0.0,
+        }
+    ]
     assert payload["normal_map"] == "normal.png"
 
 
 def test_scatter_mask_rejects_unknown_kind():
     with pytest.raises(manifest.ManifestError):
-        manifest.ScatterMask("cloud", "scatter_cloud.png")
+        manifest.ScatterMask("puff", "cloud", "scatter_puff.png")
+
+
+def _with_scatter(payload, **changes):
+    entry = manifest.ScatterMask("boulder", "rock", "scatter_boulder.png", "wear", 5.0, (0.6, 2.0)).as_dict()
+    entry.update(changes)
+    payload["scatter"] = [entry]
+
+
+def _with_duplicate_scatter(payload):
+    _with_scatter(payload)
+    payload["scatter"].append(dict(payload["scatter"][0]))
 
 
 @pytest.mark.parametrize(
     "mutate",
     [
         lambda payload: payload.pop("world_size_m"),
-        lambda payload: payload.__setitem__("schema_version", 2),
+        lambda payload: payload.__setitem__("schema_version", 1),
         lambda payload: payload.__setitem__("resolution", "big"),
         lambda payload: payload.__setitem__("unknown_key", 1),
         lambda payload: payload["water"].pop("sea_level_m"),
         lambda payload: payload["splat"]["layers"][0].pop("material"),
-        lambda payload: payload.__setitem__("scatter", [{"kind": "cloud", "path": "x.png"}]),
+        lambda payload: payload.__setitem__("scatter", [{"kind": "rock", "path": "x.png"}]),
+        lambda payload: _with_scatter(payload, kind="cloud"),
+        lambda payload: _with_scatter(payload, scale=[1.0]),
+        lambda payload: _with_scatter(payload, spacing_m="wide"),
+        _with_duplicate_scatter,
         lambda payload: payload.__setitem__("normal_map", 3),
         lambda payload: payload.__setitem__("colour_macro", "colour_macro.png"),
         lambda payload: payload.__setitem__("colour_macro", {"path": "colour_macro.png"}),

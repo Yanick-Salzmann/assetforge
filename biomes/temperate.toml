@@ -47,3 +47,74 @@ weight = "max(smoothstep(slope, 0.4, 0.7), bedrock * wear)"
 material = "snow"
 blend_contrast = 0.15
 weight = "smoothstep(slope, 0.35, 0.65) * (1 - smoothstep(temperature, 0.12, 0.3))"
+
+[species.conifer]
+kind = "conifer"
+density = "(forest_floor + 0.08 * lush_grass) * smoothstep(patchiness_coarse, 0.42, 0.55) * (1 - smoothstep(slope, 0.35, 0.55))"
+spacing_m = 6.0
+scale = [0.8, 1.5]
+exclusion_m = 2.0
+water_buffer_m = 8.0
+
+[species.broadleaf]
+kind = "broadleaf"
+density = "(forest_floor + 0.08 * lush_grass) * (1 - smoothstep(patchiness_coarse, 0.42, 0.55)) * (1 - smoothstep(slope, 0.35, 0.55))"
+spacing_m = 8.0
+scale = [0.7, 1.3]
+exclusion_m = 2.5
+water_buffer_m = 8.0
+
+[species.hazel_shrub]
+kind = "shrub"
+density = "max(0.3 * lush_grass, forest_floor) * smoothstep(patchiness_fine, 0.45, 0.6) * (1 - smoothstep(slope, 0.35, 0.55))"
+spacing_m = 3.0
+scale = [0.6, 1.2]
+slope_align = 0.2
+exclusion_m = 1.0
+water_buffer_m = 3.0
+
+[species.fern]
+kind = "shrub"
+density = "forest_floor * smoothstep(wetness, 0.3, 0.55) * (1 - smoothstep(slope, 0.35, 0.55))"
+spacing_m = 2.0
+scale = [0.5, 1.0]
+slope_align = 0.5
+exclusion_m = 0.5
+water_buffer_m = 2.0
+
+[species.grass_tuft]
+kind = "grass"
+density = "(dry_grass + lush_grass) * (1 - smoothstep(slope, 0.3, 0.5))"
+spacing_m = 1.5
+scale = [0.7, 1.3]
+slope_align = 0.6
+
+[species.wildflower]
+kind = "flower"
+density = "lush_grass * smoothstep(patchiness_mid, 0.5, 0.62) * (1 - smoothstep(slope, 0.25, 0.45))"
+spacing_m = 1.2
+scale = [0.6, 1.1]
+slope_align = 0.5
+
+[species.boulder]
+kind = "rock"
+density = "0.7 * exposed_rock * smoothstep(wear, 0.5, 0.85) * (1 - smoothstep(slope, 0.4, 0.6)) * (1 - smoothstep(flow, 0.55, 0.75))"
+spacing_m = 5.0
+scale = [0.6, 2.2]
+slope_align = 0.7
+exclusion_m = 1.5
+
+[species.deadwood]
+kind = "debris"
+density = "forest_floor * smoothstep(patchiness_fine, 0.48, 0.62) * (1 - smoothstep(slope, 0.35, 0.55))"
+spacing_m = 4.0
+scale = [0.6, 1.4]
+slope_align = 1.0
+exclusion_m = 0.5
+
+[species.river_pebbles]
+kind = "debris"
+density = "max(riverbed_gravel, 0.5 * silt_flat) * (1 - smoothstep(slope, 0.4, 0.6))"
+spacing_m = 2.0
+scale = [0.5, 1.5]
+slope_align = 1.0

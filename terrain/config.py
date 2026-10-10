@@ -65,6 +65,9 @@ SPLAT_LAYERS_PER_TEXTURE = 4
 SPLAT_TEXTURES = 2
 MAX_SPLAT_LAYERS = SPLAT_LAYERS_PER_TEXTURE * SPLAT_TEXTURES
 
+SCATTER_KINDS = ("conifer", "broadleaf", "shrub", "grass", "flower", "cactus", "rock", "debris")
+MAX_SCATTER_SPECIES = 16
+
 MAX_RESOLUTION = 4096
 
 CHANNEL_NAMES = (

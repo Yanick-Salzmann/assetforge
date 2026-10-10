@@ -113,8 +113,8 @@ call needed), writes every deliverable, builds `terrain.json`, and calls
 on-disk file is wrong and export is not done. **Acceptance check (Phase 3 gate):**
 
 - `height.png` opens as 16-bit grayscale with no visible banding.
-- `scatter_rock.png` / `scatter_debris.png` are dark over water and the steepest slopes;
-  `scatter_tree.png` / `scatter_grass.png` avoid open water and riverbeds. Spot-check with
+- One `scatter_<species>.png` per `[species.<name>]` the biome declares, each dark over open
+  water and the steepest slopes; trees and shrubs also avoid riverbeds. Spot-check with
   `inspect_channel` on `slope` or `water` next to the scatter PNGs if unsure.
 - `export.write` returned without raising - that already proves `terrain.json` validated
   against its schema and every path it declares exists at the declared resolution.

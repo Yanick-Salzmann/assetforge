@@ -42,3 +42,57 @@ weight = "smoothstep(slope, 0.28, 0.45) * smoothstep(temperature, 0.4, 0.56)"
 material = "snow"
 blend_contrast = 0.15
 weight = "1 - smoothstep(temperature, 0.28, 0.42)"
+
+[species.treeline_conifer]
+kind = "conifer"
+density = "alpine_meadow * smoothstep(temperature, 0.42, 0.52) * smoothstep(patchiness_coarse, 0.4, 0.55)"
+spacing_m = 7.0
+scale = [0.6, 1.2]
+exclusion_m = 2.0
+water_buffer_m = 6.0
+
+[species.dwarf_shrub]
+kind = "shrub"
+density = "max(tundra_turf, alpine_meadow) * smoothstep(patchiness_fine, 0.45, 0.6)"
+spacing_m = 2.5
+scale = [0.4, 0.9]
+slope_align = 0.4
+exclusion_m = 0.8
+water_buffer_m = 2.0
+
+[species.tussock]
+kind = "grass"
+density = "(tundra_turf + alpine_meadow) * (1 - smoothstep(slope, 0.3, 0.5))"
+spacing_m = 1.5
+scale = [0.6, 1.2]
+slope_align = 0.6
+
+[species.alpine_flower]
+kind = "flower"
+density = "alpine_meadow * smoothstep(moisture, 0.36, 0.54) * smoothstep(patchiness_mid, 0.48, 0.6)"
+spacing_m = 1.2
+scale = [0.5, 1.0]
+slope_align = 0.5
+
+[species.talus_boulder]
+kind = "rock"
+density = "talus_scree * (1 - smoothstep(slope, 0.45, 0.6))"
+spacing_m = 4.0
+scale = [0.5, 2.0]
+slope_align = 0.8
+exclusion_m = 1.0
+
+[species.erratic]
+kind = "rock"
+density = "max(tundra_turf, glacial_silt) * smoothstep(patchiness_fine, 0.58, 0.66)"
+spacing_m = 12.0
+scale = [1.5, 3.5]
+slope_align = 0.3
+exclusion_m = 3.0
+
+[species.scree_stones]
+kind = "debris"
+density = "max(talus_scree, glacial_wash) * (1 - smoothstep(slope, 0.45, 0.6))"
+spacing_m = 1.5
+scale = [0.4, 1.2]
+slope_align = 1.0

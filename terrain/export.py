@@ -40,18 +40,6 @@ def _write_water_mask(water_mask: torch.Tensor, path: Path) -> Path:
     return path
 
 
-def grass_weight(result: splat_mod.SplatResult) -> torch.Tensor:
-    """Sum of every splat layer whose name marks it as grass, for scatter's grass density.
-
-    Zero everywhere when the biome declares no such layer - scatter still needs a
-    same-shaped field to multiply against.
-    """
-    indices = [position for position, layer in enumerate(result.biome) if "grass" in layer.name]
-    if not indices:
-        return torch.zeros_like(result.weights[:, :, 0])
-    return result.weights[:, :, indices].sum(dim=-1)
-
-
 @dataclass(frozen=True)
 class ExportResult:
     """Where the deliverable set landed, and the terrain.json payload written."""
@@ -73,7 +61,6 @@ def write(
     write_normal: bool = True,
     write_colour_macro: bool = True,
     macro_params: macro_mod.MacroParams = macro_mod.MacroParams(),
-    scatter_params: scatter_mod.ScatterParams = scatter_mod.ScatterParams(),
     water_surface_m: torch.Tensor | None = None,
 ) -> ExportResult:
     """Write the full terrain deliverable set plus terrain.json, then verify it end to end.
@@ -92,10 +79,13 @@ def write(
     ]
     written.extend(splat_mod.write(splat, target))
 
-    masks = scatter_mod.build(stack, grass_weight(splat), scatter_params)
+    masks = scatter_mod.build(stack, splat)
+    for stale in target.glob(f"{scatter_mod.MASK_PREFIX}*.png"):
+        stale.unlink()
     written.extend(scatter_mod.write(masks, target))
     scatter_entries = tuple(
-        manifest_mod.ScatterMask(kind=kind, path=scatter_mod.MASK_NAMES[kind]) for kind in masks
+        manifest_mod.ScatterMask.of(species, scatter_mod.mask_name(species.name))
+        for species in splat.biome.species
     )
 
     normal_map_name = None

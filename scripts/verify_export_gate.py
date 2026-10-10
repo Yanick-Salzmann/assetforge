@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from terrain import export, manifest, scatter
+from terrain import export, manifest
 from terrain import session as session_mod
 from terrain.config import HEIGHTMAP_MAX
 
@@ -33,19 +33,19 @@ def _heightmap_check(out_dir, height_source: torch.Tensor) -> dict:
     }
 
 
-def _scatter_avoidance_check(out_dir, stack) -> dict:
+def _scatter_avoidance_check(out_dir, stack, entries) -> dict:
     water = stack["water"].detach().to("cpu")
     slope = stack["slope"].detach().to("cpu")
     hazard = ((water >= WATER_THRESHOLD) | (slope >= STEEP_SLOPE)).numpy()
     per_kind = {}
     all_ok = True
-    for kind, filename in scatter.MASK_NAMES.items():
-        with Image.open(out_dir / filename) as image:
+    for entry in entries:
+        with Image.open(out_dir / entry["path"]) as image:
             mask = np.array(image).astype(np.float64) / 255.0
         hazard_mean = float(mask[hazard].mean()) if hazard.any() else 0.0
         ok = hazard_mean <= AVOIDANCE_CEILING
         all_ok = all_ok and ok
-        per_kind[kind] = {"hazard_mean_density": hazard_mean, "ok": ok}
+        per_kind[entry["species"]] = {"hazard_mean_density": hazard_mean, "ok": ok}
     return {"per_kind": per_kind, "hazard_pixels": int(hazard.sum()), "ok": all_ok}
 
 
@@ -61,7 +61,7 @@ def run(resolution: int, seed: int, keep: bool) -> dict:
 
     report: dict = {"resolution": resolution, "seed": seed, "out_dir": str(result.out_dir)}
     report["heightmap"] = _heightmap_check(result.out_dir, stack["height"].detach().to("cpu", dtype=torch.float32))
-    report["scatter_avoidance"] = _scatter_avoidance_check(result.out_dir, stack)
+    report["scatter_avoidance"] = _scatter_avoidance_check(result.out_dir, stack, result.manifest["scatter"])
 
     try:
         payload = manifest.load(result.out_dir / manifest.MANIFEST_NAME)

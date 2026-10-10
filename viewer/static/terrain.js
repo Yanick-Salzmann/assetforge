@@ -37,13 +37,17 @@ const NEUTRAL_HEIGHT = 128;
 const LAYER_COLOURS = [0xd9a441, 0x4f9fd8, 0xe8dca0, 0x8c8478, 0x7fb24a, 0x6a4e42, 0x2e7d4f, 0xf2f2f2];
 
 const SCATTER_KINDS = {
-  tree: { spacing_m: 6, cap: 60000, sink_m: 0.3, scale: [0.7, 1.4], tile_m: 768, reach_m: Infinity, parts: treeParts },
-  rock: { spacing_m: 5, cap: 40000, sink_m: 0.35, scale: [0.6, 2.2], tile_m: 384, reach_m: 1500, parts: rockParts },
-  grass: { spacing_m: 1.5, cap: 80000, sink_m: 0.02, scale: [0.7, 1.3], tile_m: 128, reach_m: 250, parts: grassParts },
-  debris: { spacing_m: 3, cap: 40000, sink_m: 0.08, scale: [0.6, 1.6], tile_m: 192, reach_m: 400, parts: debrisParts },
+  conifer: { cap: 50000, sink_m: 0.3, tile_m: 768, reach_m: Infinity, parts: coniferParts },
+  broadleaf: { cap: 40000, sink_m: 0.3, tile_m: 768, reach_m: Infinity, parts: broadleafParts },
+  cactus: { cap: 30000, sink_m: 0.1, tile_m: 384, reach_m: 1500, parts: cactusParts },
+  shrub: { cap: 50000, sink_m: 0.1, tile_m: 256, reach_m: 600, parts: shrubParts },
+  rock: { cap: 40000, sink_m: 0.35, tile_m: 384, reach_m: 1500, parts: rockParts },
+  grass: { cap: 80000, sink_m: 0.02, tile_m: 128, reach_m: 250, parts: grassParts },
+  flower: { cap: 60000, sink_m: 0.02, tile_m: 128, reach_m: 200, parts: flowerParts },
+  debris: { cap: 40000, sink_m: 0.08, tile_m: 192, reach_m: 400, parts: debrisParts },
 };
 
-function treeParts() {
+function coniferParts() {
   const trunk = new THREE.CylinderGeometry(0.22, 0.3, 2.2, 6);
   trunk.translate(0, 1.1, 0);
   const crown = new THREE.ConeGeometry(1.8, 6, 7);
@@ -51,6 +55,42 @@ function treeParts() {
   return [
     [trunk, new THREE.MeshStandardMaterial({ color: 0x5a4330, roughness: 0.9 })],
     [crown, new THREE.MeshStandardMaterial({ color: 0x3f6b35, roughness: 0.85 })],
+  ];
+}
+
+function broadleafParts() {
+  const trunk = new THREE.CylinderGeometry(0.25, 0.35, 3, 6);
+  trunk.translate(0, 1.5, 0);
+  const crown = new THREE.IcosahedronGeometry(2.4, 1);
+  crown.scale(1, 0.8, 1);
+  crown.translate(0, 4.6, 0);
+  return [
+    [trunk, new THREE.MeshStandardMaterial({ color: 0x5e4a36, roughness: 0.9 })],
+    [crown, new THREE.MeshStandardMaterial({ color: 0x55803a, roughness: 0.85, flatShading: true })],
+  ];
+}
+
+function cactusParts() {
+  const stem = new THREE.CylinderGeometry(0.3, 0.35, 4, 8);
+  stem.translate(0, 2, 0);
+  return [[stem, new THREE.MeshStandardMaterial({ color: 0x5f7d45, roughness: 0.8 })]];
+}
+
+function shrubParts() {
+  const bush = new THREE.IcosahedronGeometry(0.7, 0);
+  bush.scale(1, 0.7, 1);
+  bush.translate(0, 0.45, 0);
+  return [[bush, new THREE.MeshStandardMaterial({ color: 0x4d6b38, roughness: 0.9, flatShading: true })]];
+}
+
+function flowerParts() {
+  const stalk = new THREE.ConeGeometry(0.06, 0.35, 4);
+  stalk.translate(0, 0.175, 0);
+  const bloom = new THREE.IcosahedronGeometry(0.08, 0);
+  bloom.translate(0, 0.38, 0);
+  return [
+    [stalk, new THREE.MeshStandardMaterial({ color: 0x6f8f45, roughness: 0.9 })],
+    [bloom, new THREE.MeshStandardMaterial({ color: 0xd8c84a, roughness: 0.8 })],
   ];
 }
 
@@ -964,8 +1004,21 @@ function splatMaterial(manifest, splatTextures, layerArrays, waterMask, macroNor
   return { material, uniforms };
 }
 
-function scatterPlacements(kind, mask, field, manifest) {
-  const spec = SCATTER_KINDS[kind];
+function alignedUp(field, x, z, align) {
+  if (align <= 0) {
+    return [0, 1, 0];
+  }
+  const step = field.metresPerPixel;
+  const dx = (field.at(x + step, z) - field.at(x - step, z)) / (2 * step);
+  const dz = (field.at(x, z + step) - field.at(x, z - step)) / (2 * step);
+  const nx = -dx * align;
+  const nz = -dz * align;
+  const length = Math.hypot(nx, 1, nz);
+  return [nx / length, 1 / length, nz / length];
+}
+
+function scatterPlacements(entry, mask, field, manifest) {
+  const spec = SCATTER_KINDS[entry.kind];
   const resolution = mask.width;
   let total = 0;
   for (let index = 0; index < mask.data.length; index += 1) {
@@ -973,14 +1026,14 @@ function scatterPlacements(kind, mask, field, manifest) {
   }
   const meanDensity = total / (255 * mask.data.length);
   const worldSize = manifest.world_size_m;
-  let spacing = spec.spacing_m;
+  let spacing = entry.spacing_m;
   const expected = meanDensity * (worldSize / spacing) ** 2;
   if (expected > spec.cap) {
     spacing *= Math.sqrt(expected / spec.cap);
   }
   spacing = Math.max(spacing, worldSize / Math.sqrt(MAX_SCATTER_CELLS));
   const cells = Math.floor(worldSize / spacing);
-  const random = mulberry32(manifest.seed ^ hashString(kind));
+  const random = mulberry32(manifest.seed ^ hashString(entry.species));
   const placements = [];
   for (let j = 0; j < cells; j += 1) {
     for (let i = 0; i < cells; i += 1) {
@@ -998,8 +1051,9 @@ function scatterPlacements(kind, mask, field, manifest) {
       if (placements.length >= spec.cap) {
         continue;
       }
-      const scale = spec.scale[0] + (spec.scale[1] - spec.scale[0]) * scaleRoll;
-      placements.push([x, field.at(x, z) - spec.sink_m * scale, z, yaw, scale]);
+      const scale = entry.scale[0] + (entry.scale[1] - entry.scale[0]) * scaleRoll;
+      const [nx, ny, nz] = alignedUp(field, x, z, entry.slope_align);
+      placements.push([x, field.at(x, z) - spec.sink_m * scale, z, yaw, scale, nx, ny, nz]);
     }
   }
   return { placements, spacing, meanDensity };
@@ -1011,10 +1065,13 @@ function writePlacements(mesh, placements) {
   const position = new THREE.Vector3();
   const scale = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
+  const normal = new THREE.Vector3();
+  const tilt = new THREE.Quaternion();
   mesh.count = placements.length;
-  placements.forEach(([x, y, z, yaw, size], index) => {
+  placements.forEach(([x, y, z, yaw, size, nx, ny, nz], index) => {
     position.set(x, y, z);
-    quaternion.setFromAxisAngle(up, yaw);
+    tilt.setFromUnitVectors(up, normal.set(nx, ny, nz));
+    quaternion.setFromAxisAngle(up, yaw).premultiply(tilt);
     scale.setScalar(size);
     matrix.compose(position, quaternion, scale);
     mesh.setMatrixAt(index, matrix);
@@ -1059,10 +1116,10 @@ function tileScatter(group) {
   }
 }
 
-function scatterGroup(kind, placements, worldSize) {
+function scatterGroup(species, kind, placements, worldSize) {
   const group = new THREE.Group();
-  group.name = `scatter_${kind}`;
-  group.userData = { kind, placements, worldSize, parts: SCATTER_KINDS[kind].parts() };
+  group.name = `scatter_${species}`;
+  group.userData = { species, kind, placements, worldSize, parts: SCATTER_KINDS[kind].parts() };
   tileScatter(group);
   return group;
 }
@@ -1192,7 +1249,7 @@ function clearScatter(scatter, scatterStats, sites) {
     );
     cleared += placements.length - kept.length;
     group.userData.placements = kept;
-    scatterStats[group.userData.kind].count = kept.length;
+    scatterStats[group.userData.species].count = kept.length;
     tileScatter(group);
   }
   return cleared;
@@ -1292,9 +1349,9 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
       continue;
     }
     const raw = await fetchRaw(`${entry.raw}${mask.path}`);
-    const { placements, spacing, meanDensity } = scatterPlacements(mask.kind, raw, field, manifest);
-    scatter.add(scatterGroup(mask.kind, placements, manifest.world_size_m));
-    scatterStats[mask.kind] = { count: placements.length, spacing_m: spacing, mean_density: meanDensity };
+    const { placements, spacing, meanDensity } = scatterPlacements(mask, raw, field, manifest);
+    scatter.add(scatterGroup(mask.species, mask.kind, placements, manifest.world_size_m));
+    scatterStats[mask.species] = { kind: mask.kind, count: placements.length, spacing_m: spacing, mean_density: meanDensity };
   }
   group.add(scatter);
 

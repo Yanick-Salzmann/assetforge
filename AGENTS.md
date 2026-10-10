@@ -225,8 +225,17 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   each layer's `blend_contrast` and the biome's `blend_depth` are recorded in
   `terrain.json` (`splat.layers[].blend_contrast`, `splat.blend_depth`, and the formula in
   `splat.height_blend`) so an engine can reproduce it against the material height maps.
-- Scatter masks are single-channel 8-bit: `scatter_rock.png`, `scatter_tree.png`,
-  `scatter_grass.png`, `scatter_debris.png`.
+- Scatter species are declared per biome as `[species.<name>]` tables beside the splat
+  layers (`terrain/splat.py` `Species`, evaluated by `terrain/scatter.py`). Each carries a
+  `kind` (one of `config.SCATTER_KINDS`: conifer, broadleaf, shrub, grass, flower, cactus,
+  rock, debris), a `density` rule in the splat rule language that may also read the biome's
+  blended layer weights by layer name, `spacing_m`, `scale = [min, max]`, and optional
+  `slope_align` (0 upright .. 1 surface-normal), `exclusion_m` (clearance from every other
+  species) and `water_buffer_m`. Layer names may not shadow channel names.
+- Scatter masks are single-channel 8-bit, one per species: `scatter_<species>.png`.
+  `terrain.json` `scatter[]` records `species`, `kind`, `path`, `density`, `spacing_m`,
+  `scale`, `slope_align`, `exclusion_m`, `water_buffer_m` (schema_version 2), validated by
+  `terrain/manifest.py`. Export removes stale `scatter_*.png` from the map directory.
 - `colour_macro.png` is an 8-bit RGB albedo multiplier (`byte / 128`, neutral 128) built
   from `patchiness_coarse`/`patchiness_mid`, `moisture` and `wetness` (`terrain/macro.py`).
   Low-frequency, no lighting or AO. `terrain.json` `colour_macro` records the path and the

@@ -28,6 +28,20 @@ weight = "1 - moisture"
 [layer.silt_flat]
 material = "silt"
 weight = "moisture"
+
+[species.tuft]
+kind = "grass"
+density = "dry_grass * (1 - slope)"
+spacing_m = 1.5
+scale = [0.7, 1.3]
+
+[species.boulder]
+kind = "rock"
+density = "wear"
+spacing_m = 5.0
+scale = [0.6, 2.0]
+slope_align = 0.7
+exclusion_m = 1.5
 """
 
 NO_GRASS = """
@@ -77,18 +91,20 @@ def water() -> WaterLevel:
     )
 
 
-def test_grass_weight_sums_layers_named_grass(two_layer_biome):
+def test_write_removes_stale_scatter_masks(tmp_path, two_layer_biome):
     c = cfg()
-    result = splat.render(two_layer_biome, stack(c))
-    weight = export.grass_weight(result)
-    assert torch.allclose(weight, result.weights[:, :, 0])
+    built = stack(c)
+    (tmp_path / "scatter_tree.png").write_bytes(b"stale")
+    export.write(c, built, water(), splat.render(two_layer_biome, built), out_dir=tmp_path)
+    assert not (tmp_path / "scatter_tree.png").exists()
 
 
-def test_grass_weight_is_zero_without_a_grass_layer(no_grass_biome):
+def test_write_without_species_writes_no_scatter(tmp_path, no_grass_biome):
     c = cfg()
-    result = splat.render(no_grass_biome, stack(c))
-    weight = export.grass_weight(result)
-    assert torch.equal(weight, torch.zeros(c.shape))
+    built = stack(c)
+    outcome = export.write(c, built, water(), splat.render(no_grass_biome, built), out_dir=tmp_path)
+    assert outcome.manifest["scatter"] == []
+    assert not list(tmp_path.glob("scatter_*.png"))
 
 
 def test_write_produces_the_full_deliverable_set(tmp_path, two_layer_biome):
@@ -102,10 +118,8 @@ def test_write_produces_the_full_deliverable_set(tmp_path, two_layer_biome):
         manifest.HEIGHTMAP_NAME,
         manifest.WATER_MASK_NAME,
         "splat_0.png",
-        "scatter_rock.png",
-        "scatter_tree.png",
-        "scatter_grass.png",
-        "scatter_debris.png",
+        "scatter_tuft.png",
+        "scatter_boulder.png",
         "normal.png",
         "colour_macro.png",
     }
@@ -117,12 +131,14 @@ def test_write_produces_the_full_deliverable_set(tmp_path, two_layer_biome):
     assert manifest.load(outcome.manifest_path) == outcome.manifest
     assert outcome.manifest["normal_map"] == "normal.png"
     assert outcome.manifest["colour_macro"]["path"] == "colour_macro.png"
-    assert {entry["kind"] for entry in outcome.manifest["scatter"]} == {
-        "rock",
-        "tree",
-        "grass",
-        "debris",
-    }
+    assert [entry["species"] for entry in outcome.manifest["scatter"]] == ["tuft", "boulder"]
+    boulder = outcome.manifest["scatter"][1]
+    assert boulder["kind"] == "rock"
+    assert boulder["path"] == "scatter_boulder.png"
+    assert boulder["density"] == "wear"
+    assert boulder["scale"] == [0.6, 2.0]
+    assert boulder["slope_align"] == pytest.approx(0.7)
+    assert boulder["exclusion_m"] == pytest.approx(1.5)
 
 
 def test_write_skips_the_normal_map_when_disabled(tmp_path, two_layer_biome):
