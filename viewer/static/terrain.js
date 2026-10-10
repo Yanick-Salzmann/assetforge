@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 const MAX_GRID_VERTICES = 1025;
 const CHUNK_CELLS = 64;
@@ -35,7 +36,7 @@ const DEFAULT_BLEND_DEPTH = 0.08;
 const NEUTRAL_HEIGHT = 128;
 const LAYER_COLOURS = [0xd9a441, 0x4f9fd8, 0xe8dca0, 0x8c8478, 0x7fb24a, 0x6a4e42, 0x2e7d4f, 0xf2f2f2];
 
-const INSTANCE_FIELDS = 5;
+const INSTANCE_FIELDS = 6;
 
 const SCATTER_KINDS = {
   conifer: { cap: 50000, sink_m: 0.3, tile_m: 768, reach_m: Infinity, parts: coniferParts },
@@ -1010,11 +1011,60 @@ async function scatterPlacements(entry, mask, field) {
   const sink = SCATTER_KINDS[mask.kind].sink_m;
   const placements = [];
   for (let offset = 0; offset < records.length; offset += INSTANCE_FIELDS) {
-    const [x, z, elevation, yaw, scale] = records.subarray(offset, offset + INSTANCE_FIELDS);
+    const [x, z, elevation, yaw, scale, variant] = records.subarray(offset, offset + INSTANCE_FIELDS);
     const [nx, ny, nz] = alignedUp(field, x, z, mask.slope_align);
-    placements.push([x, elevation - sink * scale, z, yaw, scale, nx, ny, nz]);
+    placements.push([x, elevation - sink * scale, z, yaw, scale, nx, ny, nz, variant]);
   }
   return placements;
+}
+
+function meshParts(gltf, unitScale) {
+  const parts = [];
+  const normalise = new THREE.Matrix4().makeScale(unitScale, unitScale, unitScale);
+  gltf.scene.updateMatrixWorld(true);
+  gltf.scene.traverse((node) => {
+    if (!node.isMesh) {
+      return;
+    }
+    const geometry = node.geometry.clone().applyMatrix4(normalise.clone().multiply(node.matrixWorld));
+    const materials = (Array.isArray(node.material) ? node.material : [node.material]).map((source) => {
+      const material = source.clone();
+      if (!material.metalnessMap) {
+        material.metalness = 0;
+      }
+      if (material.alphaTest > 0) {
+        material.transparent = false;
+        material.side = THREE.DoubleSide;
+      }
+      return material;
+    });
+    parts.push([geometry, Array.isArray(node.material) ? materials : materials[0]]);
+  });
+  return parts;
+}
+
+async function variantParts(entry, mask, loads) {
+  const variants = [];
+  let meshes = 0;
+  for (const variant of mask.variants ?? []) {
+    const url = entry.meshes?.[variant.glb];
+    let parts = null;
+    if (url) {
+      if (!loads.has(url)) {
+        loads.set(url, new GLTFLoader().loadAsync(url).catch(() => null));
+      }
+      const gltf = await loads.get(url);
+      parts = gltf ? meshParts(gltf, variant.unit_scale) : null;
+    }
+    if (parts && parts.length > 0) {
+      meshes += 1;
+    }
+    variants.push(parts && parts.length > 0 ? parts : SCATTER_KINDS[mask.kind].parts());
+  }
+  if (variants.length === 0) {
+    variants.push(SCATTER_KINDS[mask.kind].parts());
+  }
+  return { variants, meshes };
 }
 
 function writePlacements(mesh, placements) {
@@ -1045,7 +1095,7 @@ function tileScatter(group) {
       mesh.dispose();
     }
   }
-  const { kind, placements, parts, worldSize } = group.userData;
+  const { kind, placements, variants, worldSize } = group.userData;
   const tiles = Math.max(1, Math.round(worldSize / SCATTER_KINDS[kind].tile_m));
   const tileSize = worldSize / tiles;
   const buckets = new Map();
@@ -1065,19 +1115,25 @@ function tileScatter(group) {
     tile.name = `${group.name}_${ti}_${tj}`;
     tile.userData.centre = new THREE.Vector2((ti + 0.5) * tileSize - worldSize / 2, (tj + 0.5) * tileSize - worldSize / 2);
     tile.userData.radius = tileSize * Math.SQRT1_2;
-    for (const [geometry, material] of parts) {
-      const mesh = new THREE.InstancedMesh(geometry, material, bucket.length);
-      writePlacements(mesh, bucket);
-      tile.add(mesh);
-    }
+    variants.forEach((parts, variant) => {
+      const chosen = bucket.filter((placement) => Math.min(variants.length - 1, placement[8]) === variant);
+      if (chosen.length === 0) {
+        return;
+      }
+      for (const [geometry, material] of parts) {
+        const mesh = new THREE.InstancedMesh(geometry, material, chosen.length);
+        writePlacements(mesh, chosen);
+        tile.add(mesh);
+      }
+    });
     group.add(tile);
   }
 }
 
-function scatterGroup(species, kind, placements, worldSize) {
+function scatterGroup(species, kind, placements, worldSize, variants) {
   const group = new THREE.Group();
   group.name = `scatter_${species}`;
-  group.userData = { species, kind, placements, worldSize, parts: SCATTER_KINDS[kind].parts() };
+  group.userData = { species, kind, placements, worldSize, variants };
   tileScatter(group);
   return group;
 }
@@ -1099,9 +1155,11 @@ function disposeScatter(scatter) {
         mesh.dispose();
       }
     }
-    for (const [geometry, material] of group.userData.parts) {
+    for (const [geometry, material] of group.userData.variants.flat()) {
       geometry.dispose();
-      material.dispose();
+      for (const item of Array.isArray(material) ? material : [material]) {
+        item.dispose();
+      }
     }
   }
 }
@@ -1302,13 +1360,21 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
   const scatter = new THREE.Group();
   scatter.name = "scatter";
   const scatterStats = {};
+  const meshLoads = new Map();
   for (const mask of manifest.scatter) {
     if (!(mask.kind in SCATTER_KINDS)) {
       continue;
     }
     const placements = await scatterPlacements(entry, mask, field);
-    scatter.add(scatterGroup(mask.species, mask.kind, placements, manifest.world_size_m));
-    scatterStats[mask.species] = { kind: mask.kind, count: placements.length, spacing_m: mask.placed_spacing_m };
+    const { variants, meshes } = await variantParts(entry, mask, meshLoads);
+    scatter.add(scatterGroup(mask.species, mask.kind, placements, manifest.world_size_m, variants));
+    scatterStats[mask.species] = {
+      kind: mask.kind,
+      count: placements.length,
+      spacing_m: mask.placed_spacing_m,
+      variants: variants.length,
+      meshes,
+    };
   }
   group.add(scatter);
 

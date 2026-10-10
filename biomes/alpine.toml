@@ -45,6 +45,7 @@ weight = "1 - smoothstep(temperature, 0.28, 0.42)"
 
 [species.treeline_conifer]
 kind = "conifer"
+meshes = ["nature/tree_pineSmallA", "nature/tree_pineSmallB", "nature/tree_pineSmallC", "nature/tree_pineGroundA"]
 density = "alpine_meadow * smoothstep(temperature, 0.42, 0.52) * smoothstep(patchiness_coarse, 0.4, 0.55)"
 spacing_m = 7.0
 scale = [0.6, 1.2]
@@ -53,6 +54,7 @@ water_buffer_m = 6.0
 
 [species.dwarf_shrub]
 kind = "shrub"
+meshes = ["nature/plant_bushSmall", "nature/plant_bush", "nature/plant_bushLargeTriangle"]
 density = "max(tundra_turf, alpine_meadow) * smoothstep(patchiness_fine, 0.45, 0.6)"
 spacing_m = 2.5
 scale = [0.4, 0.9]
@@ -62,6 +64,7 @@ water_buffer_m = 2.0
 
 [species.tussock]
 kind = "grass"
+meshes = ["nature/grass", "nature/grass_leafs"]
 density = "(tundra_turf + alpine_meadow) * (1 - smoothstep(slope, 0.3, 0.5))"
 spacing_m = 1.5
 scale = [0.6, 1.2]
@@ -69,6 +72,7 @@ slope_align = 0.6
 
 [species.alpine_flower]
 kind = "flower"
+meshes = ["nature/flower_purpleC", "nature/flower_yellowC", "nature/flower_purpleB"]
 density = "alpine_meadow * smoothstep(moisture, 0.36, 0.54) * smoothstep(patchiness_mid, 0.48, 0.6)"
 spacing_m = 1.2
 scale = [0.5, 1.0]
@@ -76,6 +80,7 @@ slope_align = 0.5
 
 [species.talus_boulder]
 kind = "rock"
+meshes = ["nature/rock_largeA", "nature/rock_tallE", "nature/rock_tallF", "nature/rock_smallTopB"]
 density = "talus_scree * (1 - smoothstep(slope, 0.45, 0.6))"
 spacing_m = 4.0
 scale = [0.5, 2.0]
@@ -84,6 +89,7 @@ exclusion_m = 1.0
 
 [species.erratic]
 kind = "rock"
+meshes = ["nature/rock_tallA", "nature/rock_tallB", "nature/rock_largeD"]
 density = "max(tundra_turf, glacial_silt) * smoothstep(patchiness_fine, 0.58, 0.66)"
 spacing_m = 12.0
 scale = [1.5, 3.5]
@@ -92,6 +98,7 @@ exclusion_m = 3.0
 
 [species.scree_stones]
 kind = "debris"
+meshes = ["nature/rock_smallA", "nature/rock_smallE", "nature/rock_smallF", "nature/rock_smallG"]
 density = "max(talus_scree, glacial_wash) * (1 - smoothstep(slope, 0.45, 0.6))"
 spacing_m = 1.5
 scale = [0.4, 1.2]

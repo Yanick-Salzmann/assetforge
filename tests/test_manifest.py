@@ -139,6 +139,7 @@ def test_build_accepts_scatter_masks_and_normal_map(biome):
             "instances": "",
             "count": 0,
             "placed_spacing_m": 0.0,
+            "variants": [],
         }
     ]
     assert payload["normal_map"] == "normal.png"
@@ -176,6 +177,11 @@ def _with_duplicate_scatter(payload):
         lambda payload: _with_scatter(payload, count=-1),
         lambda payload: _with_scatter(payload, count=1.5),
         _with_duplicate_scatter,
+        lambda payload: _with_scatter(payload, variants="rock.glb"),
+        lambda payload: _with_scatter(payload, variants=[{"mesh": "nature/rock", "glb": "rock.glb", "tris": 8}]),
+        lambda payload: _with_scatter(
+            payload, variants=[{"mesh": "nature/rock", "glb": "rock.glb", "tris": 8, "unit_scale": 0.0}]
+        ),
         lambda payload: payload.__setitem__("normal_map", 3),
         lambda payload: payload.__setitem__("colour_macro", "colour_macro.png"),
         lambda payload: payload.__setitem__("colour_macro", {"path": "colour_macro.png"}),

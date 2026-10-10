@@ -10,11 +10,12 @@ import numpy as np
 from terrain.config import HEIGHTMAP_MAX, MapConfig, MapConfigError
 from terrain.splat import Species
 
-INSTANCE_FIELDS = ("x", "y", "z", "yaw", "scale")
+INSTANCE_FIELDS = ("x", "y", "z", "yaw", "scale", "variant")
 INSTANCE_LAYOUT = (
-    "little-endian float32 records of (x, y, z, yaw, scale): x along image columns and y along "
-    "image rows in metres from the map centre, z the elevation in metres sampled bilinearly from "
-    "height.png, yaw in radians about the up axis, scale a uniform multiplier"
+    "little-endian float32 records of (x, y, z, yaw, scale, variant): x along image columns and "
+    "y along image rows in metres from the map centre, z the elevation in metres sampled "
+    "bilinearly from height.png, yaw in radians about the up axis, scale a uniform multiplier, "
+    "variant an integral index into the species' mesh variants"
 )
 INSTANCE_SUFFIX = ".bin"
 KIND_CAPS: dict[str, int] = {
@@ -39,7 +40,7 @@ def instance_name(species: str) -> str:
 
 @dataclass(frozen=True)
 class Placement:
-    """One species' instances as an [N, 5] float32 array and the spacing actually used."""
+    """One species' instances as an [N, 6] float32 array and the spacing actually used."""
 
     species: Species
     instances: np.ndarray
@@ -204,7 +205,7 @@ def place(
         rng = np.random.Generator(np.random.PCG64(cfg.derive_seed("scatter", entry.name)))
         spacing = effective_spacing(entry, float(mask.mean()) / 255.0, world_m)
         points = poisson_disc(rng, world_m, spacing)
-        rolls = rng.random((3, points.shape[0]))
+        rolls = rng.random((4, points.shape[0]))
         kept = rolls[0] < sample_mask(mask, points, cfg.metres_per_pixel)
         kept &= occupied.clear_of(points, entry.exclusion_m)
         cap = KIND_CAPS[entry.kind]
@@ -215,10 +216,12 @@ def place(
         yaw = rolls[1][kept] * 2.0 * math.pi
         low, high = entry.scale
         scale = low + (high - low) * rolls[2][kept]
+        variants = max(1, len(entry.meshes))
+        variant = np.minimum(np.floor(rolls[3][kept] * variants), variants - 1)
         elevation = sample_height(height_u16, points, cfg)
         centred = points - world_m / 2.0
         instances = np.stack(
-            [centred[:, 0], centred[:, 1], elevation, yaw, scale], axis=-1
+            [centred[:, 0], centred[:, 1], elevation, yaw, scale, variant], axis=-1
         ).astype("<f4")
         occupied.add(points, entry.exclusion_m)
         placed.append(Placement(entry, np.ascontiguousarray(instances), spacing))

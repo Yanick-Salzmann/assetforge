@@ -169,21 +169,29 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   rock, debris), a `density` rule in the splat rule language that may also read the biome's
   blended layer weights by layer name, `spacing_m`, `scale = [min, max]`, and optional
   `slope_align` (0 upright .. 1 surface-normal), `exclusion_m` (clearance from every other
-  species) and `water_buffer_m`. Layer names may not shadow channel names.
+  species), `water_buffer_m` and `meshes` (1-4 `<pack>/<model>` kit props from
+  `library/kits.lock.json`, the mesh variants). Layer names may not shadow channel names.
+- Mesh variants are resolved by `terrain/vegetation.py`: each is scaled by `unit_scale` so its
+  largest extent equals `vegetation.KIND_SIZE_M[kind]` at instance scale 1, and must stay
+  within `vegetation.KIND_TRI_BUDGET[kind]` (conifer/broadleaf 600, cactus 300, grass 250,
+  debris 250, shrub/rock/flower 200) - `tests/test_vegetation.py` enforces both.
 - Scatter masks are single-channel 8-bit, one per species: `scatter_<species>.png`.
   `terrain.json` `scatter[]` records `species`, `kind`, `path`, `density`, `spacing_m`,
   `scale`, `slope_align`, `exclusion_m`, `water_buffer_m`, `instances`, `count`,
-  `placed_spacing_m` (schema_version 2), validated by `terrain/manifest.py`. Export removes
+  `placed_spacing_m`, `variants[]` (`mesh`, `glb` relative to `library/`, `tris`,
+  `unit_scale`) (schema_version 3), validated by `terrain/manifest.py`. Export removes
   stale `scatter_*` files from the map directory.
 - Instances are placed in Python, never in the engine or viewer (`terrain/placement.py`):
   Poisson-disc per species in declaration order, seeded by `cfg.derive_seed("scatter",
   species)`, thinned by the 8-bit mask, capped per kind (`placement.KIND_CAPS`, which can
   widen the spacing - the result is `placed_spacing_m`), and dropped within
   `max(exclusion_m, other.exclusion_m)` of any earlier species' instance. Written as
-  `scatter_<species>.bin`: little-endian float32 records `(x, y, z, yaw, scale)`, x along
+  `scatter_<species>.bin`: little-endian float32 records `(x, y, z, yaw, scale, variant)`, x along
   image columns and y along image rows in metres from the map centre, z the elevation in
-  metres sampled bilinearly from `height.png`. Slope alignment is applied at load time from
-  the heightfield normal and `slope_align`.
+  metres sampled bilinearly from `height.png`, variant an integral index into `variants[]`
+  (always 0 without meshes). Slope alignment is applied at load time from the heightfield
+  normal and `slope_align`. The viewer falls back to primitive geometry for any variant whose
+  GLB is not on disk.
 - `colour_macro.png` is an 8-bit RGB albedo multiplier (`byte / 128`, neutral 128) built
   from `patchiness_coarse`/`patchiness_mid`, `moisture` and `wetness` (`terrain/macro.py`).
   Low-frequency, no lighting or AO. `terrain.json` `colour_macro` records the path and the

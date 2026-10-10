@@ -378,6 +378,7 @@ SPECIES_KEYS = (
     "slope_align",
     "exclusion_m",
     "water_buffer_m",
+    "meshes",
 )
 SPECIES_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_]{0,47}$")
 MIN_SPACING_M = 0.25
@@ -386,6 +387,7 @@ MIN_SCALE = 0.05
 MAX_SCALE = 20.0
 MAX_EXCLUSION_M = 100.0
 MAX_WATER_BUFFER_M = 500.0
+MAX_MESH_VARIANTS = 4
 
 
 @dataclass(frozen=True)
@@ -396,7 +398,8 @@ class Species:
     layer name. spacing_m is the mean distance between instances at full density, scale the
     uniform size range, slope_align how far an instance tilts from upright toward the surface
     normal (0 upright, 1 normal-aligned), exclusion_m the clearance kept from instances of every
-    other species, and water_buffer_m a hard no-plant band around the water mask.
+    other species, water_buffer_m a hard no-plant band around the water mask, and meshes the
+    '<pack>/<model>' kit props an instance picks its variant from.
     """
 
     name: str
@@ -407,6 +410,7 @@ class Species:
     slope_align: float = 0.0
     exclusion_m: float = 0.0
     water_buffer_m: float = 0.0
+    meshes: tuple[str, ...] = ()
 
     def as_dict(self) -> dict:
         return {
@@ -417,6 +421,7 @@ class Species:
             "slope_align": self.slope_align,
             "exclusion_m": self.exclusion_m,
             "water_buffer_m": self.water_buffer_m,
+            "meshes": list(self.meshes),
         }
 
 
@@ -586,6 +591,19 @@ def _scale_range(value: Any, label: str) -> tuple[float, float]:
     return low, high
 
 
+def _meshes(value: Any, label: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not value or len(value) > MAX_MESH_VARIANTS:
+        raise SplatRuleError(f"{label} must list 1 to {MAX_MESH_VARIANTS} kit props")
+    meshes = []
+    for mesh in value:
+        if not isinstance(mesh, str) or mesh.count("/") != 1 or not all(mesh.split("/")):
+            raise SplatRuleError(f"{label} entry {mesh!r} must be a '<pack>/<model>' kit prop")
+        if mesh in meshes:
+            raise SplatRuleError(f"{label} lists {mesh!r} twice")
+        meshes.append(mesh)
+    return tuple(meshes)
+
+
 def _species(
     name: str,
     entry: Mapping[str, Any],
@@ -618,6 +636,7 @@ def _species(
         water_buffer_m=_ranged(
             entry.get("water_buffer_m", 0.0), 0.0, MAX_WATER_BUFFER_M, f"{label} water_buffer_m"
         ),
+        meshes=_meshes(entry["meshes"], f"{label} meshes") if "meshes" in entry else (),
     )
 
 

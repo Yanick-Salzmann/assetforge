@@ -19,6 +19,7 @@ weight = "1"
 
 [species.tree]
 kind = "conifer"
+meshes = ["nature/a", "nature/b", "nature/c"]
 density = "1"
 spacing_m = 4.0
 scale = [0.8, 1.2]
@@ -117,7 +118,7 @@ def test_an_empty_mask_places_nothing(species):
     names = [entry.name for entry in species]
     placed = placement.place(cfg(), species[:1], full_masks(names, 0), flat_height())
     assert placed[0].count == 0
-    assert placed[0].instances.shape == (0, 5)
+    assert placed[0].instances.shape == (0, len(placement.INSTANCE_FIELDS))
 
 
 def test_half_density_thins_the_instances(species):
@@ -140,6 +141,13 @@ def test_instances_are_centred_scaled_and_sit_on_the_heightmap(species):
     assert placed[:, 3].max() < 2 * math.pi
     assert placed[:, 4].min() >= 0.8
     assert placed[:, 4].max() <= 1.2
+    assert set(np.unique(placed[:, 5]).tolist()) == {0.0, 1.0, 2.0}
+
+
+def test_a_species_without_meshes_always_uses_variant_zero(species):
+    names = [entry.name for entry in species]
+    placed = placement.place(cfg(), species, full_masks(names), flat_height())
+    assert not placed[1].instances[:, 5].any()
 
 
 def test_sample_height_is_bilinear_between_pixel_centres():

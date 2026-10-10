@@ -144,7 +144,7 @@ def test_write_produces_the_full_deliverable_set(tmp_path, two_layer_biome):
     assert boulder["slope_align"] == pytest.approx(0.7)
     assert boulder["exclusion_m"] == pytest.approx(1.5)
     assert boulder["instances"] == "scatter_boulder.bin"
-    assert (tmp_path / "scatter_boulder.bin").stat().st_size == boulder["count"] * 20
+    assert (tmp_path / "scatter_boulder.bin").stat().st_size == boulder["count"] * manifest.INSTANCE_RECORD_BYTES
 
 
 def test_write_skips_the_normal_map_when_disabled(tmp_path, two_layer_biome):

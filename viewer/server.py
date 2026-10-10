@@ -75,6 +75,16 @@ def _material_maps(library_root: Path, material: str, index: Mapping[str, dict])
     return maps
 
 
+def _mesh_urls(library_root: Path, scatter: list[dict]) -> dict[str, str]:
+    urls: dict[str, str] = {}
+    for entry in scatter:
+        for variant in entry.get("variants", []):
+            relative = variant["glb"]
+            if resolve_under(library_root, relative) is not None:
+                urls[relative] = f"{LIBRARY_FILE_PREFIX}{relative}"
+    return urls
+
+
 def _material_index(library_root: Path) -> dict[str, dict]:
     path = library_root / MATERIAL_INDEX_NAME
     if not path.is_file():
@@ -105,6 +115,7 @@ def list_terrains(terrain_root: Path, library_root: Path) -> list[dict]:
                     layer["material"]: _material_maps(library_root, layer["material"], index)
                     for layer in payload["splat"]["layers"]
                 },
+                "meshes": _mesh_urls(library_root, payload["scatter"]),
             }
         )
     return terrains

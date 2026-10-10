@@ -11,8 +11,9 @@ from terrain import config
 from terrain.channels import WaterLevel
 from terrain.config import MapConfig, MapConfigError
 from terrain.splat import Species, SplatResult
+from terrain.vegetation import Variant
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 MANIFEST_NAME = "terrain.json"
 HEIGHTMAP_NAME = "height.png"
@@ -21,7 +22,7 @@ WATER_SURFACE_NAME = "water_surface.png"
 
 SCATTER_KINDS = config.SCATTER_KINDS
 SCATTER_NUMBER_KEYS = ("spacing_m", "placed_spacing_m", "slope_align", "exclusion_m", "water_buffer_m")
-INSTANCE_RECORD_BYTES = 20
+INSTANCE_RECORD_BYTES = 24
 
 TOP_LEVEL_KEYS = (
     "schema_version",
@@ -67,6 +68,7 @@ class ScatterMask:
     instances: str = ""
     count: int = 0
     placed_spacing_m: float = 0.0
+    variants: tuple[Variant, ...] = ()
 
     def __post_init__(self) -> None:
         if self.kind not in SCATTER_KINDS:
@@ -82,6 +84,7 @@ class ScatterMask:
         instances: str = "",
         count: int = 0,
         placed_spacing_m: float = 0.0,
+        variants: tuple[Variant, ...] = (),
     ) -> ScatterMask:
         return cls(
             species=species.name,
@@ -96,6 +99,7 @@ class ScatterMask:
             instances=instances,
             count=count,
             placed_spacing_m=placed_spacing_m,
+            variants=variants,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -112,6 +116,7 @@ class ScatterMask:
             "instances": self.instances,
             "count": self.count,
             "placed_spacing_m": self.placed_spacing_m,
+            "variants": [variant.as_dict() for variant in self.variants],
         }
 
 
@@ -247,6 +252,15 @@ def validate(payload: Mapping[str, Any]) -> None:
             isinstance(value, (int, float)) and not isinstance(value, bool) for value in scale
         ):
             raise ManifestError(f"scatter {species!r} scale must be a [min, max] pair")
+        for variant in _require(entry, "variants", list, f"scatter {species!r}"):
+            if not isinstance(variant, dict):
+                raise ManifestError(f"scatter {species!r} variants must be tables")
+            _require(variant, "mesh", str, f"scatter {species!r} variant")
+            _require(variant, "glb", str, f"scatter {species!r} variant")
+            _require(variant, "tris", int, f"scatter {species!r} variant")
+            unit_scale = _require(variant, "unit_scale", (int, float), f"scatter {species!r} variant")
+            if unit_scale <= 0:
+                raise ManifestError(f"scatter {species!r} variant unit_scale must be positive")
 
     _require_optional_str(payload, "normal_map", label)
     water_surface = payload.get("water_surface")

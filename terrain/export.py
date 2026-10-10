@@ -14,6 +14,7 @@ from terrain import normal as normal_mod
 from terrain import placement as placement_mod
 from terrain import scatter as scatter_mod
 from terrain import splat as splat_mod
+from terrain import vegetation as vegetation_mod
 from terrain.channels import ChannelStack, WaterLevel
 from terrain.config import HEIGHTMAP_MAX, MapConfig, MapConfigError
 
@@ -96,6 +97,7 @@ def write(
         height_u16(stack["height"]),
     )
     written.extend(placement_mod.write(placements, target))
+    variants = vegetation_mod.resolve_all(splat.biome.species)
     scatter_entries = tuple(
         manifest_mod.ScatterMask.of(
             placed.species,
@@ -103,6 +105,7 @@ def write(
             placement_mod.instance_name(placed.species.name),
             placed.count,
             placed.spacing_m,
+            variants[placed.species.name],
         )
         for placed in placements
     )
