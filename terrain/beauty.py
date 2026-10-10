@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 import torch
@@ -15,8 +15,10 @@ from PIL import Image
 from assets.blender import require_blender
 from library.materials import MaterialIndex
 from terrain import atmosphere as atmosphere_mod
+from terrain import placement as placement_mod
+from terrain import vegetation as vegetation_mod
 from terrain.budget import DEFAULT_BUDGET, Preview, PreviewBudget, deliver_file
-from terrain.config import HEIGHTMAP_MAX, MapConfig, MapConfigError
+from terrain.config import HEIGHTMAP_MAX, LIBRARY_DIR, MapConfig, MapConfigError
 from terrain.splat import SplatResult
 
 SCRIPT_PATH = Path(__file__).resolve().parent / "blender_scripts" / "beauty_render.py"
@@ -52,6 +54,28 @@ EXPOSURE_MAX_STOPS = 10.0
 EXPOSURE_PROBE_DIVISOR = 4
 EXPOSURE_PROBE_SAMPLES = 16
 
+KIND_SINK_M: dict[str, float] = {
+    "conifer": 0.3,
+    "broadleaf": 0.3,
+    "cactus": 0.1,
+    "shrub": 0.1,
+    "rock": 0.35,
+    "grass": 0.02,
+    "flower": 0.02,
+    "debris": 0.08,
+}
+KIND_REACH_M: dict[str, float] = {
+    "conifer": math.inf,
+    "broadleaf": math.inf,
+    "cactus": 1500.0,
+    "shrub": 600.0,
+    "rock": 1500.0,
+    "grass": 250.0,
+    "flower": 200.0,
+    "debris": 400.0,
+}
+SCATTER_RECORD = ("x", "y", "z", "rotation_x", "rotation_y", "rotation_z", "scale")
+
 
 class BeautyRenderError(MapConfigError):
     """Raised when the headless Blender beauty render cannot be produced."""
@@ -66,7 +90,29 @@ class BeautyRender:
     centre_world_m: tuple[float, float, float]
     device: dict[str, Any]
     lighting: dict[str, Any]
+    scatter: dict[str, int]
     log: str
+
+
+@dataclass(frozen=True)
+class ScatterBatch:
+    """One species variant's instances in Blender world space, and the mesh they instance.
+
+    records holds SCATTER_RECORD rows: position in metres from the map's south-west corner
+    (+x east along image columns, +y north toward the image top, z up), an XYZ Euler rotation,
+    and the uniform scale with the variant's unit_scale already folded in. glb is None when
+    the species has no mesh on disk; the render then stands in a primitive of kind size.
+    """
+
+    species: str
+    kind: str
+    variant: int
+    glb: Path | None
+    records: np.ndarray
+
+    @property
+    def count(self) -> int:
+        return int(self.records.shape[0])
 
 
 def _smoothstep(edge0: float, edge1: float, x: float) -> float:
@@ -121,27 +167,153 @@ def lighting_args(atmosphere: atmosphere_mod.Atmosphere) -> dict[str, Any]:
     }
 
 
+def _tilt_matrices(normals: np.ndarray) -> np.ndarray:
+    """Rotations taking +z onto each unit normal (Rodrigues; normals always point up)."""
+    count = normals.shape[0]
+    skew = np.zeros((count, 3, 3))
+    skew[:, 0, 2] = normals[:, 0]
+    skew[:, 1, 2] = normals[:, 1]
+    skew[:, 2, 0] = -normals[:, 0]
+    skew[:, 2, 1] = -normals[:, 1]
+    factor = 1.0 / (1.0 + normals[:, 2])
+    return np.eye(3)[None] + skew + (skew @ skew) * factor[:, None, None]
+
+
+def instance_euler(normals: np.ndarray, yaw: np.ndarray) -> np.ndarray:
+    """XYZ Euler angles of tilt(normal) @ Rz(yaw): yaw about the instance's own up, then the
+    lean onto the surface normal - the composition the viewer's writePlacements uses."""
+    cos_yaw = np.cos(yaw)
+    sin_yaw = np.sin(yaw)
+    spin = np.zeros((yaw.shape[0], 3, 3))
+    spin[:, 0, 0] = cos_yaw
+    spin[:, 0, 1] = -sin_yaw
+    spin[:, 1, 0] = sin_yaw
+    spin[:, 1, 1] = cos_yaw
+    spin[:, 2, 2] = 1.0
+    rotation = _tilt_matrices(normals) @ spin
+    return np.stack(
+        [
+            np.arctan2(rotation[:, 2, 1], rotation[:, 2, 2]),
+            np.arcsin(np.clip(-rotation[:, 2, 0], -1.0, 1.0)),
+            np.arctan2(rotation[:, 1, 0], rotation[:, 0, 0]),
+        ],
+        axis=-1,
+    )
+
+
+def _surface_normals(
+    cfg: MapConfig, height_u16: np.ndarray, corner_points: np.ndarray, align: float
+) -> np.ndarray:
+    """The viewer's alignedUp, in Blender axes: the heightfield normal leaned by slope_align."""
+    count = corner_points.shape[0]
+    if align <= 0.0:
+        return np.tile(np.array([0.0, 0.0, 1.0]), (count, 1))
+    step = cfg.metres_per_pixel
+    offsets = {
+        "east": (step, 0.0),
+        "west": (-step, 0.0),
+        "south": (0.0, step),
+        "north": (0.0, -step),
+    }
+    heights = {
+        name: placement_mod.sample_height(height_u16, corner_points + np.array(offset), cfg)
+        for name, offset in offsets.items()
+    }
+    along_columns = (heights["east"] - heights["west"]) / (2.0 * step)
+    along_rows = (heights["south"] - heights["north"]) / (2.0 * step)
+    normals = np.stack([-along_columns * align, along_rows * align, np.ones(count)], axis=-1)
+    return normals / np.linalg.norm(normals, axis=-1, keepdims=True)
+
+
+def scatter_batches(
+    cfg: MapConfig,
+    placements: Sequence[placement_mod.Placement],
+    variants: Mapping[str, tuple[vegetation_mod.Variant, ...]],
+    height_u16: np.ndarray,
+    centre_m: tuple[float, float],
+    library_dir: Path = LIBRARY_DIR,
+) -> tuple[ScatterBatch, ...]:
+    """The exported instances, moved into Blender's frame and split per mesh variant.
+
+    Each kind is kept only within the viewer's own reach of the view centre, so a ground-level
+    render does not pay for grass two kilometres behind the camera.
+    """
+    half = cfg.world_size_m / 2.0
+    batches = []
+    for placed in placements:
+        species = placed.species
+        records = placed.instances.astype(np.float64)
+        reach = KIND_REACH_M[species.kind]
+        corner = records[:, 0:2] + half
+        world_x = corner[:, 0]
+        world_y = cfg.world_size_m - corner[:, 1]
+        near = np.hypot(world_x - centre_m[0], world_y - centre_m[1]) <= reach
+        records, corner, world_x, world_y = records[near], corner[near], world_x[near], world_y[near]
+        if records.shape[0] == 0:
+            continue
+        normals = _surface_normals(cfg, height_u16, corner, species.slope_align)
+        euler = instance_euler(normals, records[:, 3])
+        scale = records[:, 4]
+        z = records[:, 2] - KIND_SINK_M[species.kind] * scale
+        choices = variants.get(species.name, ()) or (None,)
+        for index, variant in enumerate(choices):
+            chosen = records[:, 5] == index
+            if not chosen.any():
+                continue
+            glb = None if variant is None else library_dir / variant.glb
+            unit_scale = 1.0 if variant is None else variant.unit_scale
+            rows = np.stack(
+                [
+                    world_x[chosen],
+                    world_y[chosen],
+                    z[chosen],
+                    euler[chosen, 0],
+                    euler[chosen, 1],
+                    euler[chosen, 2],
+                    scale[chosen] * unit_scale,
+                ],
+                axis=-1,
+            ).astype("<f4")
+            present = glb if glb is not None and glb.is_file() else None
+            batches.append(ScatterBatch(species.name, species.kind, index, present, np.ascontiguousarray(rows)))
+    return tuple(batches)
+
+
 def _texture_index(texture_name: str) -> int:
     return int(texture_name.removeprefix("splat_").removesuffix(".png"))
+
+
+def _height_u16(height: torch.Tensor) -> np.ndarray:
+    values = height.detach().to(device="cpu", dtype=torch.float32).clamp(0.0, 1.0).numpy()
+    return np.ascontiguousarray((values * HEIGHTMAP_MAX + 0.5).astype(np.uint16))
 
 
 def _write_height_png(height: torch.Tensor, path: Path) -> Path:
     """A 16-bit scratch heightmap for the Displace modifier, not the canonical export deliverable.
 
-    Flipped vertically: a PNG's row 0 is the image top, but Blender samples UV v=0 from a
-    texture's bottom row, so leaving this unflipped would mirror the terrain top-to-bottom
-    relative to every other preview in the pipeline.
+    Not flipped: Blender shows a PNG's first row at the top of the image, i.e. at UV v=1, which
+    the grid puts at +y. Row 0 therefore lands on the north edge, as in the viewer and every
+    other preview, and the sun's compass azimuth means the same thing in both renders.
     """
-    values = height.detach().to(device="cpu", dtype=torch.float32).clamp(0.0, 1.0).numpy()
-    scaled = np.flipud(values * HEIGHTMAP_MAX + 0.5).astype(np.uint16)
     path.parent.mkdir(parents=True, exist_ok=True)
-    Image.fromarray(np.ascontiguousarray(scaled)).save(path)
+    Image.fromarray(_height_u16(height)).save(path)
     return path
 
 
+def _write_records(batch: ScatterBatch, path: Path) -> Path:
+    path.write_bytes(batch.records.tobytes())
+    return path
+
+
+def _scatter_counts(batches: Sequence[ScatterBatch]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for batch in batches:
+        counts[batch.species] = counts.get(batch.species, 0) + batch.count
+    return counts
+
+
 def _write_splat_png(block: np.ndarray, path: Path) -> Path:
-    flipped = np.ascontiguousarray(np.flipud(block))
-    Image.fromarray(flipped, "RGBA").save(path)
+    Image.fromarray(np.ascontiguousarray(block), "RGBA").save(path)
     return path
 
 
@@ -186,6 +358,8 @@ def render(
     resolution: tuple[int, int] = DEFAULT_RESOLUTION,
     atmosphere: atmosphere_mod.Atmosphere | None = None,
     time_of_day_h: float | None = None,
+    placements: Sequence[placement_mod.Placement] = (),
+    variants: Mapping[str, tuple[vegetation_mod.Variant, ...]] | None = None,
     three_quarter_azimuth_deg: float = DEFAULT_THREE_QUARTER_AZIMUTH_DEG,
     three_quarter_altitude_deg: float = DEFAULT_THREE_QUARTER_ALTITUDE_DEG,
     ground_eye_height_m: float = DEFAULT_GROUND_EYE_HEIGHT_M,
@@ -197,6 +371,8 @@ def render(
     materials, and render one 3/4 view and one ground-level view at a chosen map position.
 
     Lit by the biome's [atmosphere] unless one is handed in; time_of_day_h overrides its time.
+    Dressed with the given scatter placements (export.scatter_placements), each instancing its
+    species' kit meshes as the viewer does.
 
     Reads only what is handed in - no dependency on export.py's terrain.json, since this is the
     Phase 2 gate and must run before the export contract exists.
@@ -222,6 +398,15 @@ def render(
     if time_of_day_h is not None:
         sky = atmosphere_mod.parse({**sky.as_dict(), "time_of_day_h": time_of_day_h}, "time_of_day_h")
     lighting = lighting_args(sky)
+    if placements and variants is None:
+        variants = vegetation_mod.resolve_all(splat.biome.species)
+    batches = scatter_batches(
+        cfg,
+        placements,
+        variants or {},
+        _height_u16(height),
+        (centre_x * cfg.world_size_m, centre_y * cfg.world_size_m),
+    )
 
     with tempfile.TemporaryDirectory(prefix="beauty_") as scratch_name:
         scratch = Path(scratch_name)
@@ -250,6 +435,17 @@ def render(
                 for entry in assignment
             ],
             "lighting": lighting,
+            "scatter": [
+                {
+                    "name": f"{batch.species}_{batch.variant}",
+                    "kind": batch.kind,
+                    "glb": None if batch.glb is None else str(batch.glb),
+                    "size_m": vegetation_mod.KIND_SIZE_M[batch.kind],
+                    "records": str(_write_records(batch, scratch / f"scatter_{index}.bin")),
+                    "count": batch.count,
+                }
+                for index, batch in enumerate(batches)
+            ],
             "camera": {
                 "centre_frac": [centre_x, centre_y],
                 "patch_size_m": patch_size_m,
@@ -302,6 +498,7 @@ def render(
         centre_world_m=tuple(payload.get("centre_world_m", (0.0, 0.0, 0.0))),
         device=payload.get("device", {}),
         lighting={**lighting["summary"], "exposure_stops": payload.get("exposure_stops", {})},
+        scatter=_scatter_counts(batches),
         log=log,
     )
 

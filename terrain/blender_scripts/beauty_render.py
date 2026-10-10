@@ -5,6 +5,7 @@ our venv (torch/numpy/pillow), so this script only ever touches bpy, mathutils a
 Invoked as: blender --background --factory-startup --python beauty_render.py -- <args.json>
 """
 
+import array
 import json
 import math
 import sys
@@ -14,6 +15,7 @@ import bpy
 from mathutils import Vector
 
 CHANNEL_LABEL = {"r": "Red", "g": "Green", "b": "Blue"}
+RECORD_FIELDS = 7
 
 
 def _read_args() -> dict:
@@ -205,6 +207,86 @@ def _build_material(args: dict) -> bpy.types.Material:
     return material
 
 
+def _variant_collection(entry: dict) -> bpy.types.Collection:
+    """The meshes one scatter variant instances: its GLB, or a kind-sized stand-in when absent."""
+    collection = bpy.data.collections.new(f"Scatter_{entry['name']}")
+    bpy.context.scene.collection.children.link(collection)
+    before = set(bpy.data.objects)
+    if entry.get("glb"):
+        bpy.ops.import_scene.gltf(filepath=entry["glb"])
+    else:
+        size = float(entry["size_m"])
+        if entry["kind"] in ("conifer", "cactus", "grass", "flower"):
+            bpy.ops.mesh.primitive_cone_add(
+                vertices=8, radius1=size * 0.25, depth=size, location=(0.0, 0.0, size / 2.0)
+            )
+        else:
+            bpy.ops.mesh.primitive_ico_sphere_add(
+                subdivisions=1, radius=size / 2.0, location=(0.0, 0.0, size / 2.0)
+            )
+    for obj in set(bpy.data.objects) - before:
+        for owner in list(obj.users_collection):
+            owner.objects.unlink(obj)
+        collection.objects.link(obj)
+    bpy.context.view_layer.layer_collection.children[collection.name].exclude = True
+    return collection
+
+
+def _instancer_group(collection: bpy.types.Collection) -> bpy.types.NodeTree:
+    group = bpy.data.node_groups.new(f"Instancer_{collection.name}", "GeometryNodeTree")
+    group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+    nodes = group.nodes
+    links = group.links
+    group_in = nodes.new("NodeGroupInput")
+    group_out = nodes.new("NodeGroupOutput")
+    collection_info = nodes.new("GeometryNodeCollectionInfo")
+    collection_info.transform_space = "ORIGINAL"
+    collection_info.inputs["Collection"].default_value = collection
+    rotation = nodes.new("GeometryNodeInputNamedAttribute")
+    rotation.data_type = "FLOAT_VECTOR"
+    rotation.inputs["Name"].default_value = "instance_rotation"
+    euler = nodes.new("FunctionNodeEulerToRotation")
+    scale = nodes.new("GeometryNodeInputNamedAttribute")
+    scale.data_type = "FLOAT"
+    scale.inputs["Name"].default_value = "instance_scale"
+    instancer = nodes.new("GeometryNodeInstanceOnPoints")
+    links.new(group_in.outputs[0], instancer.inputs["Points"])
+    links.new(collection_info.outputs[0], instancer.inputs["Instance"])
+    links.new(rotation.outputs["Attribute"], euler.inputs["Euler"])
+    links.new(euler.outputs["Rotation"], instancer.inputs["Rotation"])
+    links.new(scale.outputs["Attribute"], instancer.inputs["Scale"])
+    links.new(instancer.outputs["Instances"], group_out.inputs[0])
+    return group
+
+
+def _build_scatter(entries: list) -> None:
+    """One point cloud per species variant, instancing that variant's meshes by geometry nodes."""
+    if not entries:
+        return
+    groups = {}
+    for entry in entries:
+        key = entry.get("glb") or f"primitive:{entry['kind']}"
+        if key not in groups:
+            groups[key] = _instancer_group(_variant_collection(entry))
+        values = array.array("f")
+        values.frombytes(Path(entry["records"]).read_bytes())
+        count = len(values) // RECORD_FIELDS
+        mesh = bpy.data.meshes.new(f"Points_{entry['name']}")
+        mesh.vertices.add(count)
+        mesh.vertices.foreach_set("co", [values[RECORD_FIELDS * i + axis] for i in range(count) for axis in range(3)])
+        rotation = mesh.attributes.new("instance_rotation", "FLOAT_VECTOR", "POINT")
+        rotation.data.foreach_set(
+            "vector", [values[RECORD_FIELDS * i + 3 + axis] for i in range(count) for axis in range(3)]
+        )
+        scale = mesh.attributes.new("instance_scale", "FLOAT", "POINT")
+        scale.data.foreach_set("value", values[6::RECORD_FIELDS])
+        obj = bpy.data.objects.new(f"Scatter_{entry['name']}", mesh)
+        bpy.context.scene.collection.objects.link(obj)
+        modifier = obj.modifiers.new("Instancer", "NODES")
+        modifier.node_group = groups[key]
+
+
 def _ground_height(depsgraph, x: float, y: float) -> float:
     origin = Vector((x, y, 1.0e6))
     direction = Vector((0.0, 0.0, -1.0))
@@ -330,11 +412,6 @@ def main() -> None:
     offset = Vector(
         (math.cos(azimuth) * math.cos(altitude), math.sin(azimuth) * math.cos(altitude), math.sin(altitude))
     ) * distance
-    camera.location = target + offset
-    _look_at(camera, target)
-    exposure_stops["three_quarter"] = _render_view(
-        scene, exposure_args, resolution_x, resolution_y, samples, outputs["three_quarter"], probe_path
-    )
 
     ground = camera_args.get("ground", {})
     look_azimuth = math.radians(float(ground.get("look_azimuth_deg", three_quarter.get("azimuth_deg", 45.0))))
@@ -343,6 +420,15 @@ def main() -> None:
     ground_y = centre_y - math.sin(look_azimuth) * back_distance
     ground_z = _ground_height(depsgraph, ground_x, ground_y)
     eye_height = float(ground.get("eye_height_m", 1.8))
+
+    _build_scatter(args.get("scatter", []))
+
+    camera.location = target + offset
+    _look_at(camera, target)
+    exposure_stops["three_quarter"] = _render_view(
+        scene, exposure_args, resolution_x, resolution_y, samples, outputs["three_quarter"], probe_path
+    )
+
     camera.location = Vector((ground_x, ground_y, ground_z + eye_height))
     _look_at(camera, Vector((centre_x, centre_y, centre_z + eye_height * 0.5)))
     exposure_stops["ground"] = _render_view(

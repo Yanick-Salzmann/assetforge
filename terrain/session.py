@@ -16,6 +16,7 @@ from terrain import beauty as beauty_mod
 from terrain import channels as channels_mod
 from terrain import config, preview, synth
 from terrain import erosion as erosion_mod
+from terrain import export as export_mod
 from terrain import splat as splat_mod
 from terrain.budget import DEFAULT_BUDGET, Preview, PreviewBudget, detail_region
 from terrain.channels import ChannelStack, WaterLevel, WaterParams
@@ -426,14 +427,18 @@ def beauty_view(
     budget: PreviewBudget = DEFAULT_BUDGET,
     **kwargs: Any,
 ) -> tuple[beauty_mod.BeautyRender, Preview]:
-    """Render both beauty views and hand back the budgeted preview of the one asked for."""
+    """Render both beauty views, dressed with the same scatter export writes, and hand back the
+    budgeted preview of the one asked for."""
     if view not in BEAUTY_VIEWS:
         raise MapConfigError(f"view {view!r} must be one of {', '.join(BEAUTY_VIEWS)}")
+    splat = session.splat_result()
+    _masks, placements = export_mod.scatter_placements(session.cfg, session.channels(), splat)
     result = beauty_mod.render(
         session.cfg,
         session.current(),
-        session.splat_result(),
+        splat,
         material_index(),
+        placements=placements,
         **kwargs,
     )
     chosen = result.three_quarter if view == "three_quarter" else result.ground

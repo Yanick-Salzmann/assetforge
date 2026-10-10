@@ -219,7 +219,9 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   Blender beauty render reads the same entry (`terrain/beauty.py` `lighting_args`): sun and
   moon from `terrain.atmosphere.sun_position`/`moon_position` (map +y is north, i.e. the image
   top), a multiple-scattering sky texture with its sun disc as the key light, a moon lamp at
-  night, and per-view metered exposure.
+  night, and per-view metered exposure. It is dressed with the same instances export writes
+  (`export.scatter_placements`), instanced per mesh variant by geometry nodes with the viewer's
+  per-kind sink, slope alignment and reach (`beauty.KIND_SINK_M`, `beauty.KIND_REACH_M`).
 - Output path is `out/terrain/<name>/`. Previews are kept as the visual
   changelog, not deleted between iterations.
 

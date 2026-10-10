@@ -263,6 +263,7 @@ def preview_beauty(
         "centre_world_m": list(result.centre_world_m),
         "device": result.device,
         "lighting": result.lighting,
+        "scatter": result.scatter,
     }
     return _result(summary, rendered)
 

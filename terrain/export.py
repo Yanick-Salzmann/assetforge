@@ -31,6 +31,20 @@ def height_u16(height: torch.Tensor) -> np.ndarray:
     return np.ascontiguousarray((values * HEIGHTMAP_MAX + 0.5).astype(np.uint16))
 
 
+def scatter_placements(
+    cfg: MapConfig, stack: ChannelStack, splat: splat_mod.SplatResult
+) -> tuple[dict[str, torch.Tensor], tuple[placement_mod.Placement, ...]]:
+    """Every species' density mask and the instances placed from it - the exact set export writes."""
+    masks = scatter_mod.build(stack, splat)
+    placements = placement_mod.place(
+        cfg,
+        splat.biome.species,
+        {name: scatter_mod.to_image(field) for name, field in masks.items()},
+        height_u16(stack["height"]),
+    )
+    return masks, placements
+
+
 def write_height(height: torch.Tensor, path: Path) -> Path:
     """16-bit grayscale, non-colour: row-major, no flip. Blender's own UV convention lives in beauty.py, not here."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -85,17 +99,11 @@ def write(
     ]
     written.extend(splat_mod.write(splat, target))
 
-    masks = scatter_mod.build(stack, splat)
+    masks, placements = scatter_placements(cfg, stack, splat)
     for pattern in ("*.png", f"*{placement_mod.INSTANCE_SUFFIX}"):
         for stale in target.glob(f"{scatter_mod.MASK_PREFIX}{pattern}"):
             stale.unlink()
     written.extend(scatter_mod.write(masks, target))
-    placements = placement_mod.place(
-        cfg,
-        splat.biome.species,
-        {name: scatter_mod.to_image(field) for name, field in masks.items()},
-        height_u16(stack["height"]),
-    )
     written.extend(placement_mod.write(placements, target))
     variants = vegetation_mod.resolve_all(splat.biome.species)
     scatter_entries = tuple(
