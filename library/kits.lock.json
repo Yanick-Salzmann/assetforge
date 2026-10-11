@@ -3026,6 +3026,382 @@
       "zip_sha256": "5869c35cf30b1c87bdb2d197b6d325eebadd2ef08ea27f04797e8e08d77a9a39",
       "zip_url": "https://kenney.nl/media/pages/assets/city-kit-suburban/2c871b7af2-1745479373/kenney_city-kit-suburban_20.zip"
     },
+    "flora": {
+      "category": "vegetation",
+      "license": "CC0",
+      "models": {
+        "fern_a": {
+          "bbox_max_m": [
+            0.8501237630844116,
+            0.63880455493927,
+            0.8849770426750183
+          ],
+          "bbox_min_m": [
+            -0.8501237630844116,
+            0.0,
+            -0.8849770426750183
+          ],
+          "path": "kits/flora/fern_a.glb",
+          "recipe": "out/assets/flora_fern_a/recipe.py",
+          "sha256": "75bcb3c8f73c01e0c08d6d5bade4f16bea0d3df1ebe446acfb45ede255ad59db",
+          "tris": 54
+        },
+        "fern_b": {
+          "bbox_max_m": [
+            0.7043515741825104,
+            0.5354943871498108,
+            0.7346448302268982
+          ],
+          "bbox_min_m": [
+            -0.7043515741825104,
+            0.0,
+            -0.7346448302268982
+          ],
+          "path": "kits/flora/fern_b.glb",
+          "recipe": "out/assets/flora_fern_b/recipe.py",
+          "sha256": "e715d21e1bdcae07e6ac7eaca80a02f8e1d778c0df314153c4d6ff0ed0e3c1a7",
+          "tris": 66
+        },
+        "flower_purple": {
+          "bbox_max_m": [
+            0.27124080061912537,
+            0.5343322157859802,
+            0.27558043599128723
+          ],
+          "bbox_min_m": [
+            -0.27124080061912537,
+            0.0,
+            -0.27558043599128723
+          ],
+          "path": "kits/flora/flower_purple.glb",
+          "recipe": "out/assets/flora_flower_purple/recipe.py",
+          "sha256": "60029ae1db0447b112c14da5e88930c0b72435a9db507fb5bb5ec1e4973a979b",
+          "tris": 24
+        },
+        "flower_red": {
+          "bbox_max_m": [
+            0.2768428921699524,
+            0.5133461356163025,
+            0.27658163011074066
+          ],
+          "bbox_min_m": [
+            -0.2768428921699524,
+            0.0,
+            -0.27658163011074066
+          ],
+          "path": "kits/flora/flower_red.glb",
+          "recipe": "out/assets/flora_flower_red/recipe.py",
+          "sha256": "62c1d96cb7cafac5842ba1f9fc60ac65a55837015698586b1fd4f5005335f654",
+          "tris": 24
+        },
+        "flower_yellow": {
+          "bbox_max_m": [
+            0.25387732684612274,
+            0.5035971403121948,
+            0.26233410835266113
+          ],
+          "bbox_min_m": [
+            -0.25387732684612274,
+            0.0,
+            -0.26233410835266113
+          ],
+          "path": "kits/flora/flower_yellow.glb",
+          "recipe": "out/assets/flora_flower_yellow/recipe.py",
+          "sha256": "3f023e58760790fdb72bb2364f012270423ea0d1ef118621fab6922e320eb6d5",
+          "tris": 24
+        },
+        "grass_a": {
+          "bbox_max_m": [
+            0.3078412860631943,
+            0.5487619042396545,
+            0.3103204667568207
+          ],
+          "bbox_min_m": [
+            -0.3078412860631943,
+            0.0,
+            -0.3103204667568207
+          ],
+          "path": "kits/flora/grass_a.glb",
+          "recipe": "out/assets/flora_grass_a/recipe.py",
+          "sha256": "6b2dc3a226744c131350b8e40faeb39ff801ac2035c216cb75388491860235b2",
+          "tris": 48
+        },
+        "grass_b": {
+          "bbox_max_m": [
+            0.2249305322766304,
+            0.3817293643951416,
+            0.23076669871807098
+          ],
+          "bbox_min_m": [
+            -0.2249305322766304,
+            0.0,
+            -0.23076669871807098
+          ],
+          "path": "kits/flora/grass_b.glb",
+          "recipe": "out/assets/flora_grass_b/recipe.py",
+          "sha256": "ed5131f5bb72082cd68851743620debeff9477614b183f4452d818744f149f97",
+          "tris": 40
+        },
+        "grass_dry_a": {
+          "bbox_max_m": [
+            0.3236791044473648,
+            0.6245392560958862,
+            0.34610140323638916
+          ],
+          "bbox_min_m": [
+            -0.3236791044473648,
+            0.0,
+            -0.34610140323638916
+          ],
+          "path": "kits/flora/grass_dry_a.glb",
+          "recipe": "out/assets/flora_grass_dry_a/recipe.py",
+          "sha256": "b2263fe83b1c48964d5b967b9799cb8b3c13feda578573a2539aedf45c193be0",
+          "tris": 48
+        },
+        "grass_dry_b": {
+          "bbox_max_m": [
+            0.24206823855638504,
+            0.42726653814315796,
+            0.2290515974164009
+          ],
+          "bbox_min_m": [
+            -0.24206823855638504,
+            0.0,
+            -0.2290515974164009
+          ],
+          "path": "kits/flora/grass_dry_b.glb",
+          "recipe": "out/assets/flora_grass_dry_b/recipe.py",
+          "sha256": "e9e1ccbe95e97d3d3ddfa3c3bfae9495b7e5b00ea67549ddef03b3316023758e",
+          "tris": 40
+        },
+        "hazel_a": {
+          "bbox_max_m": [
+            1.0278186798095703,
+            1.5051823854446411,
+            1.0192966759204865
+          ],
+          "bbox_min_m": [
+            -1.0278186798095703,
+            0.0,
+            -1.0192966759204865
+          ],
+          "path": "kits/flora/hazel_a.glb",
+          "recipe": "out/assets/flora_hazel_a/recipe.py",
+          "sha256": "e370246862214dc0af5cb0b58b736806a9a04ffed73dbf4f2c033d9283480cc5",
+          "tris": 190
+        },
+        "hazel_b": {
+          "bbox_max_m": [
+            0.8380394279956818,
+            1.1332191228866577,
+            0.8502866625785828
+          ],
+          "bbox_min_m": [
+            -0.8380394279956818,
+            0.0,
+            -0.8502866625785828
+          ],
+          "path": "kits/flora/hazel_b.glb",
+          "recipe": "out/assets/flora_hazel_b/recipe.py",
+          "sha256": "ea79d92434aeecf7adf4a9be50837c1865588526be5ecf23ec65e48f35bca7b5",
+          "tris": 180
+        },
+        "juniper_a": {
+          "bbox_max_m": [
+            1.0482866168022156,
+            0.8661229610443115,
+            0.9528804123401642
+          ],
+          "bbox_min_m": [
+            -1.0482866168022156,
+            0.0,
+            -0.9528804123401642
+          ],
+          "path": "kits/flora/juniper_a.glb",
+          "recipe": "out/assets/flora_juniper_a/recipe.py",
+          "sha256": "71b4f7aab499f4dfe5ef764158aba35c66805c89522d703aeb4e2aa831a7935c",
+          "tris": 180
+        },
+        "juniper_b": {
+          "bbox_max_m": [
+            0.7805308103561401,
+            0.8031347990036011,
+            0.7355611026287079
+          ],
+          "bbox_min_m": [
+            -0.7805308103561401,
+            0.0,
+            -0.7355611026287079
+          ],
+          "path": "kits/flora/juniper_b.glb",
+          "recipe": "out/assets/flora_juniper_b/recipe.py",
+          "sha256": "8bdd69ad1921609cf381606326307220c7d69c85693ddc3a0c0d72eced67880f",
+          "tris": 160
+        },
+        "mesquite_a": {
+          "bbox_max_m": [
+            3.8853237628936768,
+            4.779443264007568,
+            3.234052538871765
+          ],
+          "bbox_min_m": [
+            -3.8853237628936768,
+            0.0,
+            -3.234052538871765
+          ],
+          "path": "kits/flora/mesquite_a.glb",
+          "recipe": "out/assets/flora_mesquite_a/recipe.py",
+          "sha256": "76bcef80741b67dfda4b015798478440d1853b365d027095becbc244e4a92973",
+          "tris": 542
+        },
+        "mesquite_b": {
+          "bbox_max_m": [
+            3.1360690593719482,
+            5.419216156005859,
+            3.015347719192505
+          ],
+          "bbox_min_m": [
+            -3.1360690593719482,
+            0.0,
+            -3.015347719192505
+          ],
+          "path": "kits/flora/mesquite_b.glb",
+          "recipe": "out/assets/flora_mesquite_b/recipe.py",
+          "sha256": "a3009a35eaa9a55b9820b401b7e11c40809637e90290ebade66b9f13b4dfba01",
+          "tris": 522
+        },
+        "oak_a": {
+          "bbox_max_m": [
+            3.8483004570007324,
+            8.974221229553223,
+            4.150355339050293
+          ],
+          "bbox_min_m": [
+            -3.8483004570007324,
+            0.0,
+            -4.150355339050293
+          ],
+          "path": "kits/flora/oak_a.glb",
+          "recipe": "out/assets/flora_oak_a/recipe.py",
+          "sha256": "81690fb9a23faf594b0bb2c8036473c4b645e3de44da375655a4938a8e0f32c8",
+          "tris": 562
+        },
+        "oak_b": {
+          "bbox_max_m": [
+            3.605271816253662,
+            9.94253921508789,
+            3.3189382553100586
+          ],
+          "bbox_min_m": [
+            -3.605271816253662,
+            0.0,
+            -3.3189382553100586
+          ],
+          "path": "kits/flora/oak_b.glb",
+          "recipe": "out/assets/flora_oak_b/recipe.py",
+          "sha256": "1be835880840f1c013489ad0ac90725b506ff85d94a47304b0222e6df388c1fd",
+          "tris": 562
+        },
+        "sage_a": {
+          "bbox_max_m": [
+            0.6373921632766724,
+            0.8691856861114502,
+            0.6488727331161499
+          ],
+          "bbox_min_m": [
+            -0.6373921632766724,
+            0.0,
+            -0.6488727331161499
+          ],
+          "path": "kits/flora/sage_a.glb",
+          "recipe": "out/assets/flora_sage_a/recipe.py",
+          "sha256": "5e3bf76b0c3f3e6fb37a5a76602aa14aa3c512c3c42dabd601f8d18419f67224",
+          "tris": 160
+        },
+        "sage_b": {
+          "bbox_max_m": [
+            0.5173493027687073,
+            0.9087886214256287,
+            0.5524037778377533
+          ],
+          "bbox_min_m": [
+            -0.5173493027687073,
+            0.0,
+            -0.5524037778377533
+          ],
+          "path": "kits/flora/sage_b.glb",
+          "recipe": "out/assets/flora_sage_b/recipe.py",
+          "sha256": "5773fa98f363221f30d097c1b895effb0e88cc394692a7b42307e69f81406fa3",
+          "tris": 140
+        },
+        "spruce_a": {
+          "bbox_max_m": [
+            2.8555750846862793,
+            11.4399995803833,
+            2.83695125579834
+          ],
+          "bbox_min_m": [
+            -2.8555750846862793,
+            0.0,
+            -2.83695125579834
+          ],
+          "path": "kits/flora/spruce_a.glb",
+          "recipe": "out/assets/flora_spruce_a/recipe.py",
+          "sha256": "bedc7d659d960537e443bc552cef334a34f2e57e6ad44a9d4f30b72ee0ca61e3",
+          "tris": 586
+        },
+        "spruce_b": {
+          "bbox_max_m": [
+            2.5757566690444946,
+            8.84000015258789,
+            2.6300017833709717
+          ],
+          "bbox_min_m": [
+            -2.5757566690444946,
+            0.0,
+            -2.6300017833709717
+          ],
+          "path": "kits/flora/spruce_b.glb",
+          "recipe": "out/assets/flora_spruce_b/recipe.py",
+          "sha256": "fe43fc6d61feaa1bea0fab311de69adfe2a330a9875a1f70cd049252b911a450",
+          "tris": 520
+        },
+        "spruce_c": {
+          "bbox_max_m": [
+            1.9938883185386658,
+            5.199999809265137,
+            1.9128126502037048
+          ],
+          "bbox_min_m": [
+            -1.9938883185386658,
+            0.0,
+            -1.9128126502037048
+          ],
+          "path": "kits/flora/spruce_c.glb",
+          "recipe": "out/assets/flora_spruce_c/recipe.py",
+          "sha256": "ff270391d80ee0c9e30fe77955d25316132447ed68f808795c909268cc9966aa",
+          "tris": 540
+        },
+        "spruce_d": {
+          "bbox_max_m": [
+            2.2634470462799072,
+            6.760000228881836,
+            2.2610262632369995
+          ],
+          "bbox_min_m": [
+            -2.2634470462799072,
+            0.0,
+            -2.2610262632369995
+          ],
+          "path": "kits/flora/spruce_d.glb",
+          "recipe": "out/assets/flora_spruce_d/recipe.py",
+          "sha256": "e95601fbda3c649edee2096a235d0579ef5b8a89d068619cac597963e44ec6b3",
+          "tris": 520
+        }
+      },
+      "slug": "flora",
+      "source": "assetforge"
+    },
     "graveyard": {
       "category": "prop",
       "license": "CC0",

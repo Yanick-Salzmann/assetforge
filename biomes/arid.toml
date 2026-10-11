@@ -79,7 +79,7 @@ exclusion_m = 0.8
 
 [species.mesquite]
 kind = "broadleaf"
-meshes = ["nature/tree_fat_fall", "nature/tree_thin_fall", "nature/tree_plateau_fall"]
+meshes = ["flora/mesquite_a", "flora/mesquite_b"]
 density = "smoothstep(flow, 0.4, 0.6) * smoothstep(moisture, 0.5, 0.75) * (1 - smoothstep(slope, 0.2, 0.35))"
 spacing_m = 9.0
 scale = [0.5, 0.9]
@@ -88,7 +88,7 @@ water_buffer_m = 4.0
 
 [species.creosote]
 kind = "shrub"
-meshes = ["nature/plant_bushSmall", "nature/plant_bushTriangle", "nature/plant_bushLargeTriangle"]
+meshes = ["flora/sage_a", "flora/sage_b"]
 density = "(scrub + 0.5 * dry_wash) * (1 - smoothstep(slope, 0.3, 0.5))"
 spacing_m = 4.0
 scale = [0.5, 1.1]
@@ -97,7 +97,7 @@ exclusion_m = 1.0
 
 [species.bunchgrass]
 kind = "grass"
-meshes = ["nature/grass", "nature/grass_large"]
+meshes = ["flora/grass_dry_a", "flora/grass_dry_b"]
 density = "max(scrub, 0.3 * dune_sand) * smoothstep(patchiness_fine, 0.38, 0.55)"
 spacing_m = 2.5
 scale = [0.5, 1.0]

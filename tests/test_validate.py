@@ -358,3 +358,15 @@ def test_report_as_dict_is_plain_json_even_with_numpy_values():
     assert json.loads(json.dumps(payload)) == payload
     assert type(payload["checks"][0]["passed"]) is bool
     assert type(payload["ok"]) is bool
+
+
+def test_vegetation_skips_closed_mesh_and_uv_overlap_checks(monkeypatch):
+    monkeypatch.setitem(validate.TRI_BUDGETS, "vegetation", (1, 10))
+    _write_tetrahedron_glb(config.ASSET_OUT_DIR / "test-plant" / "test-plant.glb")
+
+    report = validate.validate_asset("test-plant", "vegetation")
+
+    assert report.ok, [c for c in report.checks if not c.passed]
+    names = {c.name for c in report.checks}
+    assert not any("watertight" in n or "manifold" in n or "UV overlap" in n for n in names)
+    assert any("outward normals" in n for n in names)

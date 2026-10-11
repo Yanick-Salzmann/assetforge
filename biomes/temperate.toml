@@ -61,7 +61,7 @@ weight = "smoothstep(slope, 0.35, 0.65) * (1 - smoothstep(temperature, 0.12, 0.3
 
 [species.conifer]
 kind = "conifer"
-meshes = ["nature/tree_pineTallA_detailed", "nature/tree_pineTallB_detailed", "nature/tree_pineTallC_detailed", "nature/tree_pineTallD_detailed"]
+meshes = ["flora/spruce_a", "flora/spruce_b"]
 density = "(forest_floor + 0.08 * lush_grass) * smoothstep(patchiness_coarse, 0.42, 0.55) * (1 - smoothstep(slope, 0.35, 0.55))"
 spacing_m = 6.0
 scale = [0.8, 1.5]
@@ -70,7 +70,7 @@ water_buffer_m = 8.0
 
 [species.broadleaf]
 kind = "broadleaf"
-meshes = ["nature/tree_oak", "nature/tree_default", "nature/tree_detailed", "nature/tree_plateau"]
+meshes = ["flora/oak_a", "flora/oak_b"]
 density = "(forest_floor + 0.08 * lush_grass) * (1 - smoothstep(patchiness_coarse, 0.42, 0.55)) * (1 - smoothstep(slope, 0.35, 0.55))"
 spacing_m = 8.0
 scale = [0.7, 1.3]
@@ -79,7 +79,7 @@ water_buffer_m = 8.0
 
 [species.hazel_shrub]
 kind = "shrub"
-meshes = ["nature/plant_bushDetailed", "nature/plant_bushLarge", "nature/plant_bush"]
+meshes = ["flora/hazel_a", "flora/hazel_b"]
 density = "max(0.3 * lush_grass, forest_floor) * smoothstep(patchiness_fine, 0.45, 0.6) * (1 - smoothstep(slope, 0.35, 0.55))"
 spacing_m = 3.0
 scale = [0.6, 1.2]
@@ -89,7 +89,7 @@ water_buffer_m = 3.0
 
 [species.fern]
 kind = "shrub"
-meshes = ["nature/plant_flatTall", "nature/plant_flatShort", "nature/grass_leafsLarge"]
+meshes = ["flora/fern_a", "flora/fern_b"]
 density = "forest_floor * smoothstep(wetness, 0.3, 0.55) * (1 - smoothstep(slope, 0.35, 0.55))"
 spacing_m = 2.0
 scale = [0.5, 1.0]
@@ -99,7 +99,7 @@ water_buffer_m = 2.0
 
 [species.grass_tuft]
 kind = "grass"
-meshes = ["nature/grass", "nature/grass_large"]
+meshes = ["flora/grass_a", "flora/grass_b"]
 density = "(dry_grass + lush_grass) * (1 - smoothstep(slope, 0.3, 0.5))"
 spacing_m = 1.5
 scale = [0.7, 1.3]
@@ -107,7 +107,7 @@ slope_align = 0.6
 
 [species.wildflower]
 kind = "flower"
-meshes = ["nature/flower_purpleA", "nature/flower_redA", "nature/flower_yellowA", "nature/flower_redB"]
+meshes = ["flora/flower_purple", "flora/flower_yellow", "flora/flower_red"]
 density = "lush_grass * smoothstep(patchiness_mid, 0.5, 0.62) * (1 - smoothstep(slope, 0.25, 0.45))"
 spacing_m = 1.2
 scale = [0.6, 1.1]

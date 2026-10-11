@@ -14,6 +14,7 @@ from pathlib import Path
 import bpy
 from mathutils import Vector
 
+TRANSPARENT_BOUNCES = 64
 LOWER_LOD_SUFFIX = re.compile(r"_LOD[1-9]\d*$")
 
 VIEW_DIRECTIONS = {
@@ -167,6 +168,7 @@ def _render(scene, resolution: list, samples: int, filepath: str) -> None:
     scene.render.image_settings.file_format = "PNG"
     scene.render.image_settings.color_mode = "RGB"
     scene.cycles.samples = samples
+    scene.cycles.transparent_max_bounces = TRANSPARENT_BOUNCES
     scene.render.filepath = filepath
     bpy.ops.render.render(write_still=True)
 

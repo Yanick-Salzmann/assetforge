@@ -185,6 +185,13 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   recipe path) in `kits.lock.json`. The `scatter` pack is rebuilt by
   `blender --background --python assets/blender_scripts/scatter_set_build.py` (geometry from
   `assets/organic.py`), then approved and pulled.
+- Vegetation (trees, shrubs, ferns, grass, flowers) is the `flora` pack, rebuilt by
+  `blender --background --python assets/blender_scripts/flora_build.py`: bark tubes and
+  alpha-cutout foliage cards from `assets/flora.py` (pure Python, `flora.MODELS` maps each model
+  to its scatter kind) over one shared 2048 RGBA atlas painted by `assets/foliage_atlas.py` (bark
+  strip from `bark_cc0`, 12 procedural foliage cells with an 8 px transparent gutter). One
+  material, glTF `alphaMode` MASK (alpha through a Math Round node), double-sided; card normals
+  lean outward from the plant. Exported with kind `vegetation`.
 - Scatter masks are single-channel 8-bit, one per species: `scatter_<species>.png`.
   `terrain.json` `scatter[]` records `species`, `kind`, `path`, `density`, `spacing_m`,
   `scale`, `slope_align`, `exclusion_m`, `water_buffer_m`, `instances`, `count`,
@@ -246,6 +253,10 @@ validator too.
   own and a harmless touching seam reads as genuine non-manifold geometry (af-fte).
 - Assets are viewed from any angle: no billboards, no imposters, no missing back
   faces, no one-angle-only detail.
+- Exception: scatter vegetation (export/validate kind `vegetation`) is open alpha-cutout
+  cards, so `validate_asset` skips the closed/manifold and UV-overlap checks for it; an
+  octahedral impostor is allowed as its far LOD (af-8m0.9). Hero assets and props keep the rule.
+  Cycles renders of cutout foliage need `transparent_max_bounces` well above the default 8.
 - No baked lighting and no AO darkening in the albedo. The engine lights it.
 - Power-of-two textures, 2048 atlas, one material per asset.
 - Canonical export is `.glb`, with `asset.json` and `recipe.py` beside it, in

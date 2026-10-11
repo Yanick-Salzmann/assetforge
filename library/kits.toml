@@ -35,3 +35,8 @@ category = "prop"
 source = "assetforge"
 slug = "scatter"
 category = "vegetation"
+
+[pack.flora]
+source = "assetforge"
+slug = "flora"
+category = "vegetation"

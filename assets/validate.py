@@ -12,7 +12,9 @@ TRI_BUDGETS: dict[str, tuple[int, int]] = {
     "hero_building": (4000, 15000),
     "prop": (200, 1500),
     "vehicle": (5000, 20000),
+    "vegetation": (20, 600),
 }
+OPEN_SURFACE_KINDS = ("vegetation",)
 
 ORIGIN_TOLERANCE_M = 0.05
 SCALE_TOLERANCE = 1e-3
@@ -90,11 +92,12 @@ def validate_asset(name: str, kind: str) -> ValidationReport:
             checks.extend(_check_material(label, primitive))
             checks.extend(_check_loose_vertices(label, positions, indices))
             checks.extend(_check_degenerate_triangles(label, positions, indices))
-            welded = _weld_indices(positions)
-            edge_faces = _edge_face_map(welded[indices])
-            checks.extend(_check_manifold(label, edge_faces, positions, indices))
             checks.extend(_check_inward_normals(label, positions, indices, normals))
-            checks.extend(_check_uv_overlap(label, indices, uvs))
+            if kind not in OPEN_SURFACE_KINDS:
+                welded = _weld_indices(positions)
+                edge_faces = _edge_face_map(welded[indices])
+                checks.extend(_check_manifold(label, edge_faces, positions, indices))
+                checks.extend(_check_uv_overlap(label, indices, uvs))
             world_positions = _transform_positions(matrix, positions)
             world_bbox_min = np.minimum(world_bbox_min, world_positions.min(axis=0))
             world_bbox_max = np.maximum(world_bbox_max, world_positions.max(axis=0))

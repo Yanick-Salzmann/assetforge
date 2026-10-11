@@ -14,6 +14,7 @@ from pathlib import Path
 import bpy
 from mathutils import Vector
 
+TRANSPARENT_BOUNCES = 64
 CHANNEL_LABEL = {"r": "Red", "g": "Green", "b": "Blue"}
 RECORD_FIELDS = 7
 
@@ -308,6 +309,7 @@ def _render(scene, resolution_x: int, resolution_y: int, samples: int, filepath:
     scene.render.image_settings.file_format = file_format
     scene.render.image_settings.color_mode = "RGB"
     scene.cycles.samples = samples
+    scene.cycles.transparent_max_bounces = TRANSPARENT_BOUNCES
     scene.render.filepath = filepath
     bpy.ops.render.render(write_still=True)
 
