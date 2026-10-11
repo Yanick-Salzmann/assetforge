@@ -99,8 +99,8 @@ def test_tiling_scale_tracks_world_size():
 
 
 def test_channel_stack_bytes_matches_the_measured_ceiling():
-    assert MapConfig(name="unit", resolution=2048).channel_stack_bytes() == 256 * 1024 * 1024
-    assert MapConfig(name="unit", resolution=4096).channel_stack_bytes() == 1024 * 1024 * 1024
+    assert MapConfig(name="unit", resolution=2048).channel_stack_bytes() == 272 * 1024 * 1024
+    assert MapConfig(name="unit", resolution=4096).channel_stack_bytes() == 17 * 64 * 1024 * 1024
 
 
 def test_round_trips_through_a_dict():
@@ -128,8 +128,8 @@ def test_bad_talus_and_tiling_inputs_are_rejected():
         cfg.tiling_scale(0.0)
 
 
-def test_channel_names_are_the_documented_sixteen():
-    assert len(config.CHANNEL_NAMES) == 16
+def test_channel_names_are_the_documented_seventeen():
+    assert len(config.CHANNEL_NAMES) == 17
     assert config.CHANNEL_NAMES[0] == "height"
     assert all(name == name.lower() for name in config.CHANNEL_NAMES)
     assert math.isclose(config.HEIGHTMAP_MAX, 65535)

@@ -87,6 +87,7 @@ CHANNEL_NAMES = (
     "patchiness_fine",
     "patchiness_mid",
     "patchiness_coarse",
+    "shore",
 )
 
 

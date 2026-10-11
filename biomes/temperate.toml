@@ -13,22 +13,16 @@ visibility_km = 35.0
 haze_colour = "#c3cfdb"
 ground_albedo = "#5f6a44"
 
-[layer.riverbed_gravel]
-material = "river_rock"
+[layer.shore_pebbles]
+material = "pebble_beach"
 blend_contrast = 0.5
-weight = "smoothstep(flow, 0.55, 0.75) * step(slope < 0.35)"
+weight = "max(smoothstep(flow, 0.55, 0.75), smoothstep(shore, 0.45, 0.8)) * step(slope < 0.35)"
 
 [layer.silt_flat]
 material = "silt"
-weight = "smoothstep(deposition, 0.5, 0.85) * step(slope < 0.15) * (1 - smoothstep(flow, 0.55, 0.8))"
+weight = "max(smoothstep(deposition, 0.5, 0.85), smoothstep(wetness, 0.5, 0.8)) * step(slope < 0.2) * (1 - smoothstep(flow, 0.55, 0.8))"
 variation = 0.2
 variation_m = 500.0
-
-[layer.mud]
-material = "mud"
-weight = "smoothstep(wetness, 0.5, 0.8) * step(slope < 0.2) * (1 - smoothstep(deposition, 0.5, 0.85))"
-variation = 0.2
-variation_m = 450.0
 
 [layer.dry_grass]
 material = "dry_grass"
@@ -48,10 +42,17 @@ weight = "step(slope < 0.32) * smoothstep(moisture, 0.55, 0.85) * patchiness_coa
 variation = 0.25
 variation_m = 800.0
 
+[layer.mossy_rock]
+material = "moss"
+blend_contrast = 0.35
+weight = "max(smoothstep(slope, 0.4, 0.7), bedrock * wear) * max(smoothstep(wetness, 0.4, 0.65), smoothstep(shore, 0.1, 0.4))"
+variation = 0.25
+variation_m = 300.0
+
 [layer.exposed_rock]
 material = "cliff_rock"
 blend_contrast = 0.45
-weight = "max(smoothstep(slope, 0.4, 0.7), bedrock * wear)"
+weight = "max(smoothstep(slope, 0.4, 0.7), bedrock * wear) * (1 - max(smoothstep(wetness, 0.4, 0.65), smoothstep(shore, 0.1, 0.4)))"
 
 [layer.cliff_snow]
 material = "snow"
@@ -133,7 +134,7 @@ exclusion_m = 0.5
 [species.river_pebbles]
 kind = "debris"
 meshes = ["scatter/stone_a", "scatter/stone_b"]
-density = "max(riverbed_gravel, 0.5 * silt_flat) * (1 - smoothstep(slope, 0.4, 0.6))"
+density = "max(shore_pebbles, 0.5 * silt_flat) * (1 - smoothstep(slope, 0.4, 0.6))"
 spacing_m = 2.0
 scale = [0.5, 1.5]
 slope_align = 1.0

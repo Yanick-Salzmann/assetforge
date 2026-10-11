@@ -37,16 +37,21 @@ variation = 0.3
 variation_m = 650.0
 
 [layer.talus_scree]
-material = "gravel"
+material = "scree"
 blend_contrast = 0.5
-weight = "smoothstep(slope, 0.28, 0.45) * (1 - smoothstep(temperature, 0.4, 0.56))"
+weight = "smoothstep(slope, 0.28, 0.45) * (1 - smoothstep(temperature, 0.4, 0.56)) * (1 - max(smoothstep(wetness, 0.6, 0.85), smoothstep(shore, 0.5, 0.85)))"
 variation = 0.25
 variation_m = 600.0
+
+[layer.wet_rock]
+material = "wet_rock"
+blend_contrast = 0.4
+weight = "smoothstep(slope, 0.28, 0.45) * max(smoothstep(wetness, 0.6, 0.85), smoothstep(shore, 0.5, 0.85))"
 
 [layer.exposed_rock]
 material = "cliff_rock"
 blend_contrast = 0.45
-weight = "smoothstep(slope, 0.28, 0.45) * smoothstep(temperature, 0.4, 0.56)"
+weight = "smoothstep(slope, 0.28, 0.45) * smoothstep(temperature, 0.4, 0.56) * (1 - max(smoothstep(wetness, 0.6, 0.85), smoothstep(shore, 0.5, 0.85)))"
 
 [layer.snowfield]
 material = "snow"

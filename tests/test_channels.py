@@ -578,6 +578,25 @@ def test_water_covers_everything_below_the_sea_level():
     assert float(channelled["water_depth"].max()) == pytest.approx(1.0)
 
 
+def test_shore_peaks_on_the_waterline_and_fades_both_ways():
+    c = cfg(64)
+    water = torch.zeros(c.shape, device=CPU)
+    water[:, :32] = 1.0
+    band = channels.shore(c, water, channels.WaterParams(shore_reach_m=4.0 * c.metres_per_pixel))
+    assert float(band.min()) >= 0.0
+    assert float(band.max()) <= 1.0
+    assert float(band[32, 31]) > 0.8
+    assert float(band[32, 32]) > 0.8
+    assert float(band[32, 2]) < 0.05
+    assert float(band[32, 61]) < 0.05
+    assert float(band[32, 36]) > float(band[32, 44])
+
+
+def test_shore_reach_must_be_positive():
+    with pytest.raises(MapConfigError):
+        channels.WaterParams(shore_reach_m=0.0)
+
+
 def test_water_summary_records_the_level_it_used():
     c = cfg(64, sea_level_m=120.0)
     level = channels.summarise_water(c, eroded(c))

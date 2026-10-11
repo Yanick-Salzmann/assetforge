@@ -15,7 +15,7 @@ CHANNEL_INDEX: dict[str, int] = {name: index for index, name in enumerate(CHANNE
 
 GEOMETRIC_CHANNELS = ("slope", "curvature", "bedrock", "strata")
 EROSION_DERIVED_CHANNELS = ("flow", "deposition", "wear", "wetness")
-WATER_CHANNELS = ("water", "water_depth")
+WATER_CHANNELS = ("water", "water_depth", "shore")
 CLIMATE_CHANNELS = ("temperature", "moisture")
 PATCHINESS_CHANNELS = ("patchiness_fine", "patchiness_mid", "patchiness_coarse")
 
@@ -271,6 +271,7 @@ class WaterParams:
     full_depth_m: float = 0.6
     depth_reference_m: float = 12.0
     surface_smooth_m: float = 0.0
+    shore_reach_m: float = 40.0
 
     def passes(self, resolution: int) -> tuple[int, int]:
         """Fill and accumulation pass budgets, both O(longest flow path) when left at zero."""
@@ -311,6 +312,8 @@ class WaterParams:
             raise MapConfigError(f"depth_reference_m {self.depth_reference_m} must be positive")
         if self.surface_smooth_m < 0.0:
             raise MapConfigError(f"surface_smooth_m {self.surface_smooth_m} must not be negative")
+        if self.shore_reach_m <= 0.0:
+            raise MapConfigError(f"shore_reach_m {self.shore_reach_m} must be positive")
 
 
 @dataclass(frozen=True)
@@ -807,6 +810,12 @@ def water_mask(depth_m: torch.Tensor, params: WaterParams = WaterParams()) -> to
     return synth.smoothstep(params.shore_depth_m, params.full_depth_m, depth_m)
 
 
+def shore(cfg: MapConfig, water: torch.Tensor, params: WaterParams = WaterParams()) -> torch.Tensor:
+    """The shore channel: 1 on the waterline of sea, lakes and rivers, falling to 0 shore_reach_m inland and offshore."""
+    blurred = smooth(water, params.shore_reach_m / cfg.metres_per_pixel).clamp_(0.0, 1.0)
+    return blurred.mul_(2.0).sub_(1.0).abs_().neg_().add_(1.0)
+
+
 def water_level(depth_m: torch.Tensor, level_m: float, params: WaterParams) -> WaterLevel:
     covered = water_mask(depth_m, params)
     return WaterLevel(
@@ -825,11 +834,13 @@ def water_channels(
     params: WaterParams = WaterParams(),
     basin: Drainage | None = None,
 ) -> dict[str, torch.Tensor]:
-    """The water mask and its depth, both in [0, 1], depth scaled by depth_reference_m."""
+    """The water mask, its depth scaled by depth_reference_m and the shore band, all in [0, 1]."""
     depth = water_depth_metres(cfg, height, standing_m, params, basin)
+    mask = water_mask(depth, params)
     return {
-        "water": water_mask(depth, params),
+        "water": mask,
         "water_depth": depth.div(params.depth_reference_m).clamp_(0.0, 1.0),
+        "shore": shore(cfg, mask, params),
     }
 
 

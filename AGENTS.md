@@ -151,8 +151,8 @@ Never name a backend outside `terrain/device.py`. Every module that touches a
 tensor takes the device that `terrain.device.resolve()` returned; the resolver
 picks cuda, then mps, then cpu, and `ASSETFORGE_DEVICE` overrides it.
 
-12 GB of VRAM is a real ceiling. A 16-channel float32 stack costs 256 MiB at
-2048² and 1 GiB at 4096²; 8192² does not leave room for the pipe model's flux
+12 GB of VRAM is a real ceiling. A 17-channel float32 stack costs 272 MiB at
+2048² and 1.1 GiB at 4096²; 8192² does not leave room for the pipe model's flux
 fields beside it. 4096² is the working ceiling.
 
 ## Architecture Overview
@@ -217,8 +217,10 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
 - Channel stack names are fixed and lowercase: `height`, `slope`, `curvature`,
   `flow`, `deposition`, `wear`, `wetness`, `water`, `water_depth`, `bedrock`,
   `strata`, `temperature`, `moisture`, `patchiness_fine`, `patchiness_mid`,
-  `patchiness_coarse`. All are normalised to `[0, 1]` except `height`, which is
-  normalised too — the metre mapping is applied only at export.
+  `patchiness_coarse`, `shore`. All are normalised to `[0, 1]` except `height`, which is
+  normalised too — the metre mapping is applied only at export. `shore` is 1 on the
+  waterline of sea, lakes and rivers and falls to 0 `WaterParams.shore_reach_m` inland
+  and offshore (a blurred `water` mask), for beach and bank materials.
 - Splat masks pack 4 layers per RGBA texture: `splat_0.png` holds layers 0-3,
   `splat_1.png` layers 4-7. Layer weights across all textures sum to 1 per pixel.
 - Splat masks carry linear weights only. Height-based blending is a shading-time step:

@@ -32,3 +32,15 @@ slug = "aerial_sand"
 
 [material.snow]
 slug = "snow_02"
+
+[material.moss]
+slug = "mossy_rock"
+
+[material.wet_rock]
+slug = "seaside_rock"
+
+[material.pebble_beach]
+slug = "ganges_river_pebbles"
+
+[material.scree]
+slug = "rocks_ground_02"

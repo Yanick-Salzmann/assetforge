@@ -52,7 +52,7 @@ def test_committed_index_matches_the_lockfile():
 def test_committed_index_covers_the_pinned_set():
     index = materials.load()
     assert index.names() == tuple(sorted(spec.name for spec in polyhaven.load_set()))
-    assert len(index) == 10
+    assert len(index) == 14
 
 
 def test_committed_index_files_exist_on_disk():

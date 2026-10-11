@@ -288,6 +288,65 @@
       "slug": "leafy_grass",
       "source": "https://polyhaven.com/a/leafy_grass"
     },
+    "moss": {
+      "categories": [
+        "natural",
+        "outdoor",
+        "rock",
+        "terrain"
+      ],
+      "dimensions_mm": [
+        3000.0,
+        3000.0
+      ],
+      "files": {
+        "albedo": {
+          "map": "Diffuse",
+          "md5": "8e55bbeeef1db0d2d0cae85515812c46",
+          "path": "moss/albedo.jpg",
+          "sha256": "98ecbd1d19953433f5909b79958992b1da2b45addbee772d1d4c27287f368499",
+          "size": 4535360,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/mossy_rock/mossy_rock_diff_2k.jpg"
+        },
+        "ao": {
+          "map": "AO",
+          "md5": "97386b4837e6d1a4782b10bc76f2dba5",
+          "path": "moss/ao.jpg",
+          "sha256": "7ced8b235f6e1c8dc537aa55fdb1990189fe0a30ea70edfa954f61043347053e",
+          "size": 2253517,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/mossy_rock/mossy_rock_ao_2k.jpg"
+        },
+        "height": {
+          "map": "Displacement",
+          "md5": "d22857010ae3d07e42c5548126cf386c",
+          "path": "moss/height.jpg",
+          "sha256": "cc9a0ef96a0912c93fc8447f9a702a00fe3c442c36ed5999dbac5f7013ac5dde",
+          "size": 644550,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/mossy_rock/mossy_rock_disp_2k.jpg"
+        },
+        "normal": {
+          "map": "nor_gl",
+          "md5": "e6b611c8a6f8e3276e7f5491c8e66a0f",
+          "path": "moss/normal.jpg",
+          "sha256": "78c05b52eb78617fcce4fde7a9ac4872a9725fb2d13aff33248cbdb9c6330563",
+          "size": 4033031,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/mossy_rock/mossy_rock_nor_gl_2k.jpg"
+        },
+        "roughness": {
+          "map": "Rough",
+          "md5": "0b4bbecd6af36e343d05ed11914bb18f",
+          "path": "moss/roughness.jpg",
+          "sha256": "341c4f85e9b350738d30e82e616177316cc5fcbc3e8b5ee9777db47dfc5e6b7a",
+          "size": 3205806,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/mossy_rock/mossy_rock_rough_2k.jpg"
+        }
+      },
+      "format": "jpg",
+      "license": "CC0",
+      "resolution": "2k",
+      "slug": "mossy_rock",
+      "source": "https://polyhaven.com/a/mossy_rock"
+    },
     "mud": {
       "categories": [
         "natural",
@@ -345,6 +404,65 @@
       "resolution": "2k",
       "slug": "brown_mud",
       "source": "https://polyhaven.com/a/brown_mud"
+    },
+    "pebble_beach": {
+      "categories": [
+        "natural",
+        "outdoor",
+        "rock",
+        "terrain"
+      ],
+      "dimensions_mm": [
+        2159.9998474121094,
+        2159.9998474121094
+      ],
+      "files": {
+        "albedo": {
+          "map": "Diffuse",
+          "md5": "c7265256e7cb4ee18d189c48e5d66f06",
+          "path": "pebble_beach/albedo.jpg",
+          "sha256": "4284c19b6a546c8536a2d5383e5dcdbbae83ab6c2c337c7a0fb25284b0bea419",
+          "size": 3264787,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/ganges_river_pebbles/ganges_river_pebbles_diff_2k.jpg"
+        },
+        "ao": {
+          "map": "AO",
+          "md5": "f90c0f4088a59fec8e94ffda082c8eda",
+          "path": "pebble_beach/ao.jpg",
+          "sha256": "83d3385fb4aa00d85c9b3a91e45d9ce52cce659b2c2d3036c78e17b232a6913a",
+          "size": 2705612,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/ganges_river_pebbles/ganges_river_pebbles_ao_2k.jpg"
+        },
+        "height": {
+          "map": "Displacement",
+          "md5": "83489c0b87318d42dab877e79327db86",
+          "path": "pebble_beach/height.jpg",
+          "sha256": "b94d0412ba92f1dba019a73f915b2aaffd2737111c605dd9a6ff166f3cb3b536",
+          "size": 1180201,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/ganges_river_pebbles/ganges_river_pebbles_disp_2k.jpg"
+        },
+        "normal": {
+          "map": "nor_gl",
+          "md5": "652fc148857ee24cd1f0024796d5f58c",
+          "path": "pebble_beach/normal.jpg",
+          "sha256": "c73e2ea059f50f25d7f8dd719048d26bc0ca355d3009b0ef806898531231d03b",
+          "size": 4615719,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/ganges_river_pebbles/ganges_river_pebbles_nor_gl_2k.jpg"
+        },
+        "roughness": {
+          "map": "Rough",
+          "md5": "2920b38c1584569b90b676e480e7f222",
+          "path": "pebble_beach/roughness.jpg",
+          "sha256": "b8ba7e5c7ed6f9c52d537a945d044b0d9e547459087c62829cef56d7fac11fce",
+          "size": 1857478,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/ganges_river_pebbles/ganges_river_pebbles_rough_2k.jpg"
+        }
+      },
+      "format": "jpg",
+      "license": "CC0",
+      "resolution": "2k",
+      "slug": "ganges_river_pebbles",
+      "source": "https://polyhaven.com/a/ganges_river_pebbles"
     },
     "river_rock": {
       "categories": [
@@ -466,6 +584,65 @@
       "slug": "aerial_sand",
       "source": "https://polyhaven.com/a/aerial_sand"
     },
+    "scree": {
+      "categories": [
+        "natural",
+        "outdoor",
+        "rock",
+        "terrain"
+      ],
+      "dimensions_mm": [
+        2000.0,
+        2000.0
+      ],
+      "files": {
+        "albedo": {
+          "map": "Diffuse",
+          "md5": "209e3774a61a94460574e74bed8de7e1",
+          "path": "scree/albedo.jpg",
+          "sha256": "a2a4fc4e10a307ca6e345e0df50d6115ba1058174de915bfcfdd5ff3f49dc2fa",
+          "size": 3224700,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rocks_ground_02/rocks_ground_02_col_2k.jpg"
+        },
+        "ao": {
+          "map": "AO",
+          "md5": "874cde4286dcf84d408e0d60fd858d8e",
+          "path": "scree/ao.jpg",
+          "sha256": "1c371f4fd1a2538fd8a686384fcbc669736c6f556fb60858aa80be0344abf79c",
+          "size": 2168833,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rocks_ground_02/rocks_ground_02_ao_2k.jpg"
+        },
+        "height": {
+          "map": "Displacement",
+          "md5": "4ffd1290ceb916df1d28ee0f07b5d114",
+          "path": "scree/height.jpg",
+          "sha256": "c0051e07e1a0684d9d0d88a02e8e42d77e1fb85e46e3b78636ee212a9a4d0759",
+          "size": 452171,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rocks_ground_02/rocks_ground_02_height_2k.jpg"
+        },
+        "normal": {
+          "map": "nor_gl",
+          "md5": "2d602f31a283804983f726e025f3b0f1",
+          "path": "scree/normal.jpg",
+          "sha256": "bde35636a0c548e57006917287e067d11abf3bfac2d70373162deb171ca9a4ef",
+          "size": 5387529,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rocks_ground_02/rocks_ground_02_nor_gl_2k.jpg"
+        },
+        "roughness": {
+          "map": "Rough",
+          "md5": "c631d8173d3e2654a33b8e9a4d8a356a",
+          "path": "scree/roughness.jpg",
+          "sha256": "c5b54993717852963382876bd0558c831af389b00a2dbd40317c51ff8b9c0817",
+          "size": 1810785,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rocks_ground_02/rocks_ground_02_rough_2k.jpg"
+        }
+      },
+      "format": "jpg",
+      "license": "CC0",
+      "resolution": "2k",
+      "slug": "rocks_ground_02",
+      "source": "https://polyhaven.com/a/rocks_ground_02"
+    },
     "silt": {
       "categories": [
         "natural",
@@ -582,6 +759,63 @@
       "resolution": "2k",
       "slug": "snow_02",
       "source": "https://polyhaven.com/a/snow_02"
+    },
+    "wet_rock": {
+      "categories": [
+        "natural",
+        "rock"
+      ],
+      "dimensions_mm": [
+        2000.0,
+        2000.0
+      ],
+      "files": {
+        "albedo": {
+          "map": "Diffuse",
+          "md5": "f70bd6084c9b634daaea40b0cee34c20",
+          "path": "wet_rock/albedo.jpg",
+          "sha256": "a0e01ad03110a84046c0e7ee611cd6d20bf11a9001e96dfa6e92ac6b59989d83",
+          "size": 3883057,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/seaside_rock/seaside_rock_diff_2k.jpg"
+        },
+        "ao": {
+          "map": "AO",
+          "md5": "010422a775bd3ca24e3f419e58d772b8",
+          "path": "wet_rock/ao.jpg",
+          "sha256": "050fcabb595e90bd247cd451e5bc932f2a95bb02ab0709826d2ca06cf0cc94c3",
+          "size": 2583864,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/seaside_rock/seaside_rock_ao_2k.jpg"
+        },
+        "height": {
+          "map": "Displacement",
+          "md5": "fa1a33f9adda55d3cb96754c5ae5bf1d",
+          "path": "wet_rock/height.jpg",
+          "sha256": "8610c998b66eaf6bf2a3bf905e469b4824a480236723ef660ab7ed7209f9a2e7",
+          "size": 870843,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/seaside_rock/seaside_rock_disp_2k.jpg"
+        },
+        "normal": {
+          "map": "nor_gl",
+          "md5": "28f8bd7b913f55b92d333217d02e8d1a",
+          "path": "wet_rock/normal.jpg",
+          "sha256": "4e067c8f418bb9f2fd5b6fd4bb018ad00a99e70076cf302c1a5581787e2ab8df",
+          "size": 4527854,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/seaside_rock/seaside_rock_nor_gl_2k.jpg"
+        },
+        "roughness": {
+          "map": "Rough",
+          "md5": "08323a44503ccc4c1b922396455881cc",
+          "path": "wet_rock/roughness.jpg",
+          "sha256": "21841d3cb5cc7fe7958c7b1edf099449bb10600c5fe667728b70de13d63ab62e",
+          "size": 1681507,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/seaside_rock/seaside_rock_rough_2k.jpg"
+        }
+      },
+      "format": "jpg",
+      "license": "CC0",
+      "resolution": "2k",
+      "slug": "seaside_rock",
+      "source": "https://polyhaven.com/a/seaside_rock"
     }
   },
   "version": 1

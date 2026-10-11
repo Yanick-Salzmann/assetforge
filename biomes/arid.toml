@@ -44,6 +44,18 @@ weight = "step(slope < 0.22) * smoothstep(moisture, 0.5, 0.75) * patchiness_coar
 variation = 0.3
 variation_m = 800.0
 
+[layer.talus_scree]
+material = "scree"
+blend_contrast = 0.5
+weight = "smoothstep(slope, 0.2, 0.3) * (1 - smoothstep(slope, 0.45, 0.7)) * max(0.35, smoothstep(deposition, 0.2, 0.5))"
+variation = 0.25
+variation_m = 550.0
+
+[layer.shore_pebbles]
+material = "pebble_beach"
+blend_contrast = 0.5
+weight = "smoothstep(shore, 0.6, 0.9) * step(slope < 0.35)"
+
 [layer.exposed_rock]
 material = "cliff_rock"
 blend_contrast = 0.45

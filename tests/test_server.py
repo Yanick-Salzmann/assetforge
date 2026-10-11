@@ -161,7 +161,7 @@ async def test_apply_rules_reports_coverage_and_returns_the_composite():
     summary, images = await call("apply_rules", {"name": "probe", "biome_file": BIOME_NAME})
     assert summary["stage"] == "splat"
     assert summary["splat"]["biome"] == BIOME_NAME
-    assert "riverbed_gravel" in summary["coverage_table"]
+    assert "shore_pebbles" in summary["coverage_table"]
     assert len(images) == 1
 
 
