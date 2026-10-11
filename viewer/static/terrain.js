@@ -1047,7 +1047,32 @@ function meshParts(gltf, unitScale) {
   return parts;
 }
 
-async function variantParts(entry, mask, loads) {
+function hexDigest(buffer) {
+  return Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function sharedTextures(textures) {
+  return (parser) => ({
+    name: "assetforge_shared_textures",
+    loadTexture(textureIndex) {
+      const textureDef = parser.json.textures[textureIndex];
+      const sourceDef = parser.json.images?.[textureDef.source];
+      if (textureDef.extensions || sourceDef?.bufferView === undefined || !globalThis.crypto?.subtle) {
+        return null;
+      }
+      return parser.getDependency("bufferView", sourceDef.bufferView).then(async (bytes) => {
+        const sampler = JSON.stringify(parser.json.samplers?.[textureDef.sampler] ?? {});
+        const key = `${hexDigest(await crypto.subtle.digest("SHA-256", bytes))}:${sampler}`;
+        if (!textures.has(key)) {
+          textures.set(key, parser.loadTextureImage(textureIndex, textureDef.source, parser.textureLoader));
+        }
+        return textures.get(key);
+      });
+    },
+  });
+}
+
+async function variantParts(entry, mask, loads, textures) {
   const variants = [];
   let meshes = 0;
   for (const variant of mask.variants ?? []) {
@@ -1055,7 +1080,7 @@ async function variantParts(entry, mask, loads) {
     let parts = null;
     if (url) {
       if (!loads.has(url)) {
-        loads.set(url, new GLTFLoader().loadAsync(url).catch(() => null));
+        loads.set(url, new GLTFLoader().register(sharedTextures(textures)).loadAsync(url).catch(() => null));
       }
       const gltf = await loads.get(url);
       parts = gltf ? meshParts(gltf, variant.unit_scale) : null;
@@ -1367,12 +1392,13 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
   scatter.name = "scatter";
   const scatterStats = {};
   const meshLoads = new Map();
+  const meshTextures = new Map();
   for (const mask of manifest.scatter) {
     if (!(mask.kind in SCATTER_KINDS)) {
       continue;
     }
     const placements = await scatterPlacements(entry, mask, field);
-    const { variants, meshes } = await variantParts(entry, mask, meshLoads);
+    const { variants, meshes } = await variantParts(entry, mask, meshLoads, meshTextures);
     scatter.add(scatterGroup(mask.species, mask.kind, placements, manifest.world_size_m, variants));
     scatterStats[mask.species] = {
       kind: mask.kind,
@@ -1448,6 +1474,9 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
     },
     dispose() {
       disposeScatter(scatter);
+      for (const texture of meshTextures.values()) {
+        texture.then((item) => item?.dispose(), () => null);
+      }
       for (const item of disposables) {
         item.dispose();
       }
