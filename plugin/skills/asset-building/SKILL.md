@@ -46,8 +46,10 @@ from assets import materials
 Build with the composable helpers rather than freehand `bpy.ops.mesh.primitive_*` - they already
 encode the project's conventions (origin at base centre, outward normals, applied transforms):
 `bevelled_box`, `frustum`, `cylinder_between`, `panel_cut`, `array`, `mirror`, `solidify`,
-`greeble`, `window_recess`, `door_frame`, `roof_edge`, `ladder_frame`, `stairs`, `cornice`,
-`attach_to_surface`. Use `attach_to_surface` for every small hardware/decoration part modelled
+`greeble`, `window_recess`, `door_frame`, `roof_edge`, `gable_roof`, `roof_slope`,
+`triangular_gable`, `ladder_frame`, `stairs`, `cornice`, `box_between`, `lathe`, `loft`, `prism`,
+`annular_band`, `torus`, `attach_to_surface`. Do not redefine any of these inside a recipe - if a
+shape keeps recurring and none fits, add it to `assets/hardsurface.py` with a selftest case. Use `attach_to_surface` for every small hardware/decoration part modelled
 as its own closed solid against a host wall or roof (hinges, handles, brackets, sign/lantern
 hardware) instead of hand-computing an offset - it gives a `STANDOFF_M` (2 mm) clearance so the
 part never sits exactly coincident with, or embedded into, the host, which is what makes

@@ -44,7 +44,10 @@ from assets import hardsurface as hs
 from assets import materials
 ```
 
-`cylinder_between` covers axles, wheels and hydraulic rams; `array` repeats wheels/road wheels
+`cylinder_between` covers axles, rims and hydraulic rams; `box_between` link arms, struts and
+tie rods; `lugged_tyre` treaded tyres; `loft` hoods, hulls and housings through cross-sections;
+`prism` chassis rails and profiled plates; `annular_band` mudguards, wheel arches and heat
+shields; `torus` hitch eyes and lifting rings; `array` repeats wheels/road wheels
 along a side; `mirror` builds the opposite side from one modelled half; `frustum` covers tapered
 noses, hulls and counterweights; `panel_cut` cuts vents, hatches and window openings;
 `greeble` adds panel-line and bolt detail at range. Assign materials with `assets.materials`

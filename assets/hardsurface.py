@@ -13,7 +13,7 @@ from typing import Iterable, Sequence
 
 import bmesh
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 Size2 = tuple[float, float]
 Size3 = tuple[float, float, float]
@@ -514,3 +514,300 @@ def cornice(
         location=location,
     )
     return strip
+
+
+def _finish(bm: bmesh.types.BMesh, name: str) -> bpy.types.Object:
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.normal_update()
+    mesh = bpy.data.meshes.new(f"{name}_mesh")
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.update()
+    return apply_transforms(_link(mesh, name))
+
+
+def _axis_point(axis: str, axial: float, u: float, v: float) -> tuple[float, float, float]:
+    """Map an axial coordinate and an in-plane (u, v) pair to world XYZ: axis X takes (u, v) as
+    (y, z), Y as (x, z), Z as (x, y)."""
+    axis = axis.upper()
+    if axis == "X":
+        return (axial, u, v)
+    if axis == "Y":
+        return (u, axial, v)
+    if axis == "Z":
+        return (u, v, axial)
+    raise ValueError(f"axis {axis!r} must be X, Y or Z")
+
+
+def _axis_coordinates(axis: str, point: Sequence[float]) -> tuple[float, float, float]:
+    x, y, z = point
+    axis = axis.upper()
+    if axis == "X":
+        return (x, y, z)
+    if axis == "Y":
+        return (y, x, z)
+    return (z, x, y)
+
+
+def _bridge_rings(bm: bmesh.types.BMesh, rings: list[list], closed: bool = True) -> None:
+    count = len(rings[0])
+    for lower, upper in zip(rings, rings[1:]):
+        for k in range(count if closed else count - 1):
+            k2 = (k + 1) % count
+            face_verts = []
+            for v in (lower[k], lower[k2], upper[k2], upper[k]):
+                if v not in face_verts:
+                    face_verts.append(v)
+            bm.faces.new(face_verts)
+
+
+def box_between(
+    name: str,
+    point_a: Sequence[float],
+    point_b: Sequence[float],
+    width: float,
+    height: float,
+    bevel_width: float = 0.0,
+    up: Sequence[float] | None = None,
+) -> bpy.types.Object:
+    """A width x height bar running from point_a to point_b - a beam, strut, brace, link arm or
+    tie rod. Like cylinder_between it is oriented from the two endpoints, never a guessed Euler.
+    The width runs along up projected off the bar axis when given (e.g. a wall tangent, so a
+    brace lies flat against a curved tower), otherwise along whatever to_track_quat picks."""
+    a = Vector(point_a)
+    b = Vector(point_b)
+    direction = b - a
+    segments = 1 if bevel_width > 0.0 else 0
+    obj = bevelled_box(name, size=(width, height, direction.length), bevel_width=bevel_width, bevel_segments=segments)
+    if up is None:
+        obj.rotation_euler = direction.to_track_quat("Z", "Y").to_euler()
+    else:
+        z_axis = direction.normalized()
+        y_axis = z_axis.cross(Vector(up)).normalized()
+        x_axis = y_axis.cross(z_axis).normalized()
+        obj.rotation_euler = Matrix((x_axis, y_axis, z_axis)).transposed().to_euler()
+    apply_transforms(obj, location=False, rotation=True, scale=False)
+    obj.location = a
+    return apply_transforms(obj)
+
+
+def lathe(
+    name: str,
+    profile: Sequence[Size2],
+    segments: int = 16,
+    location: Sequence[float] = (0.0, 0.0, 0.0),
+) -> bpy.types.Object:
+    """Revolve a (radius, z) profile, listed bottom to top, around local Z - a barrel, bottle,
+    baluster, vase, finial, bell or turned leg. Both ends are capped; an end whose radius is zero
+    collapses to one apex vertex, as in frustum. Interior radii must be positive."""
+    apex_eps = 1e-6
+    last = len(profile) - 1
+    bm = bmesh.new()
+    rings: list[list] = []
+    for index, (radius, z) in enumerate(profile):
+        if radius <= apex_eps and 0 < index < last:
+            raise ValueError("only the first and last profile points may have zero radius")
+        if radius <= apex_eps:
+            rings.append([bm.verts.new((0.0, 0.0, z))] * segments)
+            continue
+        ring = []
+        for k in range(segments):
+            angle = math.pi / segments + k * 2.0 * math.pi / segments
+            ring.append(bm.verts.new((radius * math.cos(angle), radius * math.sin(angle), z)))
+        rings.append(ring)
+    _bridge_rings(bm, rings)
+    if profile[0][0] > apex_eps:
+        bm.faces.new(rings[0][::-1])
+    if profile[-1][0] > apex_eps:
+        bm.faces.new(rings[-1])
+    obj = _finish(bm, name)
+    obj.location = location
+    return apply_transforms(obj)
+
+
+def loft(name: str, sections: Sequence[Sequence[Sequence[float]]]) -> bpy.types.Object:
+    """Skin a closed solid through two or more closed cross-section loops of world-space points,
+    capped at the first and last - a hood, hull, fuselage, nacelle or tapered housing. Every
+    section needs the same point count, listed in the same rotational order and starting at the
+    corresponding corner, or the skin twists."""
+    if len(sections) < 2:
+        raise ValueError("loft needs at least two sections")
+    if len({len(section) for section in sections}) != 1:
+        raise ValueError("every loft section needs the same point count")
+    bm = bmesh.new()
+    rings = [[bm.verts.new(tuple(point)) for point in section] for section in sections]
+    _bridge_rings(bm, rings)
+    bm.faces.new(rings[0][::-1])
+    bm.faces.new(rings[-1])
+    return _finish(bm, name)
+
+
+def prism(
+    name: str,
+    profile: Sequence[Size2],
+    start: float,
+    end: float,
+    axis: str = "X",
+    bevel_width: float = 0.0,
+) -> bpy.types.Object:
+    """Extrude a closed 2D profile from start to end along a world axis - a chassis rail, fender
+    side, wedge, bracket plate or any shape easier drawn as an outline than built from boxes. The
+    profile lies in the plane across the axis, as (y, z) for X, (x, z) for Y and (x, y) for Z,
+    and must not self-intersect; its winding does not matter."""
+    bm = bmesh.new()
+    a = [bm.verts.new(_axis_point(axis, start, u, v)) for u, v in profile]
+    b = [bm.verts.new(_axis_point(axis, end, u, v)) for u, v in profile]
+    _bridge_rings(bm, [a, b])
+    bm.faces.new(a[::-1])
+    bm.faces.new(b)
+    if bevel_width > 0.0:
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        bmesh.ops.bevel(bm, geom=list(bm.edges), offset=bevel_width, segments=2, affect="EDGES", clamp_overlap=True)
+    return _finish(bm, name)
+
+
+def annular_band(
+    name: str,
+    centre: Size2,
+    inner_radius: float,
+    outer_radius: float,
+    start: float,
+    end: float,
+    angle_start: float = 0.0,
+    angle_end: float = 2.0 * math.pi,
+    axis: str = "X",
+    segments: int = 16,
+) -> bpy.types.Object:
+    """A thick curved band: the ring between inner_radius and outer_radius around centre (in the
+    plane across axis, the same (u, v) convention as prism), swept from angle_start to angle_end
+    in radians and extruded from start to end along axis - a mudguard, wheel arch, heat shield,
+    curved hatch, collar, pipe sleeve or flange. A full 2*pi sweep is a closed tube."""
+    full = abs(angle_end - angle_start) >= 2.0 * math.pi - 1e-9
+    count = segments if full else segments + 1
+    angles = [angle_start + (angle_end - angle_start) * k / segments for k in range(count)]
+    cu, cv = centre
+    bm = bmesh.new()
+
+    def ring(radius: float, axial: float) -> list:
+        return [bm.verts.new(_axis_point(axis, axial, cu + radius * math.cos(t), cv + radius * math.sin(t))) for t in angles]
+
+    outer_a = ring(outer_radius, start)
+    outer_b = ring(outer_radius, end)
+    inner_a = ring(inner_radius, start)
+    inner_b = ring(inner_radius, end)
+    _bridge_rings(bm, [outer_a, outer_b, inner_b, inner_a, outer_a], closed=full)
+    if not full:
+        bm.faces.new((outer_a[0], outer_b[0], inner_b[0], inner_a[0]))
+        bm.faces.new((outer_a[-1], inner_a[-1], inner_b[-1], outer_b[-1]))
+    return _finish(bm, name)
+
+
+def torus(
+    name: str,
+    centre: Sequence[float],
+    major_radius: float,
+    minor_radius: float,
+    axis: str = "Z",
+    major_segments: int = 12,
+    minor_segments: int = 6,
+) -> bpy.types.Object:
+    """A ring around axis through centre - a hitch eye, lifting ring, door knocker, hose clamp,
+    porthole rim or rope coil."""
+    bm = bmesh.new()
+    rings = []
+    for i in range(major_segments):
+        phi = 2.0 * math.pi * i / major_segments
+        ring = []
+        for j in range(minor_segments):
+            theta = 2.0 * math.pi * j / minor_segments
+            radial = major_radius + minor_radius * math.cos(theta)
+            ring.append(bm.verts.new(_axis_point(axis, minor_radius * math.sin(theta), radial * math.cos(phi), radial * math.sin(phi))))
+        rings.append(ring)
+    _bridge_rings(bm, rings + [rings[0]])
+    obj = _finish(bm, name)
+    obj.location = centre
+    return apply_transforms(obj)
+
+
+def lugged_tyre(
+    name: str,
+    centre: Sequence[float],
+    profile: Sequence[Size2],
+    segments: int = 32,
+    lug_height: float = 0.0,
+    lug_skew: float = 0.0,
+    lug_rows: tuple[int, int] | None = None,
+    axis: str = "X",
+) -> bpy.types.Object:
+    """A tyre revolved around axis through centre from a closed (radius, axial offset) section
+    loop, with lug_height tread lugs extruded from alternating section faces. lug_rows names the
+    two section edges the lugs alternate between (default the two straddling the middle of the
+    loop); lug_skew twists each lug by its axial distance, so a non-zero skew gives a chevron."""
+    count = len(profile)
+    rows = lug_rows if lug_rows is not None else (count // 2 - 1, count // 2)
+    bm = bmesh.new()
+    rings = []
+    for k in range(segments):
+        theta = 2.0 * math.pi * k / segments
+        rings.append([bm.verts.new(_axis_point(axis, offset, radius * math.cos(theta), radius * math.sin(theta))) for radius, offset in profile])
+    tread = {}
+    for k in range(segments):
+        k2 = (k + 1) % segments
+        for i in range(count):
+            i2 = (i + 1) % count
+            tread[(k, i)] = bm.faces.new((rings[k][i], rings[k][i2], rings[k2][i2], rings[k2][i]))
+    if lug_height > 0.0:
+        lug_faces = [tread[(k, rows[k % 2])] for k in range(segments)]
+        extruded = bmesh.ops.extrude_discrete_faces(bm, faces=lug_faces)
+        for face in extruded["faces"]:
+            for vert in face.verts:
+                axial, u, v = _axis_coordinates(axis, vert.co)
+                radius = math.hypot(u, v) + lug_height
+                theta = math.atan2(v, u) + lug_skew * abs(axial)
+                vert.co = Vector(_axis_point(axis, axial, radius * math.cos(theta), radius * math.sin(theta)))
+    obj = _finish(bm, name)
+    obj.location = centre
+    return apply_transforms(obj)
+
+
+def roof_slope(
+    name: str,
+    eave_start: Sequence[float],
+    eave_end: Sequence[float],
+    ridge_end: Sequence[float],
+    ridge_start: Sequence[float],
+    thickness: float,
+) -> bpy.types.Object:
+    """One roof plane through four corners (eave_start to eave_end along the eave, ridge_start
+    above eave_start), solidified downward by thickness so its top face is exactly the plane
+    given - for roofs gable_roof's single symmetric shell does not fit (hips, lean-tos, unequal
+    pitches). Two slopes meeting at a ridge stay two solids: overlap them slightly at the ridge."""
+    corners = [Vector(eave_start), Vector(eave_end), Vector(ridge_end), Vector(ridge_start)]
+    normal = (corners[1] - corners[0]).cross(corners[3] - corners[0])
+    if normal.z < 0.0:
+        corners = [corners[0], corners[3], corners[2], corners[1]]
+    bm = bmesh.new()
+    bm.faces.new([bm.verts.new(corner) for corner in corners])
+    bm.normal_update()
+    mesh = bpy.data.meshes.new(f"{name}_mesh")
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.update()
+    obj = apply_transforms(_link(mesh, name))
+    return solidify(obj, thickness)
+
+
+def triangular_gable(
+    name: str,
+    span: float,
+    base_z: float,
+    apex_z: float,
+    thickness: float,
+    centre_x: float = 0.0,
+    y: float = 0.0,
+) -> bpy.types.Object:
+    """The triangular wall infill of a gable end: span wide across X centred on centre_x, from
+    base_z (the eave line) up to apex_z, thickness deep along Y centred on y."""
+    half_span = span * 0.5
+    profile = [(centre_x - half_span, base_z), (centre_x + half_span, base_z), (centre_x, apex_z)]
+    return prism(name, profile, y - thickness * 0.5, y + thickness * 0.5, axis="Y")

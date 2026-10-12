@@ -161,6 +161,60 @@ def _run_checks(hs) -> dict:
         "ok": all(heights[i][1] > heights[i + 1][1] for i in range(len(heights) - 1)),
     }
 
+    import math
+
+    brace_a = mathutils.Vector((10.0, 0.0, 0.0))
+    brace_b = mathutils.Vector((11.0, 1.0, 2.0))
+    brace = hs.box_between("brace", brace_a, brace_b, width=0.1, height=0.05, bevel_width=0.005)
+    checks["box_between"] = _mesh_report(brace)
+    brace_verts = [brace.matrix_world @ v.co for v in brace.data.vertices]
+    checks["box_between"]["spans_endpoints"] = (
+        min((v - brace_a).length for v in brace_verts) < 0.1 and min((v - brace_b).length for v in brace_verts) < 0.1
+    )
+    flat = hs.box_between("flat_brace", (12.0, 0.0, 0.0), (12.0, 0.0, 2.0), width=0.3, height=0.02, up=(1.0, 0.0, 0.0))
+    checks["box_between_up"] = _mesh_report(flat)
+    flat_corners = [flat.matrix_world @ mathutils.Vector(c) for c in flat.bound_box]
+    checks["box_between_up"]["width_follows_up"] = (
+        max(c.x for c in flat_corners) - min(c.x for c in flat_corners) > 0.29
+    )
+
+    barrel = hs.lathe("barrel", [(0.25, 0.0), (0.3, 0.45), (0.25, 0.9)], segments=12, location=(14.0, 0.0, 0.0))
+    checks["lathe"] = _mesh_report(barrel)
+    finial = hs.lathe("finial", [(0.0, 0.0), (0.1, 0.1), (0.05, 0.3), (0.0, 0.4)], segments=8, location=(15.0, 0.0, 0.0))
+    checks["lathe_apex"] = _mesh_report(finial)
+
+    hood = hs.loft(
+        "hood",
+        [
+            [(-0.4, y, 1.0), (0.4, y, 1.0), (0.4 - 0.1 * k, y, 1.6), (-0.4 + 0.1 * k, y, 1.6)]
+            for k, y in enumerate((0.0, 1.0, 2.0))
+        ],
+    )
+    checks["loft"] = _mesh_report(hood)
+
+    rail = hs.prism("rail", [(0.0, 0.0), (0.3, 0.0), (0.3, 0.1), (0.1, 0.25), (0.0, 0.25)], -1.0, 1.0, axis="X", bevel_width=0.01)
+    checks["prism"] = _mesh_report(rail)
+
+    fender = hs.annular_band("fender", (0.0, 0.9), 0.85, 0.9, 1.0, 1.4, angle_start=0.0, angle_end=math.pi, axis="X", segments=12)
+    checks["annular_band"] = _mesh_report(fender)
+    sleeve = hs.annular_band("sleeve", (20.0, 0.0), 0.1, 0.12, 0.0, 0.3, axis="Z", segments=12)
+    checks["annular_band_full"] = _mesh_report(sleeve)
+
+    ring = hs.torus("ring", (22.0, 0.0, 0.5), 0.05, 0.018, axis="X")
+    checks["torus"] = _mesh_report(ring)
+
+    tyre_profile = [(0.53, -0.22), (0.62, -0.27), (0.76, -0.275), (0.82, -0.25), (0.84, -0.2), (0.84, 0.0), (0.84, 0.2), (0.82, 0.25), (0.76, 0.275), (0.62, 0.27), (0.53, 0.22)]
+    tyre = hs.lugged_tyre("tyre", (25.0, 0.0, 0.9), tyre_profile, segments=24, lug_height=0.05, lug_skew=0.9)
+    checks["lugged_tyre"] = _mesh_report(tyre)
+
+    slope = hs.roof_slope("slope", (-2.0, 0.0, 3.0), (-2.0, 4.0, 3.0), (0.0, 4.0, 4.0), (0.0, 0.0, 4.0), thickness=0.1)
+    checks["roof_slope"] = _mesh_report(slope)
+    slope_corners = [slope.matrix_world @ mathutils.Vector(c) for c in slope.bound_box]
+    checks["roof_slope"]["top_on_plane"] = abs(max(c.z for c in slope_corners) - 4.0) < 1e-4
+
+    gable_wall = hs.triangular_gable("gable_wall", span=4.0, base_z=3.0, apex_z=4.5, thickness=0.3, y=6.0)
+    checks["triangular_gable"] = _mesh_report(gable_wall)
+
     return checks
 
 
@@ -177,7 +231,7 @@ def main() -> None:
         ok = all(
             report["non_manifold_edges"] == 0 and report["loose_verts"] == 0 and report["degenerate_faces"] == 0
             for report in checks.values()
-        ) and checks["cylinder_between"]["reaches_target"] and checks["stairs_monotonic"]["ok"] and checks["door_frame_frame"]["brackets_opening"] and checks["attach_to_surface"]["clears_standoff"]
+        ) and checks["cylinder_between"]["reaches_target"] and checks["stairs_monotonic"]["ok"] and checks["door_frame_frame"]["brackets_opening"] and checks["attach_to_surface"]["clears_standoff"] and checks["box_between"]["spans_endpoints"] and checks["box_between_up"]["width_follows_up"] and checks["roof_slope"]["top_on_plane"]
         payload = {"ok": ok, "checks": checks}
     except Exception:
         payload = {"ok": False, "error": traceback.format_exc()}

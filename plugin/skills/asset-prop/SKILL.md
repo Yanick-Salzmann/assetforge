@@ -49,8 +49,8 @@ category guess doesn't match the index.
 
 Same as `asset-building` step 2: insert the repo root into `sys.path`, import
 `assets.hardsurface` and `assets.materials`, build with the composable helpers
-(`bevelled_box`, `frustum`, `cylinder_between`, `panel_cut`, `array`, `mirror`, `solidify`,
-`greeble`, ...), assign per-part materials with `assets.materials`, `record_recipe(name, code)`
+(`bevelled_box`, `frustum`, `cylinder_between`, `box_between`, `lathe` for barrels and turned
+parts, `prism`, `torus`, `panel_cut`, `array`, `mirror`, `solidify`, `greeble`, ...), assign per-part materials with `assets.materials`, `record_recipe(name, code)`
 after every snippet. Model every prop that needs generating into the same live scene, one
 object group per prop, named so the groups stay distinguishable (e.g. `crate_01`,
 `crate_01_lid`) - step 4 needs the full set's objects together.
