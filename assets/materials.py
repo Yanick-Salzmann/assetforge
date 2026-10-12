@@ -187,6 +187,53 @@ def roofing_material(name: str = "roofing") -> bpy.types.Material:
     return material
 
 
+PAINT_GREEN: Color = (0.06, 0.2, 0.05, 1.0)
+PAINT_CHARCOAL: Color = (0.035, 0.035, 0.038, 1.0)
+PAINT_CREAM: Color = (0.62, 0.55, 0.34, 1.0)
+LENS_AMBER: Color = (0.85, 0.35, 0.02, 1.0)
+LENS_RED: Color = (0.6, 0.02, 0.02, 1.0)
+
+
+def paint_material(name: str = "paint", colour: Color = PAINT_GREEN) -> bpy.types.Material:
+    material, tree, bsdf = _bsdf_material(name)
+    tint = _noise(tree, scale=4.0, detail=3.0, location=(-600.0, 150.0))
+    shade = tuple(channel * 0.88 for channel in colour[:3]) + (1.0,)
+    tint_ramp = _ramp(tree, tint.outputs["Fac"], shade, colour, location=(-350.0, 150.0))
+    tree.links.new(tint_ramp.outputs["Color"], bsdf.inputs["Base Color"])
+
+    wear = _noise(tree, scale=30.0, detail=6.0, location=(-600.0, -150.0))
+    wear_ramp = _ramp(tree, wear.outputs["Fac"], (0.28, 0.28, 0.28, 1.0), (0.45, 0.45, 0.45, 1.0), location=(-350.0, -150.0))
+    tree.links.new(wear_ramp.outputs["Color"], bsdf.inputs["Roughness"])
+
+    bsdf.inputs["Metallic"].default_value = 0.0
+    return material
+
+
+def rubber_material(name: str = "rubber") -> bpy.types.Material:
+    material, tree, bsdf = _bsdf_material(name)
+    tint = _noise(tree, scale=12.0, detail=4.0, location=(-600.0, 150.0))
+    tint_ramp = _ramp(tree, tint.outputs["Fac"], (0.018, 0.018, 0.018, 1.0), (0.035, 0.034, 0.032, 1.0), location=(-350.0, 150.0))
+    tree.links.new(tint_ramp.outputs["Color"], bsdf.inputs["Base Color"])
+
+    grain = _noise(tree, scale=80.0, detail=6.0, location=(-600.0, -150.0))
+    grain_ramp = _ramp(tree, grain.outputs["Fac"], (0.78, 0.78, 0.78, 1.0), (0.92, 0.92, 0.92, 1.0), location=(-350.0, -150.0))
+    tree.links.new(grain_ramp.outputs["Color"], bsdf.inputs["Roughness"])
+
+    bsdf.inputs["Metallic"].default_value = 0.0
+    return material
+
+
+def tinted_glass_material(name: str = "tinted_glass") -> bpy.types.Material:
+    material, tree, bsdf = _bsdf_material(name)
+    tint = _noise(tree, scale=2.0, detail=2.0)
+    tint_ramp = _ramp(tree, tint.outputs["Fac"], (0.04, 0.055, 0.06, 1.0), (0.06, 0.075, 0.08, 1.0))
+    tree.links.new(tint_ramp.outputs["Color"], bsdf.inputs["Base Color"])
+
+    bsdf.inputs["Roughness"].default_value = 0.05
+    bsdf.inputs["Metallic"].default_value = 0.0
+    return material
+
+
 MATERIAL_BUILDERS: dict[str, Callable[[str], bpy.types.Material]] = {
     "concrete": concrete_material,
     "plaster": plaster_material,
@@ -195,6 +242,13 @@ MATERIAL_BUILDERS: dict[str, Callable[[str], bpy.types.Material]] = {
     "glass": glass_material,
     "roofing": roofing_material,
     "wood": wood_material,
+    "paint": paint_material,
+    "paint_charcoal": lambda name: paint_material(name, PAINT_CHARCOAL),
+    "paint_cream": lambda name: paint_material(name, PAINT_CREAM),
+    "lens_amber": lambda name: paint_material(name, LENS_AMBER),
+    "lens_red": lambda name: paint_material(name, LENS_RED),
+    "rubber": rubber_material,
+    "tinted_glass": tinted_glass_material,
 }
 
 

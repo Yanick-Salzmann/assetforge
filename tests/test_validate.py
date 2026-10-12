@@ -217,6 +217,12 @@ def test_check_triangle_budget():
     assert not validate._check_triangle_budget(high + 1, "prop").passed
 
 
+def test_hero_vehicle_budget_extends_past_the_vehicle_ceiling():
+    _, vehicle_high = validate.TRI_BUDGETS["vehicle"]
+    assert validate._check_triangle_budget(vehicle_high + 1, "hero_vehicle").passed
+    assert not validate._check_triangle_budget(vehicle_high + 1, "vehicle").passed
+
+
 def test_check_origin_passes_when_base_centred():
     bbox_min = np.array([-0.5, 0.0, -0.5])
     bbox_max = np.array([0.5, 2.0, 0.5])

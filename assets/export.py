@@ -28,7 +28,7 @@ from terrain import config
 MANIFEST_NAME = "asset.json"
 TEXTURES_DIRNAME = "textures"
 CONTACT_SHEET_NAME = "contact_sheet.png"
-VALID_KINDS = ("hero_building", "prop", "vehicle", "vegetation")
+VALID_KINDS = ("hero_building", "prop", "vehicle", "hero_vehicle", "vegetation")
 
 _LOD_SUFFIX = re.compile(r"_LOD(\d+)$")
 

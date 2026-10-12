@@ -1,6 +1,6 @@
 ---
 name: asset-building
-description: Model a hero building end to end - brief, live bpy modelling over assets/hardsurface.py, contact sheet, written critique against the brief, validate, a patch loop capped at 4 iterations, human approval, game_ready + LODs, export. Budget 4000-15000 tris, one material, 2048 atlas. Trigger on "/asset-building", "model a building called X", "build a hero building", or any request to model a building from scratch.
+description: Model a hero building end to end - brief, live bpy modelling over assets/hardsurface.py, contact sheet, written critique against the brief, validate, a patch loop capped at 8 iterations, human approval, game_ready + LODs, export. Budget 4000-15000 tris, one material, 2048 atlas. Trigger on "/asset-building", "model a building called X", "build a hero building", or any request to model a building from scratch.
 ---
 
 # asset-building
@@ -91,11 +91,13 @@ outward-facing normals, UV overlap, and applied transforms at the base-centre or
 `ok` and every failing check's `detail` in the `checks` array - it names the exact failure
 (e.g. "N triangle(s) wind opposite their vertex normals"), not just a pass/fail flag.
 
-## 6. Patch loop - capped at 4 iterations
+## 6. Patch loop - capped at 8 iterations
 
 If the critique or `validate_asset` found something wrong:
 
-1. `record_patch(name)` on `asset-forge` first. It raises `GateError` once the 4-iteration cap
+1. `record_patch(name, "hero_building")` on `asset-forge` first. The cap depends on the kind it
+   is given (and remembers): 8 for the hero kinds (`hero_building`, `hero_vehicle`), 4 for
+   everything else. It raises `GateError` once the cap
    is spent - `asset_gate_status(name)` shows `patches_remaining` at any point. If the cap is
    hit, stop and hand the asset to a human reviewer rather than continuing to patch blind.
 2. Make the targeted bpy fix in the same live session (`sys.path` is already set), and
@@ -115,64 +117,43 @@ This records that a human reviewer signed off - never call it as a stand-in for 
 Ask the user to look at the contact sheet and confirm, and pass their note through verbatim.
 `asset_gate_status(name)` should show `approved: true` before continuing to export.
 
-## 8. game_ready + LODs + export
+## 8. game_ready + LODs + export - a background job, never a live MCP call
 
-Same live session. **Do not call `game_ready.game_ready_pass(objects)` alone** - it bakes no
-textures. Internally it calls `consolidate_material(objects, material_name)` with no
-`bake_result`, which produces a UV-correct but *blank* `atlas_material` - every carefully chosen
-CC0/procedural material gets silently replaced with an untextured grey slot. The sequence that
-actually preserves textures (matching the working reference in
-`assets/blender_scripts/demo_showcase_build.py`) is:
+The bake passes (atlas, then every LOD) block Blender's only thread for minutes, longer than the
+`blender-mcp` bridge's transport timeout, so step 8 never runs inside `execute_blender_code`. The
+live session only saves its scene; a headless Blender started as a background shell job does the
+rest, with no timeout, and the harness notifies you when it exits.
 
-```python
-from assets import hardsurface as hs, game_ready, atlas_bake, lod, export
+1. In the live session, save a copy of the scene (every part still named `<name>_*`, each on its
+   own per-part materials) and `record_recipe` it:
 
-for obj in objects:
-    hs.apply_transforms(obj)
-    hs.recalc_normals(obj)
+   ```python
+   import bpy
+   bpy.ops.wm.save_as_mainfile(filepath=r"<repo_root>/out/assets/<name>/.build/<name>.blend", copy=True)
+   ```
 
-game_ready.uv_unwrap_and_pack(objects)                        # while each part still carries its
-                                                               # own per-face material
-bake_result = atlas_bake.bake_atlas(objects, atlas_size=game_ready.ATLAS_SIZE)
-material = game_ready.consolidate_material(objects, bake_result=bake_result)
-game_ready.enforce_power_of_two_textures(material, game_ready.ATLAS_SIZE)
+2. Launch the job with the Bash tool and `run_in_background: true` (Blender from
+   `asset_status`'s `blender_executable`):
 
-bpy.ops.object.select_all(action="DESELECT")
-for obj in objects:
-    obj.select_set(True)
-bpy.context.view_layer.objects.active = objects[0]
-bpy.ops.object.join()                                         # generate_lods needs ONE object;
-lod0_object = bpy.context.view_layer.objects.active           # a multi-part asset is never
-                                                               # auto-joined anywhere upstream
-lod_set = lod.generate_lods(lod0_object)                      # LOD1/2 decimated, own UVs, albedo/ORM/normal baked from LOD0
-result = export.export_asset(lod_set.objects, name=name, kind="hero_building")
-```
+   ```bash
+   "<blender_executable>" --background "out/assets/<name>/.build/<name>.blend" --factory-startup \
+     --python assets/blender_scripts/game_ready_build.py -- "<repo_root>" <name> <kind> \
+     "out/assets/<name>/.build/game_ready.json" 2>&1 | grep --line-buffered -E "\[game_ready\]|Error|Traceback"
+   ```
 
-Order matters: UV-unwrap-and-bake needs the *original* per-part materials, so it must run before
-`consolidate_material` replaces them; `join` needs everything already on the one shared
-`atlas_material` (do it after consolidation, not before); `generate_lods` needs a single
-already-materialed LOD0 object; `export_asset` writes `textures/` from whatever materials are on
-the objects it's given. `record_recipe` each of these calls too, same as every step 2 snippet.
+   `game_ready_build.py` refuses to run unless `approve_asset` has opened the gate, then runs the
+   whole sequence on every `<name>_*` mesh: `apply_transforms`/`recalc_normals`,
+   `uv_unwrap_and_pack` while the parts still carry their own materials, the three atlas bake
+   passes, `consolidate_material(objects, bake_result=...)`, `enforce_power_of_two_textures`,
+   `join` (`generate_lods` needs one object), `generate_lods`, `export_asset(kind=<kind>)`. Do not
+   use `game_ready.game_ready_pass(objects)` - it bakes no textures and leaves a blank
+   `atlas_material`.
 
-**`atlas_bake.bake_atlas` is long-running and will likely report "failed" even when it
-isn't.** It runs 5 sequential full-resolution Cycles bake passes (albedo, normal, AO, roughness,
-metallic) across every object - on an asset with 100+ parts this routinely takes several minutes.
-`bpy.ops.object.bake` blocks Blender's single Python/UI thread for its whole duration, and the
-`blender-mcp` bridge's own transport has a shorter timeout than that, so the tool call comes back
-as a connection-timeout failure while Blender keeps computing correctly in the background - this
-is a transport artifact, not a crash, and does not mean the bake needs to be re-run. To avoid
-tripping the transport timeout in the first place (not to make the bake faster, which isn't the
-goal - only to stop it from spuriously erroring), call `uv_unwrap_and_pack` in its own snippet,
-then one `execute_blender_code` call per pass: `atlas_bake.prepare_bake()`,
-`atlas_bake.bake_albedo(objects)`, `atlas_bake.bake_normal(objects)`,
-`atlas_bake.bake_orm(objects)`, then `bake_result = atlas_bake.collect_bake_result()`. Never look
-baked images up by literal name (`bpy.data.images["albedo"]`) - `collect_bake_result` is the only
-safe lookup. Every pass claims its reserved image name, moving any earlier image under that name
-aside as `<name>_stale`, so re-running a pass after a timeout, or building several assets in one
-Blender session, never ships a stale or `.001` texture; `atlas_bake.purge_stale_images()` drops
-the moved-aside ones. A pass that comes back `CANCELLED` or all black raises
-`atlas_bake.BakeError` instead of leaving a blank image (af-225). If a call times out, check
-`bpy.data.images` for `albedo`/`normal`/`orm` before deciding whether to resume or re-run.
+3. Don't poll, and don't start a second job for the same asset while one runs. When the
+   notification arrives, read `game_ready.json`: `{"ok": true, ...}` carries the export result
+   (glb, textures, triangle counts per LOD), `{"ok": false, "error": ...}` the traceback. Fix the
+   cause and relaunch; the job always starts again from the saved .blend, so a failed run leaves
+   nothing half-baked behind.
 
 ## Done
 

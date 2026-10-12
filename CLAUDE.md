@@ -272,13 +272,15 @@ validator too.
 | Hero building | 4000-15000 | LOD0/1/2 always shipped |
 | Prop | 200-1500 | 6-12 per set, one atlas per set |
 | Vehicle / machinery | 5000-20000 | same path as buildings |
+| Hero vehicle | 15000-60000 | `hero_vehicle`: close-up centrepiece vehicles |
 
 ### The visual loop
 
 An agent cannot judge what it cannot see. Never declare a generated result good
 without rendering it and reading the render back: hillshade and false-colour
 splat for terrain, the 6-view contact sheet for assets. Asset iteration is
-capped at 4 rounds and export is blocked until human approval is recorded — both
+capped at 4 rounds (8 for the hero kinds, `hero_building` and `hero_vehicle`; `assets/gate.py`
+`PATCH_CAPS`) and export is blocked until human approval is recorded — both
 enforced server-side.
 
 Every image an MCP tool hands back goes through `terrain.budget`. The

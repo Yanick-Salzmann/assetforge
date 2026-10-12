@@ -12,6 +12,7 @@ TRI_BUDGETS: dict[str, tuple[int, int]] = {
     "hero_building": (4000, 15000),
     "prop": (200, 1500),
     "vehicle": (5000, 20000),
+    "hero_vehicle": (15000, 60000),
     "vegetation": (20, 600),
 }
 OPEN_SURFACE_KINDS = ("vegetation",)

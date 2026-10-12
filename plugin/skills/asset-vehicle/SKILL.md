@@ -1,6 +1,6 @@
 ---
 name: asset-vehicle
-description: Model a non-building hard-surface asset (vehicle or machinery) end to end - same loop as asset-building, adjusted brief and 5000-20000 tri budget. Brief, live bpy modelling over assets/hardsurface.py, contact sheet, written critique, validate, a patch loop capped at 4 iterations, human approval, game_ready + LODs, export. Trigger on "/asset-vehicle", "model a vehicle called X", "build a machinery asset", or any request to model a car, truck, tank, crane, or other non-building hard-surface asset.
+description: Model a non-building hard-surface asset (vehicle or machinery) end to end - same loop as asset-building, adjusted brief and 5000-20000 tri budget. Brief, live bpy modelling over assets/hardsurface.py, contact sheet, written critique, validate, a patch loop capped at 4 iterations (8 for hero_vehicle), human approval, game_ready + LODs, export. Trigger on "/asset-vehicle", "model a vehicle called X", "build a machinery asset", or any request to model a car, truck, tank, crane, or other non-building hard-surface asset.
 ---
 
 # asset-vehicle
@@ -22,7 +22,9 @@ Before touching Blender, pin down:
 - **name** - lowercase alphanumerics/dashes/underscores only
   (`assets.recipe.validate_name`), becomes the output directory.
 - **kind** - `vehicle` (5000-20000 tris) - covers both vehicles and machinery; there is no
-  separate `machinery` budget row, use `vehicle` for both.
+  separate `machinery` budget row, use `vehicle` for both. A close-up centrepiece vehicle (the
+  player sees it from a metre away: engine bay, hitch, hardware) is `hero_vehicle` (15000-60000
+  tris); pass that kind to `validate_asset` and `export_asset` instead of `vehicle`.
 - **overall dimensions in metres** - length/width/height, checked against the 1.8 m human
   reference every contact sheet includes.
 - **silhouette and mechanism** - body shape, wheel/track/leg count and placement, articulated
@@ -79,9 +81,9 @@ Same checks as a building at the vehicle tri budget: triangle count, per-primiti
 assignment, watertight/manifold, outward normals, UV overlap, applied transforms at base-centre
 origin.
 
-## 6. Patch loop - capped at 4 iterations
+## 6. Patch loop - capped at 4 iterations, 8 for `hero_vehicle`
 
-Same as `asset-building` step 6: `record_patch(name)` first (raises `GateError` past the cap -
+Same as `asset-building` step 6: `record_patch(name, kind)` first, with the kind from step 1 (raises `GateError` past the cap -
 `asset_gate_status(name)` shows `patches_remaining`), fix in the live session and
 `record_recipe` it, back to step 3.
 
@@ -94,43 +96,43 @@ approve_asset(name, note)
 Ask the user to look at the contact sheet and confirm; pass their note through verbatim.
 `asset_gate_status(name)` should show `approved: true` before continuing.
 
-## 8. game_ready + LODs + export
+## 8. game_ready + LODs + export - a background job, never a live MCP call
 
-**Do not call `game_ready.game_ready_pass(objects)` alone** - it bakes no textures (it calls
-`consolidate_material` with no `bake_result`, leaving a blank `atlas_material`). Use the full
-sequence from `asset-building` step 8 - `apply_transforms`/`recalc_normals`, then
-`uv_unwrap_and_pack` while parts still carry their own materials, then `atlas_bake.bake_atlas`,
-then `consolidate_material(objects, bake_result=...)`, then `enforce_power_of_two_textures`, then
-`bpy.ops.object.join()` (a multi-part vehicle is never auto-joined, and `generate_lods` needs one
-object), then `generate_lods`, then `export_asset`:
+The bake passes (atlas, then every LOD) block Blender's only thread for minutes, longer than the
+`blender-mcp` bridge's transport timeout, so step 8 never runs inside `execute_blender_code`. The
+live session only saves its scene; a headless Blender started as a background shell job does the
+rest, with no timeout, and the harness notifies you when it exits.
 
-```python
-from assets import hardsurface as hs, game_ready, atlas_bake, lod, export
+1. In the live session, save a copy of the scene (every part still named `<name>_*`, each on its
+   own per-part materials) and `record_recipe` it:
 
-for obj in objects:
-    hs.apply_transforms(obj)
-    hs.recalc_normals(obj)
+   ```python
+   import bpy
+   bpy.ops.wm.save_as_mainfile(filepath=r"<repo_root>/out/assets/<name>/.build/<name>.blend", copy=True)
+   ```
 
-game_ready.uv_unwrap_and_pack(objects)
-bake_result = atlas_bake.bake_atlas(objects, atlas_size=game_ready.ATLAS_SIZE)
-material = game_ready.consolidate_material(objects, bake_result=bake_result)
-game_ready.enforce_power_of_two_textures(material, game_ready.ATLAS_SIZE)
+2. Launch the job with the Bash tool and `run_in_background: true` (Blender from
+   `asset_status`'s `blender_executable`):
 
-bpy.ops.object.select_all(action="DESELECT")
-for obj in objects:
-    obj.select_set(True)
-bpy.context.view_layer.objects.active = objects[0]
-bpy.ops.object.join()
-lod0_object = bpy.context.view_layer.objects.active
-lod_set = lod.generate_lods(lod0_object)
-result = export.export_asset(lod_set.objects, name=name, kind="vehicle")
-```
+   ```bash
+   "<blender_executable>" --background "out/assets/<name>/.build/<name>.blend" --factory-startup \
+     --python assets/blender_scripts/game_ready_build.py -- "<repo_root>" <name> <kind> \
+     "out/assets/<name>/.build/game_ready.json" 2>&1 | grep --line-buffered -E "\[game_ready\]|Error|Traceback"
+   ```
 
-`record_recipe` each call. `atlas_bake.bake_atlas` runs 5 sequential full-resolution Cycles bake
-passes and is long-running (minutes on a many-part asset) - `bpy.ops.object.bake` blocks
-Blender's single thread for the whole call, and the `blender-mcp` bridge's transport can time out
-before it returns even though Blender keeps computing correctly. That's a transport artifact, not
-a failure. To avoid it, split it into one `execute_blender_code` call per pass: `atlas_bake.prepare_bake()`, `atlas_bake.bake_albedo(objects)`, `atlas_bake.bake_normal(objects)`, `atlas_bake.bake_orm(objects)`, then `bake_result = atlas_bake.collect_bake_result()`. Never look baked images up by literal name (`bpy.data.images["albedo"]`) - `collect_bake_result` is the only safe lookup. Every pass claims its reserved image name, moving any earlier image under that name aside as `<name>_stale`, so re-running a pass after a timeout or building several assets in one Blender session never ships a stale or `.001` texture; `atlas_bake.purge_stale_images()` drops the moved-aside ones. A pass that comes back `CANCELLED` or all black raises `atlas_bake.BakeError` instead of leaving a blank image (af-225).
+   `game_ready_build.py` refuses to run unless `approve_asset` has opened the gate, then runs the
+   whole sequence on every `<name>_*` mesh: `apply_transforms`/`recalc_normals`,
+   `uv_unwrap_and_pack` while the parts still carry their own materials, the three atlas bake
+   passes, `consolidate_material(objects, bake_result=...)`, `enforce_power_of_two_textures`,
+   `join` (`generate_lods` needs one object), `generate_lods`, `export_asset(kind=<kind>)`. Do not
+   use `game_ready.game_ready_pass(objects)` - it bakes no textures and leaves a blank
+   `atlas_material`.
+
+3. Don't poll, and don't start a second job for the same asset while one runs. When the
+   notification arrives, read `game_ready.json`: `{"ok": true, ...}` carries the export result
+   (glb, textures, triangle counts per LOD), `{"ok": false, "error": ...}` the traceback. Fix the
+   cause and relaunch; the job always starts again from the saved .blend, so a failed run leaves
+   nothing half-baked behind.
 
 ## Done
 

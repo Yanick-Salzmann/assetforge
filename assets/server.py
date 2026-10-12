@@ -54,11 +54,13 @@ def validate_asset(name: str, kind: str) -> dict:
 
 
 @mcp.tool
-def record_patch(name: str) -> dict:
-    """Count one patch iteration against the 4-round cap; refuses once the cap is spent."""
+def record_patch(name: str, kind: str = "") -> dict:
+    """Count one patch iteration against the asset's cap: 8 rounds for hero kinds (hero_building,
+    hero_vehicle), 4 for everything else. Pass the asset's kind (it is remembered); refuses once the
+    cap is spent."""
     from assets import gate
 
-    return gate.open_gate(name).record_patch().as_dict()
+    return gate.open_gate(name).record_patch(kind).as_dict()
 
 
 @mcp.tool

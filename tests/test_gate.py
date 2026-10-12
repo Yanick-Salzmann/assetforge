@@ -29,6 +29,30 @@ def test_a_patch_past_the_cap_is_refused():
         asset_gate.record_patch()
 
 
+@pytest.mark.parametrize("kind", ["hero_building", "hero_vehicle"])
+def test_hero_kinds_get_the_wider_cap(kind):
+    asset_gate = gate.open_gate("hero-tractor")
+    for _ in range(gate.HERO_PATCH_ITERATIONS):
+        asset_gate.record_patch(kind)
+    assert asset_gate.as_dict()["patches_remaining"] == 0
+    with pytest.raises(gate.GateError, match=f"{gate.HERO_PATCH_ITERATIONS} allowed patch"):
+        asset_gate.record_patch(kind)
+
+
+def test_kind_is_remembered_across_reload():
+    gate.open_gate("hero-tractor").record_patch("hero_vehicle")
+    gate.forget("hero-tractor")
+    reloaded = gate.open_gate("hero-tractor")
+    assert reloaded.kind == "hero_vehicle"
+    assert reloaded.patch_cap() == gate.HERO_PATCH_ITERATIONS
+
+
+def test_non_hero_kinds_keep_the_default_cap():
+    assert gate.patch_cap("vehicle") == gate.MAX_PATCH_ITERATIONS
+    assert gate.patch_cap("prop") == gate.MAX_PATCH_ITERATIONS
+    assert gate.patch_cap("") == gate.MAX_PATCH_ITERATIONS
+
+
 def test_export_is_blocked_until_approved():
     asset_gate = gate.open_gate("prop-barrel")
     with pytest.raises(gate.GateError, match="not been approved"):

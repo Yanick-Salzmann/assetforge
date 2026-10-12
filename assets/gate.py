@@ -9,6 +9,15 @@ from terrain import config
 
 GATE_NAME = ".gate.json"
 MAX_PATCH_ITERATIONS = 4
+HERO_PATCH_ITERATIONS = 8
+PATCH_CAPS: dict[str, int] = {
+    "hero_building": HERO_PATCH_ITERATIONS,
+    "hero_vehicle": HERO_PATCH_ITERATIONS,
+}
+
+
+def patch_cap(kind: str) -> int:
+    return PATCH_CAPS.get(kind, MAX_PATCH_ITERATIONS)
 
 
 class GateError(RuntimeError):
@@ -20,6 +29,7 @@ class AssetGate:
     """Per-asset patch iteration count and human approval state, persisted to disk."""
 
     name: str
+    kind: str = ""
     patch_count: int = 0
     approved: bool = False
     approval_note: str = ""
@@ -27,10 +37,17 @@ class AssetGate:
     def out_dir(self) -> Path:
         return config.ASSET_OUT_DIR / self.name
 
-    def record_patch(self) -> AssetGate:
-        if self.patch_count >= MAX_PATCH_ITERATIONS:
+    def patch_cap(self) -> int:
+        return patch_cap(self.kind)
+
+    def record_patch(self, kind: str = "") -> AssetGate:
+        if kind:
+            self.kind = kind
+        cap = self.patch_cap()
+        if self.patch_count >= cap:
+            self.write()
             raise GateError(
-                f"asset {self.name!r} has used all {MAX_PATCH_ITERATIONS} allowed patch "
+                f"asset {self.name!r} has used all {cap} allowed patch "
                 "iterations; human review is required before further patches"
             )
         self.patch_count += 1
@@ -52,8 +69,10 @@ class AssetGate:
     def as_dict(self) -> dict:
         return {
             "name": self.name,
+            "kind": self.kind,
             "patch_count": self.patch_count,
-            "patches_remaining": MAX_PATCH_ITERATIONS - self.patch_count,
+            "patch_cap": self.patch_cap(),
+            "patches_remaining": max(0, self.patch_cap() - self.patch_count),
             "approved": self.approved,
             "approval_note": self.approval_note,
         }
@@ -85,6 +104,7 @@ def _load_gate(name: str) -> AssetGate:
     data = json.loads(path.read_text(encoding="utf-8"))
     return AssetGate(
         name=name,
+        kind=str(data.get("kind", "")),
         patch_count=int(data.get("patch_count", 0)),
         approved=bool(data.get("approved", False)),
         approval_note=str(data.get("approval_note", "")),
