@@ -18,7 +18,7 @@ from typing import Sequence
 import bmesh
 import bpy
 
-from assets import atlas_bake
+from assets import atlas_bake, atlas_pack
 from assets.hardsurface import apply_transforms, recalc_normals
 from assets.uv_islands import axis_key, face_islands, project_point
 
@@ -64,35 +64,10 @@ def triangulate(obj: bpy.types.Object) -> bpy.types.Object:
     return obj
 
 
-def _shelf_pack(sizes: list[tuple[float, float]], canvas_width: float, margin: float) -> tuple[list[tuple[float, float]], float, float]:
-    """Place (width, height) rects left-to-right, wrapping to a new row below when a row would
-    exceed canvas_width - the tallest-first order keeps rows dense. Every rect is placed strictly
-    right of, or strictly below, every earlier rect in its row/column, so no two rects ever
-    overlap regardless of how good the canvas_width guess turns out to be."""
-    order = sorted(range(len(sizes)), key=lambda i: sizes[i][1], reverse=True)
-    offsets = [(0.0, 0.0)] * len(sizes)
-    cursor_x = margin
-    cursor_y = margin
-    row_height = 0.0
-    max_x = margin
-    for i in order:
-        width, height = sizes[i]
-        if cursor_x > margin and cursor_x + width + margin > canvas_width:
-            cursor_x = margin
-            cursor_y += row_height + margin
-            row_height = 0.0
-        offsets[i] = (cursor_x, cursor_y)
-        max_x = max(max_x, cursor_x + width + margin)
-        cursor_x += width + margin
-        row_height = max(row_height, height)
-    total_height = cursor_y + row_height + margin
-    return offsets, max_x, total_height
-
-
 def uv_unwrap_and_pack(objects: Sequence[bpy.types.Object], margin: float = 0.01) -> None:
     """Axis-project every object's faces into islands (grouped by contiguous dominant-normal-axis
     region) and pack every island from every object into one shared 0-1 atlas with a deterministic
-    shelf packer.
+    shelf packer whose row width is searched so the packing fills the square (atlas_pack).
 
     Does not use bpy.ops.uv.smart_project or bpy.ops.uv.pack_islands: on hard-surface meshes with
     many small bevel/greeble faces, smart_project collapses most islands to zero UV area (verified
@@ -136,10 +111,7 @@ def uv_unwrap_and_pack(objects: Sequence[bpy.types.Object], margin: float = 0.01
             )
 
     sizes = [(isl["width"], isl["height"]) for isl in islands]
-    total_area = sum(w * h for w, h in sizes)
-    canvas_width = max(total_area**0.5 * 1.3, max((w for w, _ in sizes), default=0.0) + 2.0 * margin, margin * 4.0)
-    offsets, max_x, total_height = _shelf_pack(sizes, canvas_width, margin)
-    norm = max(max_x, total_height, 1e-6)
+    offsets, norm = atlas_pack.pack_square(sizes, margin)
 
     for isl, (off_x, off_y) in zip(islands, offsets):
         uv_layer = isl["bm"].loops.layers.uv.verify()
