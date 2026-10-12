@@ -274,7 +274,7 @@ def _pad4(data: bytes, fill: bytes = b"\x00") -> bytes:
     return data + fill * ((-len(data)) % 4)
 
 
-def _write_tetrahedron_glb(path) -> None:
+def _write_tetrahedron_glb(path, node_names: tuple[str, ...] = ("",)) -> None:
     positions, indices, centroid = _tetrahedron()
     normals = positions - centroid
     normals /= np.linalg.norm(normals, axis=1, keepdims=True)
@@ -290,8 +290,8 @@ def _write_tetrahedron_glb(path) -> None:
 
     document = {
         "scene": 0,
-        "scenes": [{"nodes": [0]}],
-        "nodes": [{"mesh": 0}],
+        "scenes": [{"nodes": list(range(len(node_names)))}],
+        "nodes": [{"mesh": 0, "name": node_name} for node_name in node_names],
         "meshes": [
             {
                 "primitives": [
@@ -362,8 +362,42 @@ def test_report_as_dict_is_plain_json_even_with_numpy_values():
     )
     payload = report.as_dict()
     assert json.loads(json.dumps(payload)) == payload
-    assert type(payload["checks"][0]["passed"]) is bool
+    assert type(payload["passed_checks"]) is int
     assert type(payload["ok"]) is bool
+
+
+def test_report_as_dict_lists_only_failing_checks():
+    report = validate.ValidationReport(
+        name="m",
+        kind="prop",
+        triangle_count=12,
+        bbox_min=(0.0, 0.0, 0.0),
+        bbox_max=(1.0, 1.0, 1.0),
+        checks=[
+            validate.CheckResult("good", True, "fine"),
+            validate.CheckResult("bad", False, "broken"),
+            validate.CheckResult("also good", True, "fine"),
+        ],
+    )
+    payload = report.as_dict()
+    assert payload["passed_checks"] == 2
+    assert payload["failed_checks"] == 1
+    assert payload["failures"] == [{"name": "bad", "detail": "broken"}]
+    assert "checks" not in payload
+
+
+def test_triangle_budget_applies_to_lod0_only(monkeypatch):
+    monkeypatch.setitem(validate.TRI_BUDGETS, "prop", (1, 5))
+    _write_tetrahedron_glb(
+        config.ASSET_OUT_DIR / "test-lods" / "test-lods.glb",
+        node_names=("test-lods_LOD0", "test-lods_LOD1", "test-lods_LOD2"),
+    )
+
+    report = validate.validate_asset("test-lods", "prop")
+
+    assert report.triangle_count == 4
+    assert report.lod_triangle_counts == {"LOD0": 4, "LOD1": 4, "LOD2": 4}
+    assert report.ok, [c for c in report.checks if not c.passed]
 
 
 def test_vegetation_skips_closed_mesh_and_uv_overlap_checks(monkeypatch):

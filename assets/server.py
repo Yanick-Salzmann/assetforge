@@ -47,7 +47,8 @@ def record_recipe(name: str, code: str) -> dict:
 
 @mcp.tool
 def validate_asset(name: str, kind: str) -> dict:
-    """Validate out/assets/<name>/<name>.glb: tri budget, watertight/manifold, normals, UVs, origin, transforms."""
+    """Validate out/assets/<name>/<name>.glb: LOD0 tri budget, watertight/manifold, normals, UVs, origin,
+    transforms. Returns a summary with per-LOD tri counts and only the failing checks."""
     from assets import validate
 
     return validate.validate_asset(name, kind).as_dict()

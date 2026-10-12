@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -25,6 +26,7 @@ UV_OVERLAP_AREA_EPS = 1e-6
 UV_GRID_CELLS = 64
 UV_BUCKET_CAP = 300
 WELD_PRECISION = 5
+LOD_SUFFIX = re.compile(r"_LOD(\d+)$")
 
 
 class ValidationError(ValueError):
@@ -46,20 +48,25 @@ class ValidationReport:
     bbox_min: tuple[float, float, float]
     bbox_max: tuple[float, float, float]
     checks: list[CheckResult] = field(default_factory=list)
+    lod_triangle_counts: dict[str, int] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
         return all(check.passed for check in self.checks)
 
     def as_dict(self) -> dict:
+        failures = [check for check in self.checks if not check.passed]
         return {
             "name": self.name,
             "kind": self.kind,
             "ok": bool(self.ok),
             "triangle_count": int(self.triangle_count),
+            "lod_triangle_counts": {lod: int(count) for lod, count in self.lod_triangle_counts.items()},
             "bbox_min": [float(v) for v in self.bbox_min],
             "bbox_max": [float(v) for v in self.bbox_max],
-            "checks": [{"name": c.name, "passed": bool(c.passed), "detail": str(c.detail)} for c in self.checks],
+            "passed_checks": len(self.checks) - len(failures),
+            "failed_checks": len(failures),
+            "failures": [{"name": c.name, "detail": str(c.detail)} for c in failures],
         }
 
 
@@ -79,17 +86,18 @@ def validate_asset(name: str, kind: str) -> ValidationReport:
         raise ValidationError("document has no mesh instances")
 
     checks: list[CheckResult] = []
-    total_tris = 0
+    lod_tris: dict[int, int] = {}
     world_bbox_min = np.full(3, np.inf)
     world_bbox_max = np.full(3, -np.inf)
 
     for node_index, mesh_index, matrix in instances:
         checks.extend(_check_node_transform(node_index, matrix))
+        lod = _lod_index(document["nodes"][node_index].get("name", ""))
         mesh = document["meshes"][mesh_index]
         for primitive_index, primitive in enumerate(mesh["primitives"]):
             label = f"mesh {mesh_index} primitive {primitive_index}"
             positions, indices, normals, uvs = _load_primitive(document, buffers, primitive)
-            total_tris += len(indices)
+            lod_tris[lod] = lod_tris.get(lod, 0) + len(indices)
             checks.extend(_check_material(label, primitive))
             checks.extend(_check_loose_vertices(label, positions, indices))
             checks.extend(_check_degenerate_triangles(label, positions, indices))
@@ -103,17 +111,24 @@ def validate_asset(name: str, kind: str) -> ValidationReport:
             world_bbox_min = np.minimum(world_bbox_min, world_positions.min(axis=0))
             world_bbox_max = np.maximum(world_bbox_max, world_positions.max(axis=0))
 
-    checks.append(_check_triangle_budget(total_tris, kind))
+    lod0_tris = lod_tris.get(0, 0)
+    checks.append(_check_triangle_budget(lod0_tris, kind))
     checks.append(_check_origin(world_bbox_min, world_bbox_max))
 
     return ValidationReport(
         name=name,
         kind=kind,
-        triangle_count=total_tris,
+        triangle_count=lod0_tris,
         bbox_min=tuple(world_bbox_min.tolist()),
         bbox_max=tuple(world_bbox_max.tolist()),
         checks=checks,
+        lod_triangle_counts={f"LOD{lod}": lod_tris[lod] for lod in sorted(lod_tris)},
     )
+
+
+def _lod_index(node_name: str) -> int:
+    match = LOD_SUFFIX.search(node_name)
+    return int(match.group(1)) if match else 0
 
 
 def _load_primitive(document: dict, buffers: list[bytes], primitive: dict):
