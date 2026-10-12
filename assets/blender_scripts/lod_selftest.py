@@ -146,6 +146,34 @@ def _trim_heavy_kit(material: "bpy.types.Material") -> "bpy.types.Object":
     return obj
 
 
+def _bolted_plate(material: "bpy.types.Material") -> "bpy.types.Object":
+    """One plate carrying sixty tiny rivets and sixty larger bolts, all 16-sided cylinders - the
+    shape of a tractor whose hundreds of small parts are each too small to decimate, so per-part
+    reduction alone leaves LOD2 at 63% of LOD0 (af-cae). The rivets fit inside LOD1's deviation
+    cap and the bolts inside LOD2's, so each LOD can drop them outright."""
+    mesh = bpy.data.meshes.new("bolted_mesh")
+    bm = bmesh.new()
+    bmesh.ops.create_grid(bm, x_segments=6, y_segments=6, size=10.0)
+    bmesh.ops.solidify(bm, geom=bm.faces[:], thickness=0.2)
+    for i in range(120):
+        radius = 0.03 if i < 60 else 0.08
+        cylinder = bmesh.ops.create_cone(
+            bm, cap_ends=True, segments=16, radius1=radius, radius2=radius, depth=radius * 2.0
+        )
+        slot = i % 60
+        offset = (-9.0 + (slot % 10) * 2.0, -9.0 + (slot // 10) * 3.0 + (0.0 if i < 60 else 1.5), 0.4)
+        bmesh.ops.translate(bm, vec=offset, verts=cylinder["verts"])
+    bmesh.ops.triangulate(bm, faces=bm.faces[:])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.update()
+    obj = bpy.data.objects.new("bolted", mesh)
+    bpy.context.collection.objects.link(obj)
+    obj.data.materials.append(material)
+    return obj
+
+
 def _largest_part_diagonal(obj: "bpy.types.Object", lod_module) -> float:
     parts = lod_module._connected_parts(obj.data)
     return max(lod_module._part_diagonal(obj.data, indices) for indices in parts)
@@ -269,6 +297,11 @@ def main() -> None:
         trim_set = lod.generate_lods(trim_heavy, ratios=(1.0, 0.5, 0.15), texture_size=64)
         trim_counts = trim_set.triangle_counts
         plate_diagonals = [_largest_part_diagonal(obj, lod) for obj in trim_set.objects]
+        bolted = _bolted_plate(material)
+        game_ready.uv_unwrap_and_pack([bolted])
+        bolted_set = lod.generate_lods(bolted, ratios=(1.0, 0.5, 0.15), texture_size=64)
+        bolted_counts = bolted_set.triangle_counts
+        bolted_boundary_edges = [_boundary_edge_count(obj) for obj in bolted_set.objects]
         image_stats = {
             entry.normal: _image_stats(bpy.data.images[entry.normal])
             for entry in lod_set.textures
@@ -290,6 +323,9 @@ def main() -> None:
             and kit_counts[0] > kit_counts[1] > kit_counts[2] > 0
             and trim_counts[0] > trim_counts[1] > trim_counts[2] > 0
             and all(diagonal >= plate_diagonals[0] * 0.9 for diagonal in plate_diagonals)
+            and bolted_counts[1] <= 0.75 * bolted_counts[0]
+            and bolted_counts[2] <= 0.25 * bolted_counts[0]
+            and all(count == 0 for count in bolted_boundary_edges)
             and len(lod_set.objects) == 3
             and lod_set.objects[0].data.materials[0].name == material.name
             and lod_set.objects[1].data.materials[0].name != material.name
@@ -312,6 +348,8 @@ def main() -> None:
             "kit_triangle_counts": kit_counts,
             "trim_heavy_triangle_counts": trim_counts,
             "trim_heavy_plate_diagonals": plate_diagonals,
+            "bolted_triangle_counts": bolted_counts,
+            "bolted_boundary_edges": bolted_boundary_edges,
             "image_stats": image_stats,
             "boundary_edges": boundary_edges,
             "hinge_sizes": hinge_sizes,

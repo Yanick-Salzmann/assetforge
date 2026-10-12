@@ -34,6 +34,7 @@ MIN_PROTECTED_PART_DIAGONAL_RATIO = 0.05
 MIN_CLOSED_SHAPE_TRIANGLES = 12
 LOD_DEVIATION_RATIOS: tuple[float, float, float] = (0.0, 0.008, 0.02)
 DEVIATION_RELAXATION_STEPS: tuple[float, ...] = (0.0, 0.25, 0.5, 0.75)
+MAX_CULLED_AREA_FRACTION = 0.1
 
 
 @dataclass
@@ -139,6 +140,33 @@ def _part_meshes(obj: bpy.types.Object) -> list[bpy.types.Mesh]:
         part_mesh.update()
         meshes.append(part_mesh)
     return meshes
+
+
+def _mesh_area(mesh: bpy.types.Mesh) -> float:
+    return sum(polygon.area for polygon in mesh.polygons)
+
+
+def _culled_parts(diagonals: list[float], areas: list[float], tolerance: float) -> set[int]:
+    """Parts small enough to drop from a LOD outright: every point of a part whose whole extent
+    fits inside the LOD's deviation tolerance is already within that error of where it sits, so
+    removing it is no worse than the shape change the LOD accepts anyway. Bolts, rivets and
+    levers are what keep a many-part asset's LOD2 near its LOD0 count (af-cae), because each is
+    too small to decimate. Smallest first, and never more than MAX_CULLED_AREA_FRACTION of the
+    asset's surface, so an asset built mostly from small parts (a chain, a pile) keeps its body.
+    A larger tolerance only ever extends the set, so a part culled at LOD1 stays culled at LOD2."""
+    budget = sum(areas) * MAX_CULLED_AREA_FRACTION
+    candidates = sorted(
+        (index for index, diagonal in enumerate(diagonals) if diagonal <= tolerance),
+        key=lambda index: (diagonals[index], index),
+    )
+    culled: set[int] = set()
+    spent = 0.0
+    for index in candidates:
+        if spent + areas[index] > budget:
+            break
+        spent += areas[index]
+        culled.add(index)
+    return culled
 
 
 def _bvh(mesh: bpy.types.Mesh) -> BVHTree:
@@ -419,7 +447,8 @@ def generate_lods(
     its target within the cap keeps more triangles - shape wins over the ratio, because a folded
     wall is visible at any distance (church tower at LOD2). Each part's LOD2 is reduced from its
     LOD1, never above it, so counts can only fall (af-k4g); deviation and textures are always
-    measured and baked against LOD0 so error is not compounded."""
+    measured and baked against LOD0 so error is not compounded. Parts no bigger than a LOD's
+    deviation cap are dropped from it entirely (_culled_parts)."""
     if len(ratios) != 3 or ratios[0] != 1.0:
         raise ValueError("ratios must be a 3-tuple with ratios[0] == 1.0 (LOD0 is full resolution)")
     if not lod0.data.materials:
@@ -429,6 +458,8 @@ def generate_lods(
     lod0.name = f"{base_name}_LOD0"
     overall_diagonal = _bound_box_diagonal(lod0)
     originals = _part_meshes(lod0)
+    diagonals = [_mesh_diagonal(mesh) for mesh in originals]
+    areas = [_mesh_area(mesh) for mesh in originals]
 
     objects = [lod0]
     textures: list[LodTextures | None] = [None]
@@ -436,12 +467,16 @@ def generate_lods(
     previous = originals
     for index, ratio in enumerate(ratios[1:], start=1):
         tolerance = overall_diagonal * deviation_ratios[index]
+        culled = _culled_parts(diagonals, areas, tolerance)
         reduced = [
-            _reduce_part(original, prior, ratio, overall_diagonal, tolerance)
-            for original, prior in zip(originals, previous)
+            None
+            if prior is None or part_index in culled
+            else _reduce_part(original, prior, ratio, overall_diagonal, tolerance)
+            for part_index, (original, prior) in enumerate(zip(originals, previous))
         ]
-        scratch_meshes.extend(reduced)
-        lod = _joined_object(f"{base_name}_LOD{index}", reduced, lod0.data.materials[0])
+        kept = [mesh for mesh in reduced if mesh is not None]
+        scratch_meshes.extend(kept)
+        lod = _joined_object(f"{base_name}_LOD{index}", kept, lod0.data.materials[0])
         lod.matrix_world = lod0.matrix_world.copy()
         textures.append(bake_lod_textures(lod0, lod, image_size=max(texture_size >> (index - 1), 64)))
         objects.append(lod)
