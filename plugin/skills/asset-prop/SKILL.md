@@ -50,61 +50,65 @@ category guess doesn't match the index.
 Same as `asset-building` step 2: insert the repo root into `sys.path`, import
 `assets.hardsurface` and `assets.materials`, build with the composable helpers
 (`bevelled_box`, `frustum`, `cylinder_between`, `box_between`, `lathe` for barrels and turned
-parts, `prism`, `torus`, `panel_cut`, `array`, `mirror`, `solidify`, `greeble`, ...), assign per-part materials with `assets.materials`, `record_recipe(name, code)`
-after every snippet. Model every prop that needs generating into the same live scene, one
-object group per prop, named so the groups stay distinguishable (e.g. `crate_01`,
-`crate_01_lid`) - step 4 needs the full set's objects together.
+parts, `prism`, `torus`, `panel_cut`, `array`, `mirror`, `solidify`, `greeble`, ...), assign
+per-part materials with `assets.materials`, `record_recipe(name, code)` after every snippet.
+Model every prop that needs generating into the same live scene and tag every part with the prop
+it belongs to - step 4 groups and exports by that tag, never by parsing object names, so set or
+prop names may contain underscores freely (af-7pp):
+
+```python
+from assets import prop_set
+prop_set.tag(obj, "tavern_crate")   # the prop's asset name, i.e. out/assets/tavern_crate/
+```
+
+Untagged objects (helpers, references, cutters left behind) are ignored by the build.
 
 Follow `asset-building`'s **Live-session conventions** (step 2) - workspace env var, fresh namespace per snippet, `<name>_*` naming, cleanup before rebuilds, +Y front, overlapping joins, geometry-derived mount points, greeble face guards, materials in `MATERIAL_BUILDERS`.
 
-## 4. One shared atlas across the set
+## 4. Shared atlas bake + per-prop export - a background job, never a live MCP call
 
-Unlike a single building, do not call `game_ready_pass` per prop. Also **do not call
-`game_ready.game_ready_pass(all_prop_objects)` on its own** - it calls `consolidate_material`
-with no `bake_result`, which produces a UV-correct but untextured `atlas_material` and silently
-throws away every prop's CC0/procedural material. Bake the atlas explicitly instead, once across
-every newly-modelled prop's objects in the same session, before any of them are exported:
+One atlas is baked across the whole set, then each prop is exported on its own with only its own
+parts, so each keeps its origin at its own base centre. The bake passes block Blender's only
+thread for minutes, longer than the `blender-mcp` bridge's transport timeout, so this never runs
+inside `execute_blender_code`. The live session only saves its scene; a headless Blender started
+as a background shell job does the rest, with no timeout, and the harness notifies you when it
+exits.
 
-```python
-from assets import hardsurface as hs, game_ready, atlas_bake
+1. In the live session, save a copy of the scene (every part tagged, each on its own per-part
+   materials) and `record_recipe` it:
 
-all_prop_objects = [...]  # every modelled prop's objects, whole set, not yet exported
-for obj in all_prop_objects:
-    hs.apply_transforms(obj)
-    hs.recalc_normals(obj)
-game_ready.uv_unwrap_and_pack(all_prop_objects)          # while parts still carry their own materials
-bake_result = atlas_bake.bake_atlas(all_prop_objects, atlas_size=game_ready.ATLAS_SIZE)
-material = game_ready.consolidate_material(all_prop_objects, bake_result=bake_result)
-game_ready.enforce_power_of_two_textures(material, game_ready.ATLAS_SIZE)
-```
+   ```python
+   import bpy
+   bpy.ops.wm.save_as_mainfile(filepath=r"<repo_root>/out/assets/.build/<set>/<set>.blend", copy=True)
+   ```
 
-This bakes transforms/normals, UV-packs one shared 0-1 atlas across the whole set, bakes every
-part's original material into shared albedo/normal/orm images, and consolidates every object onto
-one shared `atlas_material` wired to those images - the "one atlas per set" budget line.
-`record_recipe` each call too.
+2. Launch the job with the Bash tool and `run_in_background: true` (Blender from
+   `asset_status`'s `blender_executable`):
 
-`atlas_bake.bake_atlas` runs 5 sequential full-resolution Cycles bake passes and is long-running;
-`bpy.ops.object.bake` blocks Blender's thread for the whole call and the `blender-mcp` bridge's
-transport can time out and report "failed" before Blender actually finishes - that's a transport
-artifact, not a real failure. To avoid the timeout, split it into one `execute_blender_code` call per pass: `atlas_bake.prepare_bake()`, `atlas_bake.bake_albedo(objects)`, `atlas_bake.bake_normal(objects)`, `atlas_bake.bake_orm(objects)`, then `bake_result = atlas_bake.collect_bake_result()`. Never look baked images up by literal name (`bpy.data.images["albedo"]`) - `collect_bake_result` is the only safe lookup. Every pass claims its reserved image name, moving any earlier image under that name aside as `<name>_stale`, so re-running a pass after a timeout or building several assets in one Blender session never ships a stale or `.001` texture; `atlas_bake.purge_stale_images()` drops the moved-aside ones. A pass that comes back `CANCELLED` or all black raises `atlas_bake.BakeError` instead of leaving a blank image (af-225).
+   ```bash
+   "<blender_executable>" --background "out/assets/.build/<set>/<set>.blend" --factory-startup \
+     --python assets/blender_scripts/prop_set_build.py -- "<repo_root>" \
+     "out/assets/.build/<set>/prop_set.json" 2>&1 | grep --line-buffered -E "\[prop_set\]|Error|Traceback"
+   ```
 
-If a later patch (step 7) changes one prop's geometry, re-run this whole sequence across the
-whole set's objects again before re-exporting anything - the shared UV pack shifts when any
-object in the group changes, so a stale atlas layout on an already-exported prop is a bug the
-next full re-run silently fixes, not one worth chasing per-prop.
+   `prop_set_build.py` runs on every tagged mesh: `apply_transforms`/`recalc_normals`,
+   `uv_unwrap_and_pack` while the parts still carry their own materials, the three atlas bake
+   passes, `consolidate_material(objects, bake_result=...)`, `enforce_power_of_two_textures`, then
+   `export_asset(parts, name=<prop>, kind="prop")` once per prop. Every export writes the same
+   shared atlas images into that prop's own `textures/` - expected duplication, each prop is a
+   self-contained deliverable. Do not use `game_ready.game_ready_pass(objects)` - it bakes no
+   textures and leaves a blank `atlas_material`.
 
-## 5. Export each prop individually
+3. Don't poll, and don't start a second job for the same set while one runs. When the
+   notification arrives, read `prop_set.json`: `{"ok": true, "props": {...}}` carries each prop's
+   export result, `{"ok": false, "error": ...}` the traceback. Fix the cause and relaunch; the job
+   always starts again from the saved .blend, so a failed run leaves nothing half-baked behind.
 
-```python
-from assets import export
-export.export_asset(prop_objects, name=prop_name, kind="prop")
-```
+If a later patch (step 6) changes any prop's geometry, save and rerun the whole job - the shared
+UV pack shifts when any object in the set changes, so every prop is re-exported against the new
+atlas.
 
-Once per prop, passing only that prop's own objects (not the whole set) so each prop keeps its
-own origin at its own base centre. Every export re-writes the same shared atlas images into
-that prop's own `textures/` - expected duplication, each prop is a self-contained deliverable.
-
-## 6. Contact sheet + critique, per prop
+## 5. Contact sheet + critique, per prop
 
 ```
 render_contact_sheet(prop_name)
@@ -117,7 +121,7 @@ one-angle-only detail.
 
 See `asset-building` step 3, **What the contact sheet can and can't tell you**: pre-bake sheets are clay, add Workbench close-ups for mechanism detail, and check visibility.
 
-## 7. Validate + patch loop, per prop - capped at 4 iterations each
+## 6. Validate + patch loop, per prop - capped at 4 iterations each
 
 ```
 validate_asset(prop_name, "prop")
@@ -125,10 +129,9 @@ validate_asset(prop_name, "prop")
 
 On a failure or a critique fail: `record_patch(prop_name)` (raises `GateError` past 4
 iterations - hand that prop to a human reviewer if hit), fix in the live session
-(`record_recipe` it), re-run step 4's `game_ready_pass` across the whole set if geometry
-changed, re-export that prop, go back to step 6 for it.
+(`record_recipe` it), rerun step 4's job for the whole set, go back to step 5 for it.
 
-## 8. Human approval
+## 7. Human approval
 
 Once every prop's contact sheet critique and `validate_asset` pass, ask the user to look at the
 set (all contact sheets together) and confirm. Then, per prop:
