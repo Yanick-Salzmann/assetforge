@@ -5,8 +5,9 @@ import struct
 
 import numpy as np
 import pytest
+from PIL import Image
 
-from assets import validate
+from assets import team_colour, validate
 from library import gltf
 from terrain import config
 
@@ -410,3 +411,101 @@ def test_vegetation_skips_closed_mesh_and_uv_overlap_checks(monkeypatch):
     names = {c.name for c in report.checks}
     assert not any("watertight" in n or "manifold" in n or "UV overlap" in n for n in names)
     assert any("outward normals" in n for n in names)
+
+
+def test_rts_kinds_have_budgets_and_export_accepts_them():
+    for kind in ("unit", "creature", "organic_prop"):
+        low, high = validate.TRI_BUDGETS[kind]
+        assert 0 < low < high
+    assert validate.TRI_BUDGETS["unit"][1] < validate.TRI_BUDGETS["vehicle"][0]
+    assert set(validate.LOD_CHAIN_KINDS) == {"unit", "creature", "organic_prop"}
+    assert set(team_colour.KINDS) <= set(validate.LOD_CHAIN_KINDS)
+
+
+def test_lod_chain_requires_three_lods():
+    result = validate._check_lod_chain({0: 1000, 1: 500})
+    assert not result.passed
+    assert "LOD2" in result.detail
+
+
+def test_lod_chain_requires_each_step_to_reduce():
+    result = validate._check_lod_chain({0: 1000, 1: 900, 2: 300})
+    assert not result.passed
+    assert "LOD1" in result.detail
+
+
+def test_lod_chain_passes_for_a_real_reduction():
+    assert validate._check_lod_chain({0: 1000, 1: 500, 2: 200}).passed
+
+
+def test_lod_chain_is_enforced_for_rts_kinds_only(monkeypatch):
+    monkeypatch.setitem(validate.TRI_BUDGETS, "organic_prop", (1, 10))
+    monkeypatch.setitem(validate.TRI_BUDGETS, "prop", (1, 10))
+    _write_tetrahedron_glb(config.ASSET_OUT_DIR / "stump" / "stump.glb")
+
+    organic = validate.validate_asset("stump", "organic_prop")
+    prop = validate.validate_asset("stump", "prop")
+
+    assert [c.name for c in organic.checks if not c.passed] == ["LOD chain"]
+    assert prop.ok
+
+
+def _write_team_manifest(name: str, mask: np.ndarray | None) -> None:
+    out_dir = config.ASSET_OUT_DIR / name
+    out_dir.mkdir(parents=True, exist_ok=True)
+    manifest = {"name": name}
+    if mask is not None:
+        manifest[team_colour.MANIFEST_KEY] = team_colour.manifest_entry("textures")
+        (out_dir / "textures").mkdir(exist_ok=True)
+        Image.fromarray(mask).save(out_dir / "textures" / team_colour.MASK_FILENAME)
+    (out_dir / "asset.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def _mask(size=(64, 64), painted=True) -> np.ndarray:
+    mask = np.zeros((size[1], size[0], 4), dtype=np.uint8)
+    mask[..., 3] = 255
+    if painted:
+        mask[8:24, 8:24, 0] = 255
+    return mask
+
+
+def test_unit_without_team_mask_fails():
+    _write_team_manifest("soldier", None)
+    assert not validate._check_team_mask("soldier", "unit", 0).passed
+
+
+def test_unit_without_manifest_fails():
+    assert not validate._check_team_mask("ghost", "unit", 0).passed
+
+
+def test_creature_without_team_mask_passes():
+    _write_team_manifest("wolf", None)
+    assert validate._check_team_mask("wolf", "creature", 0).passed
+
+
+def test_unit_with_painted_mask_passes():
+    _write_team_manifest("soldier", _mask())
+    result = validate._check_team_mask("soldier", "unit", 0)
+    assert result.passed, result.detail
+
+
+def test_empty_team_mask_fails():
+    _write_team_manifest("soldier", _mask(painted=False))
+    assert not validate._check_team_mask("soldier", "unit", 0).passed
+
+
+def test_non_power_of_two_team_mask_fails():
+    _write_team_manifest("soldier", _mask(size=(60, 64)))
+    assert not validate._check_team_mask("soldier", "unit", 0).passed
+
+
+def test_team_mask_needs_uvs_on_every_primitive():
+    _write_team_manifest("soldier", _mask())
+    assert not validate._check_team_mask("soldier", "unit", 1).passed
+
+
+def test_team_mask_manifest_entry_points_into_textures():
+    entry = team_colour.manifest_entry("textures")
+    assert entry["mask"] == "textures/team_mask.png"
+    assert entry["texcoord"] == 0
+    assert entry["channel"] == "r"

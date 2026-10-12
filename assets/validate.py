@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+from PIL import Image
 
+from assets import team_colour
 from library import gltf
 from terrain import config
 
@@ -15,8 +18,14 @@ TRI_BUDGETS: dict[str, tuple[int, int]] = {
     "vehicle": (5000, 20000),
     "hero_vehicle": (15000, 60000),
     "vegetation": (20, 600),
+    "unit": (300, 4000),
+    "creature": (500, 8000),
+    "organic_prop": (100, 2000),
 }
 OPEN_SURFACE_KINDS = ("vegetation",)
+LOD_CHAIN_KINDS = ("unit", "creature", "organic_prop")
+REQUIRED_LODS = 3
+LOD_STEP_MAX_RATIO = 0.75
 
 ORIGIN_TOLERANCE_M = 0.05
 SCALE_TOLERANCE = 1e-3
@@ -87,6 +96,7 @@ def validate_asset(name: str, kind: str) -> ValidationReport:
 
     checks: list[CheckResult] = []
     lod_tris: dict[int, int] = {}
+    missing_uvs = 0
     world_bbox_min = np.full(3, np.inf)
     world_bbox_max = np.full(3, -np.inf)
 
@@ -98,6 +108,8 @@ def validate_asset(name: str, kind: str) -> ValidationReport:
             label = f"mesh {mesh_index} primitive {primitive_index}"
             positions, indices, normals, uvs = _load_primitive(document, buffers, primitive)
             lod_tris[lod] = lod_tris.get(lod, 0) + len(indices)
+            if uvs is None:
+                missing_uvs += 1
             checks.extend(_check_material(label, primitive))
             checks.extend(_check_loose_vertices(label, positions, indices))
             checks.extend(_check_degenerate_triangles(label, positions, indices))
@@ -114,6 +126,10 @@ def validate_asset(name: str, kind: str) -> ValidationReport:
     lod0_tris = lod_tris.get(0, 0)
     checks.append(_check_triangle_budget(lod0_tris, kind))
     checks.append(_check_origin(world_bbox_min, world_bbox_max))
+    if kind in LOD_CHAIN_KINDS:
+        checks.append(_check_lod_chain(lod_tris))
+    if kind in team_colour.KINDS:
+        checks.append(_check_team_mask(name, kind, missing_uvs))
 
     return ValidationReport(
         name=name,
@@ -369,6 +385,56 @@ def _check_triangle_budget(total_tris: int, kind: str) -> CheckResult:
         else f"{total_tris} tris outside the [{low}, {high}] budget for {kind}"
     )
     return CheckResult("triangle budget", passed, detail)
+
+
+def _check_lod_chain(lod_tris: dict[int, int]) -> CheckResult:
+    missing = [f"LOD{lod}" for lod in range(REQUIRED_LODS) if lod_tris.get(lod, 0) == 0]
+    if missing:
+        required = f"LOD0-LOD{REQUIRED_LODS - 1} are required"
+        return CheckResult("LOD chain", False, f"missing {', '.join(missing)}; {required}")
+    weak = [
+        f"LOD{lod} {lod_tris[lod]} > {LOD_STEP_MAX_RATIO} x LOD{lod - 1} {lod_tris[lod - 1]}"
+        for lod in range(1, REQUIRED_LODS)
+        if lod_tris[lod] > LOD_STEP_MAX_RATIO * lod_tris[lod - 1]
+    ]
+    if weak:
+        return CheckResult("LOD chain", False, "; ".join(weak))
+    counts = ", ".join(f"LOD{lod} {lod_tris[lod]}" for lod in range(REQUIRED_LODS))
+    detail = f"{counts}, each step at most {LOD_STEP_MAX_RATIO} x the previous"
+    return CheckResult("LOD chain", True, detail)
+
+
+def _check_team_mask(name: str, kind: str, missing_uvs: int) -> CheckResult:
+    label = "team colour mask"
+    manifest_path = config.ASSET_OUT_DIR / name / "asset.json"
+    entry = None
+    if manifest_path.is_file():
+        entry = json.loads(manifest_path.read_text(encoding="utf-8")).get(team_colour.MANIFEST_KEY)
+    if entry is None:
+        if kind in team_colour.REQUIRED_KINDS:
+            detail = f"asset.json has no {team_colour.MANIFEST_KEY} entry; {kind} needs a team mask"
+            return CheckResult(label, False, detail)
+        return CheckResult(label, True, "no team mask, renders untinted")
+    if missing_uvs:
+        detail = f"{missing_uvs} primitive(s) have no TEXCOORD_0 to sample the mask with"
+        return CheckResult(label, False, detail)
+    mask_path = config.ASSET_OUT_DIR / name / entry["mask"]
+    if not mask_path.is_file():
+        return CheckResult(label, False, f"{mask_path} does not exist")
+    with Image.open(mask_path) as image:
+        width, height = image.size
+        mask = np.asarray(image.convert("RGB"))[:, :, 0]
+    if not (_is_power_of_two(width) and _is_power_of_two(height)):
+        return CheckResult(label, False, f"mask is {width}x{height}, not power-of-two")
+    coverage = float((mask >= team_colour.COVERAGE_THRESHOLD).mean())
+    if coverage < team_colour.MIN_COVERAGE:
+        detail = f"mask covers {coverage:.4%} of the atlas; nothing would take the team colour"
+        return CheckResult(label, False, detail)
+    return CheckResult(label, True, f"{width}x{height} mask covers {coverage:.1%} of the atlas")
+
+
+def _is_power_of_two(value: int) -> bool:
+    return value > 0 and value & (value - 1) == 0
 
 
 def _check_origin(bbox_min: np.ndarray, bbox_max: np.ndarray) -> CheckResult:

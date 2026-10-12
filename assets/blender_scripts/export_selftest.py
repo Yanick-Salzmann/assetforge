@@ -95,6 +95,38 @@ def _no_drift_across_repeated_export_calls(export_module, out_dir) -> dict:
     }
 
 
+def _team_mask_export(export_module, objects, out_dir) -> dict:
+    from assets import team_colour
+
+    size = 64
+    mask = bpy.data.images.new("selftest_team_mask", width=size, height=size, alpha=True)
+    pixels = [0.0, 0.0, 0.0, 1.0] * (size * size)
+    for row in range(8, 24):
+        for column in range(8, 24):
+            pixels[(row * size + column) * 4] = 1.0
+    mask.pixels.foreach_set(pixels)
+    mask.update()
+
+    name = "export-selftest-unit"
+    result = export_module.export_asset(objects, name=name, kind="unit", team_mask=mask)
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    entry = manifest.get(team_colour.MANIFEST_KEY)
+    mask_written = entry is not None and (out_dir / name / entry["mask"]).is_file()
+
+    rejected = False
+    try:
+        export_module.export_asset(objects, name="export-selftest-prop", kind="prop", team_mask=mask)
+    except export_module.ExportError:
+        rejected = True
+
+    return {
+        "entry": entry,
+        "mask_written": mask_written,
+        "prop_rejected": rejected,
+        "ok": manifest["kind"] == "unit" and mask_written and rejected,
+    }
+
+
 def main() -> None:
     repo_root, out_dir, result_path = _read_args()
     sys.path.insert(0, str(repo_root))
@@ -136,7 +168,16 @@ def main() -> None:
         drift_check = _no_drift_across_repeated_export_calls(export, out_dir)
         ok = ok and drift_check["no_drift"]
 
-        payload = {"ok": ok, "result": result.as_dict(), "manifest": manifest, "drift_check": drift_check}
+        team_check = _team_mask_export(export, lod_set.objects, out_dir)
+        ok = ok and team_check["ok"]
+
+        payload = {
+            "ok": ok,
+            "result": result.as_dict(),
+            "manifest": manifest,
+            "drift_check": drift_check,
+            "team_check": team_check,
+        }
     except Exception:
         payload = {"ok": False, "error": traceback.format_exc()}
 

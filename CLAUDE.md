@@ -257,6 +257,14 @@ validator too.
   cards, so `validate_asset` skips the closed/manifold and UV-overlap checks for it; an
   octahedral impostor is allowed as its far LOD (af-8m0.9). Hero assets and props keep the rule.
   Cycles renders of cutout foliage need `transparent_max_bounces` well above the default 8.
+- RTS kinds (`unit`, `creature`, `organic_prop`) ship LOD0/1/2: `validate_asset` fails a
+  missing LOD or any step above `validate.LOD_STEP_MAX_RATIO` (0.75) of the previous LOD's tris.
+- Team colour (`assets/team_colour.py`): an atlas-sized PNG at `textures/team_mask.png` on the
+  asset's `TEXCOORD_0` layout, red channel = mask, written by `export_asset(..., team_mask=img)`
+  and recorded in `asset.json` `team_colour` (`mask`, `texcoord`, `channel`, `formula`). The
+  engine shades `albedo * mix(1, team_rgb, mask)`, so paint the masked albedo light neutral
+  grey. Required for `unit`, optional for `creature`, refused for every other kind; validated
+  as power-of-two with at least 0.1% coverage.
 - No baked lighting and no AO darkening in the albedo. The engine lights it.
 - Power-of-two textures, 2048 atlas, one material per asset.
 - Canonical export is `.glb`, with `asset.json` and `recipe.py` beside it, in
@@ -273,6 +281,9 @@ validator too.
 | Prop | 200-1500 | 6-12 per set, one atlas per set |
 | Vehicle / machinery | 5000-20000 | same path as buildings |
 | Hero vehicle | 15000-60000 | `hero_vehicle`: close-up centrepiece vehicles |
+| Unit | 300-4000 | `unit`: RTS humanoid units; LOD0/1/2, team mask required |
+| Creature | 500-8000 | `creature`: animals and monsters; LOD0/1/2, team mask optional |
+| Organic prop | 100-2000 | `organic_prop`: stumps, roots, mushrooms, corals; LOD0/1/2 |
 
 ### The visual loop
 

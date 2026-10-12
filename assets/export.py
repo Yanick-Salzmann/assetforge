@@ -22,13 +22,23 @@ from typing import Sequence
 import bpy
 from mathutils import Vector
 
+from assets import team_colour
 from assets.recipe import validate_name
 from terrain import config
 
 MANIFEST_NAME = "asset.json"
 TEXTURES_DIRNAME = "textures"
 CONTACT_SHEET_NAME = "contact_sheet.png"
-VALID_KINDS = ("hero_building", "prop", "vehicle", "hero_vehicle", "vegetation")
+VALID_KINDS = (
+    "hero_building",
+    "prop",
+    "vehicle",
+    "hero_vehicle",
+    "vegetation",
+    "unit",
+    "creature",
+    "organic_prop",
+)
 
 _LOD_SUFFIX = re.compile(r"_LOD(\d+)$")
 
@@ -146,9 +156,25 @@ def _base_centre_shift(objects: Sequence[bpy.types.Object]) -> Vector:
     return Vector(((bbox_min[0] + bbox_max[0]) * 0.5, (bbox_min[1] + bbox_max[1]) * 0.5, bbox_min[2]))
 
 
-def export_asset(objects: Sequence[bpy.types.Object], name: str, kind: str) -> ExportResult:
+def _save_team_mask(team_mask: bpy.types.Image, textures_dir: Path) -> None:
+    textures_dir.mkdir(parents=True, exist_ok=True)
+    team_mask.filepath_raw = str(textures_dir / team_colour.MASK_FILENAME)
+    team_mask.file_format = "PNG"
+    team_mask.save()
+
+
+def export_asset(
+    objects: Sequence[bpy.types.Object],
+    name: str,
+    kind: str,
+    team_mask: bpy.types.Image | None = None,
+) -> ExportResult:
     """Export objects to out/assets/<name>/<name>.glb, write their textures to textures/, and
     record tri counts per LOD, world bbox, materials and texture list in asset.json.
+
+    team_mask, for the team-coloured kinds in assets.team_colour, is an atlas-sized image whose
+    red channel marks the surfaces the engine tints; it is written to textures/team_mask.png and
+    recorded under asset.json's team_colour entry.
 
     Objects are translated to the base-centre convention only for the instant the glb is written,
     then translated back - a live MCP session calls this repeatedly while patching individual
@@ -162,6 +188,8 @@ def export_asset(objects: Sequence[bpy.types.Object], name: str, kind: str) -> E
         raise ExportError("export requires at least one object")
     if kind not in VALID_KINDS:
         raise ExportError(f"kind {kind!r} must be one of {VALID_KINDS}")
+    if team_mask is not None and kind not in team_colour.KINDS:
+        raise ExportError(f"kind {kind!r} takes no team mask; only {team_colour.KINDS} do")
     validate_name(name)
 
     shift = _base_centre_shift(objects)
@@ -189,6 +217,9 @@ def export_asset(objects: Sequence[bpy.types.Object], name: str, kind: str) -> E
             "bbox_max": list(bbox_max),
             "contact_sheet": CONTACT_SHEET_NAME,
         }
+        if team_mask is not None:
+            _save_team_mask(team_mask, out_dir / TEXTURES_DIRNAME)
+            manifest[team_colour.MANIFEST_KEY] = team_colour.manifest_entry(TEXTURES_DIRNAME)
         manifest_path = out_dir / MANIFEST_NAME
         manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     finally:
