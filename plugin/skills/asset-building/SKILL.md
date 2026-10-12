@@ -62,6 +62,41 @@ After every snippet `execute_blender_code` runs, call `record_recipe(name, code)
 session to leave behind a re-runnable `recipe.py`, and skipping a snippet breaks that chain
 silently (the gap doesn't show up until someone tries to replay it).
 
+### Live-session conventions
+
+Learned the hard way across the windmill, tavern, church, tavern props and tractor recipes:
+
+- **Workspace first.** Blender's cwd is its install dir, so `terrain.config` resolves `out/` there
+  and `export_asset` fails with a permission error. The first snippet sets
+  `os.environ["ASSETFORGE_WORKSPACE"] = r"<repo_root>"` before importing anything from `assets`
+  or `terrain` (if `terrain.config` was already imported, `importlib.reload` it).
+- **Every snippet is a fresh namespace.** Globals do not survive between `execute_blender_code`
+  calls - the windmill re-declared `radius_at` five times, the tractor `bar()` three. Each snippet
+  carries its own imports, constants and helper definitions; a helper you need in more than one
+  snippet (or more than one asset) belongs in `assets/hardsurface.py`, not copied again.
+- **Name every object `<name>_*` the moment it exists.** `door_frame` and `cornice` return
+  generically named objects (`door_frame`, `cornice.001`) - rename them immediately. Step 8's
+  `game_ready_build.py` collects the asset by that prefix, so a part with any other name is
+  silently left out of the bake and the export.
+- **Rebuild snippets clean up first.** A snippet that rebuilds a part deletes the old object and
+  its mesh (`mesh.users == 0` -> `bpy.data.meshes.remove`) before creating the new one; deleting
+  only the object leaves an orphan mesh and the replacement exports as `<part>_mesh.001`.
+- **Front is +Y from the first snippet.** The church was modelled facing -Y and needed a late
+  snippet rotating every part by pi - decide the facing in the brief and build to it.
+- **Overlap, don't butt.** Two solids that only meet edge to edge leave hairline gaps in the
+  render (the church needed wedge infills and a roof embed to close its gable/roof joints). Sink
+  structural joins a few cm into each other; flush hardware uses `attach_to_surface` (or a
+  manual `STANDOFF_M` nudge for helpers that don't, like `door_frame`).
+- **Mount points come from the host's geometry.** Compute a small part's position from the same
+  function/radius that built its host surface (`radius_at(z)`, a fender arc, the hood section
+  table) - a hand-typed height put the tractor's fender lamps 34 cm in the air. Anything small and
+  mechanical (lamps, mirrors, pipes, stacks) gets a visible mount: a bracket, stalk, clamp or
+  collar tying it to the host.
+- **Keep greebles off converging faces.** Pass `greeble` a `face_indices` list that excludes
+  faces near an apex or seam (the windmill cap guards the top 0.8 m).
+- **New materials go into `assets/materials.py`'s `MATERIAL_BUILDERS`,** never inline in a
+  snippet; `importlib.reload(materials)` in the live session after editing it.
+
 ## 3. Contact sheet
 
 ```
@@ -71,6 +106,20 @@ render_contact_sheet(name)
 Six orthographic views plus a three-quarter beauty shot and a worm's-eye shot, flat even
 lighting, the 1.8 m human reference beside the asset. This is how the agent sees the asset -
 read the returned image, don't just check that the call succeeded.
+
+### What the contact sheet can and can't tell you
+
+- **Before step 8 it is untextured.** Procedural node materials don't survive the glTF export the
+  sheet renders from, so every pre-approval sheet is clay. Judge form and mechanism from it, and
+  say in the critique that colour and material read are unverified until after the bake.
+- **Its tiles are too small for mechanism detail.** For anything you changed or anything
+  articulated (hitches, linkages, brackets, engine bays, window frames), add a targeted close-up:
+  a temporary camera and a `BLENDER_WORKBENCH` render to `out/assets/<name>/review_<what>.png`,
+  then delete the camera. Set `hide_render = True` on any non-asset object first (the default
+  `Cube` renders even when hidden in the viewport). These close-ups found the floating lamps, the
+  bare hitch and the hidden engine on the tractor - the sheet showed none of them.
+- **Check what is actually visible.** Detail modelled behind something else is wasted triangles;
+  render from where a player will stand, not only from where the part was designed.
 
 ## 4. Written critique
 

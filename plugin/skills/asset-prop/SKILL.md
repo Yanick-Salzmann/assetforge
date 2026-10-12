@@ -55,6 +55,8 @@ after every snippet. Model every prop that needs generating into the same live s
 object group per prop, named so the groups stay distinguishable (e.g. `crate_01`,
 `crate_01_lid`) - step 4 needs the full set's objects together.
 
+Follow `asset-building`'s **Live-session conventions** (step 2) - workspace env var, fresh namespace per snippet, `<name>_*` naming, cleanup before rebuilds, +Y front, overlapping joins, geometry-derived mount points, greeble face guards, materials in `MATERIAL_BUILDERS`.
+
 ## 4. One shared atlas across the set
 
 Unlike a single building, do not call `game_ready_pass` per prop. Also **do not call
@@ -112,6 +114,8 @@ Same six ortho views plus three-quarter and worm's-eye, human reference beside t
 the image. Write one line judging silhouette/proportions against the brief and the human
 reference, no missing back faces - props are viewed from any angle same as buildings, no
 one-angle-only detail.
+
+See `asset-building` step 3, **What the contact sheet can and can't tell you**: pre-bake sheets are clay, add Workbench close-ups for mechanism detail, and check visibility.
 
 ## 7. Validate + patch loop, per prop - capped at 4 iterations each
 

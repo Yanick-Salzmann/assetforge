@@ -55,6 +55,8 @@ tread with a metal tint) - leave per-part materials as-is, consolidation to one 
 
 `record_recipe(name, code)` after every snippet, same as building modelling - not optional.
 
+Follow `asset-building`'s **Live-session conventions** (step 2) - workspace env var, fresh namespace per snippet, `<name>_*` naming, cleanup before rebuilds, +Y front, overlapping joins, geometry-derived mount points, greeble face guards, materials in `MATERIAL_BUILDERS`.
+
 ## 3. Contact sheet
 
 ```
@@ -64,6 +66,8 @@ render_contact_sheet(name)
 Same eight views. Wheels/tracks and any articulated parts should read correctly from the worm's-
 eye and three-quarter shots too - a mechanism that only looks right from the side it was designed
 in is the same failure mode a building's one-angle-only detail is.
+
+See `asset-building` step 3, **What the contact sheet can and can't tell you**: pre-bake sheets are clay, add Workbench close-ups for mechanism detail, and check visibility.
 
 ## 4. Written critique
 
