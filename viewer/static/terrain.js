@@ -1022,9 +1022,18 @@ async function scatterPlacements(entry, mask, field) {
   return placements;
 }
 
+const REDUCED_LOD = /_LOD[1-9]\d*$/;
+
 function meshParts(gltf, unitScale) {
   const parts = [];
   const normalise = new THREE.Matrix4().makeScale(unitScale, unitScale, unitScale);
+  const reduced = [];
+  gltf.scene.traverse((node) => {
+    if (REDUCED_LOD.test(node.name)) {
+      reduced.push(node);
+    }
+  });
+  reduced.forEach((node) => node.removeFromParent());
   gltf.scene.updateMatrixWorld(true);
   gltf.scene.traverse((node) => {
     if (!node.isMesh) {

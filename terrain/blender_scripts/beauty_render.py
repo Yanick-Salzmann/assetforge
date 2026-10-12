@@ -8,6 +8,7 @@ Invoked as: blender --background --factory-startup --python beauty_render.py -- 
 import array
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -15,6 +16,7 @@ import bpy
 from mathutils import Vector
 
 TRANSPARENT_BOUNCES = 64
+REDUCED_LOD = re.compile(r"_LOD[1-9]\d*(\.\d+)?$")
 CHANNEL_LABEL = {"r": "Red", "g": "Green", "b": "Blue"}
 RECORD_FIELDS = 7
 
@@ -226,6 +228,9 @@ def _variant_collection(entry: dict) -> bpy.types.Collection:
                 subdivisions=1, radius=size / 2.0, location=(0.0, 0.0, size / 2.0)
             )
     for obj in set(bpy.data.objects) - before:
+        if REDUCED_LOD.search(obj.name):
+            bpy.data.objects.remove(obj, do_unlink=True)
+            continue
         for owner in list(obj.users_collection):
             owner.objects.unlink(obj)
         collection.objects.link(obj)

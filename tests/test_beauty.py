@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import dataclasses
+import json
+import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -223,3 +226,34 @@ def test_render_produces_both_views_end_to_end(material_index, splat_result, shr
         assert image.size == (160, 90)
     with Image.open(result.ground) as image:
         assert image.size == (160, 90)
+
+
+LOD_CHAIN_GLB = Path(__file__).resolve().parent.parent / "library" / "kits" / "organics" / "stump_a.glb"
+BEAUTY_SCRIPT = Path(__file__).resolve().parent.parent / "terrain" / "blender_scripts" / "beauty_render.py"
+
+
+@pytest.mark.blender
+@pytest.mark.slow
+@pytest.mark.skipif(blender_discovery.find_blender() is None, reason="Blender executable not found")
+@pytest.mark.skipif(not LOD_CHAIN_GLB.is_file(), reason="organics kit pack not pulled")
+def test_variant_collection_keeps_only_lod0_of_a_lod_chained_glb(tmp_path):
+    result_path = tmp_path / "names.json"
+    expression = (
+        "import json, runpy, bpy\n"
+        f"module = runpy.run_path(r'{BEAUTY_SCRIPT}', run_name='beauty_render')\n"
+        "names = []\n"
+        "for index in range(2):\n"
+        f"    collection = module['_variant_collection']({{'name': f'v{{index}}', 'glb': r'{LOD_CHAIN_GLB}', 'kind': 'debris', 'size_m': 1.0}})\n"
+        "    names.extend(obj.name for obj in collection.objects)\n"
+        f"open(r'{result_path}', 'w').write(json.dumps(names))\n"
+    )
+    completed = subprocess.run(
+        [blender_discovery.require_blender(), "--background", "--factory-startup", "--python-expr", expression],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert result_path.is_file(), completed.stdout + completed.stderr
+    names = json.loads(result_path.read_text(encoding="utf-8"))
+    assert len(names) == 2
+    assert all("_LOD0" in name for name in names)
