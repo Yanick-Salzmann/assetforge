@@ -102,6 +102,28 @@ def test_multiple_meshes_accumulate_triangles_and_bbox():
     assert bbox_max == (11.0, 1.0, 1.0)
 
 
+def test_reduced_lod_nodes_are_left_out_of_the_stats():
+    document = _document(
+        nodes=[
+            {"mesh": 0, "name": "stump_LOD0"},
+            {"mesh": 1, "name": "stump_LOD1"},
+            {"mesh": 1, "name": "stump_LOD2", "translation": [10.0, 0.0, 0.0]},
+        ],
+        meshes=[
+            {"primitives": [{"attributes": {"POSITION": 0}}]},
+            {"primitives": [{"attributes": {"POSITION": 1}}]},
+        ],
+        accessors=[
+            _position_accessor(6, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0)),
+            _position_accessor(3, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0)),
+        ],
+        scene_nodes=(0, 1, 2),
+    )
+    tris, _, bbox_max = gltf.stats_from_document(document)
+    assert tris == 2
+    assert bbox_max == (1.0, 1.0, 1.0)
+
+
 def test_unsupported_primitive_mode_is_rejected():
     document = _document(
         nodes=[{"mesh": 0}],

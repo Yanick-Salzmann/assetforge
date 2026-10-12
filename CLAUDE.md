@@ -185,6 +185,11 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   recipe path) in `kits.lock.json`. The `scatter` pack is rebuilt by
   `blender --background --python assets/blender_scripts/scatter_set_build.py` (geometry from
   `assets/organic.py`), then approved and pulled.
+- Environment organics (stumps, root clusters, mushrooms, corals) are the `organics` pack (slug
+  `organic`, kind `organic_prop`, LOD0/1/2), rebuilt by
+  `blender --background --python assets/blender_scripts/organic_set_build.py` from the
+  `assets/organic.py` builders (modelled into the ground and trimmed flat by `ground_cut`), then
+  approved and pulled. Kit tris/bbox in `kits.lock.json` count LOD0 only (`library/gltf.py`).
 - Vegetation (trees, shrubs, ferns, grass, flowers) is the `flora` pack, rebuilt by
   `blender --background --python assets/blender_scripts/flora_build.py`: bark tubes and
   alpha-cutout foliage cards from `assets/flora.py` (pure Python, `flora.MODELS` maps each model

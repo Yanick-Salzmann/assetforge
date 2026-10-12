@@ -40,3 +40,8 @@ category = "vegetation"
 source = "assetforge"
 slug = "flora"
 category = "vegetation"
+
+[pack.organics]
+source = "assetforge"
+slug = "organic"
+category = "prop"

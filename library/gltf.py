@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import math
+import re
 import struct
 from pathlib import Path
 from typing import Iterator
@@ -13,6 +14,7 @@ GLB_MAGIC = 0x46546C67
 CHUNK_JSON = 0x4E4F534A
 CHUNK_BIN = 0x004E4942
 TRIANGLES = 4
+REDUCED_LOD = re.compile(r"_LOD[1-9]\d*$")
 
 COMPONENT_DTYPES = {
     5120: np.int8,
@@ -221,6 +223,8 @@ def stats_from_document(document: dict) -> tuple[int, tuple[float, float, float]
     def visit(node_index: int, parent: Matrix) -> None:
         nonlocal triangles
         node = nodes[node_index]
+        if REDUCED_LOD.search(node.get("name", "")):
+            return
         world = _multiply(parent, _node_matrix(node))
         mesh_index = node.get("mesh")
         if mesh_index is not None:

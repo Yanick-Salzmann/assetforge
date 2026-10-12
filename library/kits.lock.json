@@ -9304,6 +9304,190 @@
       "zip_sha256": "fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d",
       "zip_url": "https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip"
     },
+    "organics": {
+      "category": "prop",
+      "license": "CC0",
+      "models": {
+        "coral_branch_a": {
+          "bbox_max_m": [
+            0.10653972625732422,
+            0.5715222954750061,
+            0.1464453525841236
+          ],
+          "bbox_min_m": [
+            -0.10720062255859375,
+            0.0,
+            -0.1476709023118019
+          ],
+          "path": "kits/organics/coral_branch_a.glb",
+          "recipe": "out/assets/organic_coral_branch_a/recipe.py",
+          "sha256": "9563e1bf4eea63648d8128214f53d83f37f589007d6ea42bb6495dd2a7c25ed2",
+          "tris": 1900
+        },
+        "coral_branch_b": {
+          "bbox_max_m": [
+            0.09309768676757812,
+            0.2545833885669708,
+            0.08578626811504364
+          ],
+          "bbox_min_m": [
+            -0.09235763549804688,
+            0.0,
+            -0.08578626811504364
+          ],
+          "path": "kits/organics/coral_branch_b.glb",
+          "recipe": "out/assets/organic_coral_branch_b/recipe.py",
+          "sha256": "fdcd4c2222ffe058a90b365b98854c01de2ad8770f704296cb7ad1235415557a",
+          "tris": 1002
+        },
+        "coral_dome_a": {
+          "bbox_max_m": [
+            0.42754554748535156,
+            0.25433162599802017,
+            0.41893674433231354
+          ],
+          "bbox_min_m": [
+            -0.42754554748535156,
+            0.001283980906009674,
+            -0.412130668759346
+          ],
+          "path": "kits/organics/coral_dome_a.glb",
+          "recipe": "out/assets/organic_coral_dome_a/recipe.py",
+          "sha256": "dfd519514adf6a6e71ba332a8f73ff73996fe533f8277855e29d4c7beb927a11",
+          "tris": 672
+        },
+        "mushroom_a": {
+          "bbox_max_m": [
+            0.10095930099487305,
+            0.20000000298023224,
+            0.10155882313847542
+          ],
+          "bbox_min_m": [
+            -0.1009974479675293,
+            0.0,
+            -0.10154063627123833
+          ],
+          "path": "kits/organics/mushroom_a.glb",
+          "recipe": "out/assets/organic_mushroom_a/recipe.py",
+          "sha256": "476b46947746db9ad5a3ff9a3ac550c80491f9c76a50343676ac86749f475b5b",
+          "tris": 358
+        },
+        "mushroom_b": {
+          "bbox_max_m": [
+            0.0865468978881836,
+            0.26004800817463547,
+            0.08551207929849625
+          ],
+          "bbox_min_m": [
+            -0.08508110046386719,
+            4.8017711378633976e-05,
+            -0.08564235270023346
+          ],
+          "path": "kits/organics/mushroom_b.glb",
+          "recipe": "out/assets/organic_mushroom_b/recipe.py",
+          "sha256": "4f0411c4026c3ec88b4612676d3a313cd2190eb78ed3ab2379655e08367c1ba3",
+          "tris": 358
+        },
+        "mushroom_cluster_a": {
+          "bbox_max_m": [
+            0.1127777099609375,
+            0.18069263077632058,
+            0.13963520526885986
+          ],
+          "bbox_min_m": [
+            -0.1121826171875,
+            0.00019541657820809633,
+            -0.13982199132442474
+          ],
+          "path": "kits/organics/mushroom_cluster_a.glb",
+          "recipe": "out/assets/organic_mushroom_cluster_a/recipe.py",
+          "sha256": "76d97dc5c9768714e45b9a25d92d10c0a130c56b606cd8d5c08305c32e973706",
+          "tris": 1278
+        },
+        "mushroom_cluster_b": {
+          "bbox_max_m": [
+            0.12748241424560547,
+            0.1799372638342902,
+            0.15400835871696472
+          ],
+          "bbox_min_m": [
+            -0.12748241424560547,
+            0.0016177969687873883,
+            -0.15400835871696472
+          ],
+          "path": "kits/organics/mushroom_cluster_b.glb",
+          "recipe": "out/assets/organic_mushroom_cluster_b/recipe.py",
+          "sha256": "b4fcbfa1b77f062b1398d79d277bb51c145e591df459fbd7eef7988ab439bce5",
+          "tris": 1800
+        },
+        "roots_a": {
+          "bbox_max_m": [
+            1.0543107986450195,
+            0.5005191727541387,
+            0.808071494102478
+          ],
+          "bbox_min_m": [
+            -1.0543107986450195,
+            0.007271365728229284,
+            -0.8053894639015198
+          ],
+          "path": "kits/organics/roots_a.glb",
+          "recipe": "out/assets/organic_roots_a/recipe.py",
+          "sha256": "464530a158d7ca3ac4d91e34bf7e35a3be0252aacd99e883e4682ade7951a01a",
+          "tris": 818
+        },
+        "roots_b": {
+          "bbox_max_m": [
+            0.6386046409606934,
+            0.33042660169303417,
+            0.62596595287323
+          ],
+          "bbox_min_m": [
+            -0.6352863311767578,
+            0.003013996407389641,
+            -0.6268829703330994
+          ],
+          "path": "kits/organics/roots_b.glb",
+          "recipe": "out/assets/organic_roots_b/recipe.py",
+          "sha256": "5bcc26061844901c4aa07ab4b7719de3104ef5f7fa92d56fd74175f20e1d3111",
+          "tris": 1082
+        },
+        "stump_a": {
+          "bbox_max_m": [
+            0.5041039437055588,
+            0.4203976321441587,
+            0.5368588864803314
+          ],
+          "bbox_min_m": [
+            -0.49728067219257355,
+            0.00039764525718055665,
+            -0.5368588864803314
+          ],
+          "path": "kits/organics/stump_a.glb",
+          "recipe": "out/assets/organic_stump_a/recipe.py",
+          "sha256": "9789ed7b42e05448ad571f3a05a28c63e5b71a85b21f56093ccec5185ddc9e51",
+          "tris": 542
+        },
+        "stump_b": {
+          "bbox_max_m": [
+            0.7670732736587524,
+            0.9265450215898454,
+            0.634642094373703
+          ],
+          "bbox_min_m": [
+            -0.7670732736587524,
+            0.0003126836381852627,
+            -0.6424172818660736
+          ],
+          "path": "kits/organics/stump_b.glb",
+          "recipe": "out/assets/organic_stump_b/recipe.py",
+          "sha256": "3e2adbbabc18269952c74bcdfa3803a840f1470c1016adbc28c53290d054d24e",
+          "tris": 696
+        }
+      },
+      "slug": "organic",
+      "source": "assetforge"
+    },
     "scatter": {
       "category": "vegetation",
       "license": "CC0",
