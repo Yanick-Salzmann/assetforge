@@ -32,6 +32,8 @@ from typing import Sequence
 import bpy
 import numpy as np
 
+from assets import atlas_raster
+
 ALBEDO_NAME = "albedo"
 NORMAL_NAME = "normal"
 ORM_NAME = "orm"
@@ -260,25 +262,47 @@ def prepare_bake(
     scene.cycles.samples = samples
     scene.render.bake.use_selected_to_active = False
     scene.render.bake.margin = margin
+    scene.render.bake.margin_type = "EXTEND"
 
 
-def bake_albedo(objects: Sequence[bpy.types.Object], atlas_size: int = DEFAULT_ATLAS_SIZE) -> bpy.types.Image:
+def dilate_gutters(image: bpy.types.Image, layout) -> None:
+    """Overwrite every texel of image that no triangle of layout (an assets.game_ready.AtlasLayout)
+    covers with the nearest covered texel of the island whose footprint it lies in
+    (atlas_raster.dilate). Cycles' own bake margin grows each island by a fixed radius in bake
+    order, so wherever two islands sit closer than twice that radius the later one overwrites the
+    earlier one's edge - the colour bleed of af-alp. This makes every gutter its own island's."""
+    width, height = image.size
+    if width != layout.packing.atlas_px or height != layout.packing.atlas_px:
+        raise BakeError(f"{image.name!r} is {width}x{height}, layout was packed for {layout.packing.atlas_px}px")
+    pixels = np.empty(width * height * 4, dtype=np.float32)
+    image.pixels.foreach_get(pixels)
+    pixels = pixels.reshape(height, width, 4)
+    atlas_raster.dilate(pixels, layout.labels(width), layout.packing.footprints, layout.fill(width))
+    image.pixels.foreach_set(pixels.ravel())
+    image.update()
+
+
+def bake_albedo(objects: Sequence[bpy.types.Object], atlas_size: int = DEFAULT_ATLAS_SIZE, layout=None) -> bpy.types.Image:
     objects, materials = _bake_materials(objects)
     albedo = claim_image(ALBEDO_NAME, atlas_size, non_color=False)
     _bake_input_via_emission(objects, materials, albedo, "Base Color")
     _require_signal(albedo)
+    if layout is not None:
+        dilate_gutters(albedo, layout)
     return albedo
 
 
-def bake_normal(objects: Sequence[bpy.types.Object], atlas_size: int = DEFAULT_ATLAS_SIZE) -> bpy.types.Image:
+def bake_normal(objects: Sequence[bpy.types.Object], atlas_size: int = DEFAULT_ATLAS_SIZE, layout=None) -> bpy.types.Image:
     objects, materials = _bake_materials(objects)
     normal = claim_image(NORMAL_NAME, atlas_size, non_color=True)
     _bake_direct(objects, materials, normal, bake_type="NORMAL")
     _require_signal(normal)
+    if layout is not None:
+        dilate_gutters(normal, layout)
     return normal
 
 
-def bake_orm(objects: Sequence[bpy.types.Object], atlas_size: int = DEFAULT_ATLAS_SIZE) -> bpy.types.Image:
+def bake_orm(objects: Sequence[bpy.types.Object], atlas_size: int = DEFAULT_ATLAS_SIZE, layout=None) -> bpy.types.Image:
     objects, materials = _bake_materials(objects)
     ao_scratch = claim_image(AO_SCRATCH_NAME, atlas_size, non_color=True)
     _bake_direct(objects, materials, ao_scratch, bake_type="AO")
@@ -292,6 +316,8 @@ def bake_orm(objects: Sequence[bpy.types.Object], atlas_size: int = DEFAULT_ATLA
     orm = _pack_orm(ao_scratch, roughness_scratch, metallic_scratch, atlas_size)
     for scratch in (ao_scratch, roughness_scratch, metallic_scratch):
         bpy.data.images.remove(scratch)
+    if layout is not None:
+        dilate_gutters(orm, layout)
     return orm
 
 
@@ -322,17 +348,19 @@ def bake_atlas(
     samples: int = DEFAULT_BAKE_SAMPLES,
     device: str = DEFAULT_BAKE_DEVICE,
     margin: int = DEFAULT_MARGIN,
+    layout=None,
 ) -> AtlasBakeResult:
     """Bake objects' current per-face materials into one shared albedo/normal/orm atlas, reading
     the UV layout uv_unwrap_and_pack already packed. Call this before consolidate_material, which
     still needs the objects' original materials to wire this result's images into the new atlas
     material. A live session that must split the bake across calls runs prepare_bake, bake_albedo,
-    bake_normal and bake_orm one per call, then collect_bake_result."""
+    bake_normal and bake_orm one per call, then collect_bake_result. Pass the AtlasLayout
+    uv_unwrap_and_pack returned as layout so every gutter is filled from its own island."""
     objects, _ = _bake_materials(objects)
     prepare_bake(samples=samples, device=device, margin=margin)
-    albedo = bake_albedo(objects, atlas_size)
-    normal = bake_normal(objects, atlas_size)
-    orm = bake_orm(objects, atlas_size)
+    albedo = bake_albedo(objects, atlas_size, layout)
+    normal = bake_normal(objects, atlas_size, layout)
+    orm = bake_orm(objects, atlas_size, layout)
     return AtlasBakeResult(albedo=albedo, normal=normal, orm=orm)
 
 

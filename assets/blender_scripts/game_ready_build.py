@@ -61,15 +61,15 @@ def main() -> None:
         for obj in objects:
             hs.apply_transforms(obj)
             hs.recalc_normals(obj)
-        game_ready.uv_unwrap_and_pack(objects)
-        _stage("uv unwrap and pack", started)
+        layout = game_ready.uv_unwrap_and_pack(objects)
+        _stage(f"uv unwrap and pack {layout.as_dict()}", started)
 
         atlas_bake.prepare_bake()
-        atlas_bake.bake_albedo(objects, atlas_size=game_ready.ATLAS_SIZE)
+        atlas_bake.bake_albedo(objects, atlas_size=game_ready.ATLAS_SIZE, layout=layout)
         _stage("albedo baked", started)
-        atlas_bake.bake_normal(objects, atlas_size=game_ready.ATLAS_SIZE)
+        atlas_bake.bake_normal(objects, atlas_size=game_ready.ATLAS_SIZE, layout=layout)
         _stage("normal baked", started)
-        atlas_bake.bake_orm(objects, atlas_size=game_ready.ATLAS_SIZE)
+        atlas_bake.bake_orm(objects, atlas_size=game_ready.ATLAS_SIZE, layout=layout)
         _stage("orm baked", started)
         bake_result = atlas_bake.collect_bake_result()
         atlas_bake.purge_stale_images()
@@ -90,7 +90,7 @@ def main() -> None:
 
         result = export.export_asset(lod_set.objects, name=name, kind=kind)
         _stage("exported", started)
-        payload = {"ok": True, "seconds": round(time.monotonic() - started), **result.as_dict()}
+        payload = {"ok": True, "seconds": round(time.monotonic() - started), "atlas": layout.as_dict(), **result.as_dict()}
     except Exception:
         payload = {"ok": False, "error": traceback.format_exc()}
 

@@ -120,8 +120,8 @@ def main() -> None:
             hs.apply_transforms(obj)
             hs.recalc_normals(obj)
 
-        game_ready.uv_unwrap_and_pack(objects)
-        bake_result = atlas_bake.bake_atlas(objects, atlas_size=game_ready.ATLAS_SIZE)
+        layout = game_ready.uv_unwrap_and_pack(objects)
+        bake_result = atlas_bake.bake_atlas(objects, atlas_size=game_ready.ATLAS_SIZE, layout=layout)
         material = game_ready.consolidate_material(objects, bake_result=bake_result)
         game_ready.enforce_power_of_two_textures(material, game_ready.ATLAS_SIZE)
 

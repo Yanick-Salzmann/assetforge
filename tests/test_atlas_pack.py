@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import random
 
+import pytest
+
 from assets import atlas_pack
 
 
@@ -70,4 +72,68 @@ def test_pack_square_of_nothing():
 def test_pack_square_is_deterministic():
     sizes = _many_parts()
     assert atlas_pack.pack_square(sizes, 0.01) == atlas_pack.pack_square(sizes, 0.01)
+
+
+def _pixel_rects_overlap(a, b) -> bool:
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def test_pack_pixels_footprints_tile_without_overlap_inside_the_atlas():
+    packing = atlas_pack.pack_pixels(_many_parts(seed=3, count=300), 2048, 16, 4)
+    for x0, y0, x1, y1 in packing.footprints:
+        assert 0 <= x0 < x1 <= 2048
+        assert 0 <= y0 < y1 <= 2048
+    rects = packing.footprints
+    for i in range(len(rects)):
+        for j in range(i + 1, len(rects)):
+            assert not _pixel_rects_overlap(rects[i], rects[j])
+
+
+def test_pack_pixels_keeps_a_full_gutter_between_island_contents():
+    sizes = _many_parts(seed=5, count=200)
+    packing = atlas_pack.pack_pixels(sizes, 2048, 16, 4)
+    contents = [(x, y, x + w * packing.density, y + h * packing.density) for (x, y), (w, h) in zip(packing.content_origins, sizes)]
+    for i in range(len(contents)):
+        a = contents[i]
+        for j in range(i + 1, len(contents)):
+            b = contents[j]
+            gap_x = max(b[0] - a[2], a[0] - b[2])
+            gap_y = max(b[1] - a[3], a[1] - b[3])
+            assert max(gap_x, gap_y) >= 16 - 1e-6
+
+
+def test_pack_pixels_aligns_footprints_and_contents_to_the_block_grid():
+    packing = atlas_pack.pack_pixels(_many_parts(), 2048, 16, 4)
+    for (x, y), footprint in zip(packing.content_origins, packing.footprints):
+        assert x % 4 == 0 and y % 4 == 0
+        assert all(edge % 4 == 0 for edge in footprint)
+
+
+def test_pack_pixels_uses_one_density_and_fills_most_of_the_atlas():
+    packing = atlas_pack.pack_pixels(_many_parts(), 2048, 16, 4)
+    used = sum((x1 - x0) * (y1 - y0) for x0, y0, x1, y1 in packing.footprints)
+    assert packing.density > 0.0
+    assert used > 0.6 * 2048 * 2048
+
+
+def test_pack_pixels_gutter_is_independent_of_source_units():
+    sizes = _many_parts(seed=11, count=120)
+    metres = atlas_pack.pack_pixels(sizes, 1024, 8, 4)
+    millimetres = atlas_pack.pack_pixels([(w * 1000.0, h * 1000.0) for w, h in sizes], 1024, 8, 4)
+    assert abs(metres.density - millimetres.density * 1000.0) <= metres.density * 1e-3
+    assert metres.gutter_px == millimetres.gutter_px == 8
+
+
+def test_pack_pixels_rejects_a_gutter_off_the_block_grid():
+    with pytest.raises(ValueError):
+        atlas_pack.pack_pixels([(1.0, 1.0)], 256, 6, 4)
+
+
+def test_pack_pixels_raises_when_islands_cannot_fit_at_any_size():
+    with pytest.raises(ValueError):
+        atlas_pack.pack_pixels([(1.0, 1.0)] * 400, 64, 8, 4)
+
+
+def test_pack_pixels_of_nothing():
+    assert atlas_pack.pack_pixels([], 2048, 16, 4).footprints == ()
 

@@ -272,6 +272,14 @@ validator too.
   as power-of-two with at least 0.1% coverage.
 - No baked lighting and no AO darkening in the albedo. The engine lights it.
 - Power-of-two textures, 2048 atlas, one material per asset.
+- Atlas layout (`game_ready.uv_unwrap_and_pack`, af-alp): islands are packed in atlas pixels at
+  one uniform texel density with a `game_ready.gutter_px` gutter (16 px at 2048, 8 px at 1024/512)
+  on a 4 px block grid, and every bake fills each gutter from its own island only
+  (`atlas_bake.dilate_gutters` with the returned `AtlasLayout`) - pass `layout=` to every bake.
+  Faces nobody can see (downward on the base plane, or buried inside another part) keep their
+  geometry but are collapsed to a zero-area UV point. `validate_asset` fails islands closer than
+  8 px (scaled to texture size), gutter texels carrying another island's colour, and a p95/p5
+  texel density ratio above 2.
 - Canonical export is `.glb`, with `asset.json` and `recipe.py` beside it, in
   `out/assets/<name>/`.
 - Every live MCP session appends the `bpy` it executed to `recipe.py` so the

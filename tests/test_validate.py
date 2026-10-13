@@ -509,3 +509,81 @@ def test_team_mask_manifest_entry_points_into_textures():
     assert entry["mask"] == "textures/team_mask.png"
     assert entry["texcoord"] == 0
     assert entry["channel"] == "r"
+
+
+ATLAS_TEST_PX = 256
+
+
+def _two_quads(gap_px: float):
+    positions = np.array(
+        [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [3, 0, 0], [4, 0, 0], [4, 1, 0], [3, 1, 0]], dtype=np.float64
+    )
+    indices = np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]])
+    left = 40.0
+    width = 60.0
+    right = left + width + gap_px
+    pixel_uvs = np.array(
+        [
+            [left, 40], [left + width, 40], [left + width, 100], [left, 100],
+            [right, 40], [right + width, 40], [right + width, 100], [right, 100],
+        ],
+        dtype=np.float64,
+    )
+    return positions, indices, pixel_uvs / ATLAS_TEST_PX
+
+
+def _painted(uvs: np.ndarray, indices: np.ndarray, colours, spill_px: int, background=(0.0, 0.0, 0.0)) -> np.ndarray:
+    image = np.full((ATLAS_TEST_PX, ATLAS_TEST_PX, 3), background, dtype=np.float32)
+    for quad, colour in enumerate(colours):
+        corners = uvs[indices[quad * 2:quad * 2 + 2]].reshape(-1, 2) * ATLAS_TEST_PX
+        x0, y0 = np.floor(corners.min(axis=0)).astype(int) - spill_px
+        x1, y1 = np.ceil(corners.max(axis=0)).astype(int) + spill_px
+        image[y0:y1, x0:x1] = colour
+    return image
+
+
+def test_atlas_gutters_pass_for_far_apart_islands_padded_with_their_own_colour():
+    positions, indices, uvs = _two_quads(gap_px=40.0)
+    image = _painted(uvs, indices, [(1, 0, 0), (0, 0, 1)], spill_px=8)
+    result = validate._check_atlas_gutters("m", positions, indices, uvs, image)[0]
+    assert result.passed, result.detail
+
+
+def test_atlas_gutters_flag_islands_a_pixel_apart():
+    positions, indices, uvs = _two_quads(gap_px=1.0)
+    image = _painted(uvs, indices, [(1, 0, 0), (0, 0, 1)], spill_px=0)
+    result = validate._check_atlas_gutters("m", positions, indices, uvs, image)[0]
+    assert not result.passed
+    assert "closer than" in result.detail
+
+
+def test_atlas_gutters_flag_a_gutter_painted_with_another_colour():
+    positions, indices, uvs = _two_quads(gap_px=40.0)
+    image = _painted(uvs, indices, [(1, 0, 0), (0, 0, 1)], spill_px=0, background=(0.0, 1.0, 0.0))
+    result = validate._check_atlas_gutters("m", positions, indices, uvs, image)[0]
+    assert not result.passed
+    assert "carry another colour" in result.detail
+
+
+def test_atlas_gutters_skip_without_a_texture():
+    positions, indices, uvs = _two_quads(gap_px=1.0)
+    assert validate._check_atlas_gutters("m", positions, indices, uvs, None)[0].passed
+
+
+def test_uv_islands_join_a_quad_and_ignore_collapsed_faces():
+    positions, indices, uvs = _two_quads(gap_px=40.0)
+    uvs[4:] = uvs[4]
+    islands = validate._uv_islands(positions, indices, uvs)
+    assert (islands[2:] == -1).all()
+    assert islands[0] == islands[1] >= 0
+
+
+def test_texel_density_passes_for_uniform_scale():
+    positions, indices, uvs = _two_quads(gap_px=40.0)
+    assert validate._check_texel_density("m", positions, indices, uvs)[0].passed
+
+
+def test_texel_density_flags_one_island_scaled_far_down():
+    positions, indices, uvs = _two_quads(gap_px=40.0)
+    uvs[4:] = uvs[4] + (uvs[4:] - uvs[4]) * 0.3
+    assert not validate._check_texel_density("m", positions, indices, uvs)[0].passed

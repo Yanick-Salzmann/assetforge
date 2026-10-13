@@ -68,7 +68,7 @@ def shapes_overlap(a: list[tuple[float, float]], b: list[tuple[float, float]]) -
     return True
 
 
-def face_islands(bm: bmesh.types.BMesh) -> list[list[bmesh.types.BMFace]]:
+def face_islands(bm: bmesh.types.BMesh, excluded: set[int] | None = None) -> list[list[bmesh.types.BMFace]]:
     """Group faces into islands: faces connected by a shared edge whose dominant normal axis and
     sign match, so a flat multi-face region (a wall, a bevel strip) becomes one island while
     perpendicular faces at a corner, or faces on the opposite side of the mesh, split into
@@ -79,9 +79,13 @@ def face_islands(bm: bmesh.types.BMesh) -> list[list[bmesh.types.BMFace]]:
     triangles at a cut seam that geometrically overlap each other - axis+sign matching alone
     cannot tell them apart from a legitimate flat region, so the merge itself is guarded instead.
     A face rejected here is picked up as its own island's seed later.
+
+    Faces in excluded belong to no island and never connect two others, so dropping hidden faces
+    (assets/game_ready.py: hidden_faces) splits an island into separate islands rather than one
+    island whose disconnected pieces share a footprint.
     """
     key_of = {face.index: axis_key(face.normal) for face in bm.faces}
-    visited: set[int] = set()
+    visited: set[int] = set(excluded or ())
     islands: list[list[bmesh.types.BMFace]] = []
     for seed in bm.faces:
         if seed.index in visited:

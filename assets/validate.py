@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import re
 from dataclasses import dataclass, field
@@ -8,7 +9,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from assets import team_colour
+from assets import atlas_raster, team_colour
 from library import gltf
 from terrain import config
 
@@ -35,6 +36,14 @@ UV_OVERLAP_AREA_EPS = 1e-6
 UV_GRID_CELLS = 64
 UV_BUCKET_CAP = 300
 WELD_PRECISION = 5
+ATLAS_GUTTER_MIN_PX = 8
+ATLAS_GUTTER_REFERENCE_PX = 2048
+ATLAS_BLEED_TOLERANCE = 0.2
+ATLAS_BLEED_MAX_FRACTION = 0.02
+UV_ISLAND_JOIN_TOLERANCE = 0.02
+COLLAPSED_UV_AREA_EPS = 1e-12
+TEXEL_DENSITY_MAX_RATIO = 2.0
+TEXEL_DENSITY_PERCENTILES = (5.0, 95.0)
 LOD_SUFFIX = re.compile(r"_LOD(\d+)$")
 
 
@@ -89,7 +98,8 @@ def _find_glb(name: str) -> Path:
 def validate_asset(name: str, kind: str) -> ValidationReport:
     if kind not in TRI_BUDGETS:
         raise ValidationError(f"kind {kind!r} must be one of {sorted(TRI_BUDGETS)}")
-    document, buffers = gltf.read_document_with_buffers(_find_glb(name))
+    glb_path = _find_glb(name)
+    document, buffers = gltf.read_document_with_buffers(glb_path)
     instances = list(gltf.iter_mesh_nodes(document))
     if not instances:
         raise ValidationError("document has no mesh instances")
@@ -119,6 +129,9 @@ def validate_asset(name: str, kind: str) -> ValidationReport:
                 edge_faces = _edge_face_map(welded[indices])
                 checks.extend(_check_manifold(label, edge_faces, positions, indices))
                 checks.extend(_check_uv_overlap(label, indices, uvs))
+                base_colour = _base_colour_image(document, buffers, primitive, glb_path.parent)
+                checks.extend(_check_atlas_gutters(label, positions, indices, uvs, base_colour))
+                checks.extend(_check_texel_density(label, positions, indices, uvs))
             world_positions = _transform_positions(matrix, positions)
             world_bbox_min = np.minimum(world_bbox_min, world_positions.min(axis=0))
             world_bbox_max = np.maximum(world_bbox_max, world_positions.max(axis=0))
@@ -324,6 +337,139 @@ def _check_uv_overlap(label: str, indices: np.ndarray, uvs: np.ndarray | None) -
     passed = len(overlapping) == 0
     detail = "no overlapping UV triangles" if passed else f"{len(overlapping)} triangle(s) overlap another triangle's UV island"
     return [CheckResult(f"{label}: UV overlap", passed, detail)]
+
+
+def _base_colour_image(document: dict, buffers: list[bytes], primitive: dict, glb_dir: Path) -> np.ndarray | None:
+    """The primitive's TEXCOORD_0 base colour texture as a (rows, columns, 3) float array in 0-1,
+    row 0 at the top - the orientation glTF UVs address directly. None when there is none."""
+    material_index = primitive.get("material")
+    if material_index is None:
+        return None
+    info = document["materials"][material_index].get("pbrMetallicRoughness", {}).get("baseColorTexture")
+    if info is None or info.get("texCoord", 0) != 0:
+        return None
+    image = document["images"][document["textures"][info["index"]]["source"]]
+    if "bufferView" in image:
+        view = document["bufferViews"][image["bufferView"]]
+        start = view.get("byteOffset", 0)
+        data = buffers[view["buffer"]][start:start + view["byteLength"]]
+    elif "uri" in image and not image["uri"].startswith("data:"):
+        data = (glb_dir / image["uri"]).read_bytes()
+    else:
+        return None
+    with Image.open(io.BytesIO(data)) as decoded:
+        return np.asarray(decoded.convert("RGB"), dtype=np.float32) / 255.0
+
+
+def _uv_triangle_areas(tri_uvs: np.ndarray) -> np.ndarray:
+    edge_a = tri_uvs[:, 1] - tri_uvs[:, 0]
+    edge_b = tri_uvs[:, 2] - tri_uvs[:, 0]
+    return 0.5 * np.abs(edge_a[:, 0] * edge_b[:, 1] - edge_a[:, 1] * edge_b[:, 0])
+
+
+def _uv_islands(positions: np.ndarray, indices: np.ndarray, uvs: np.ndarray) -> np.ndarray:
+    """Island id per triangle, -1 for triangles collapsed to zero UV area (hidden faces). Two
+    triangles share an island when they share a welded 3D edge whose UVs match at both ends within
+    UV_ISLAND_JOIN_TOLERANCE of the larger triangle's UV extent - glTF splits vertices at sharp
+    normals and the packer shrinks every triangle toward its centroid, so neither shared indices
+    nor exact UV equality identify an island."""
+    tri_uvs = uvs[indices]
+    live = _uv_triangle_areas(tri_uvs) > COLLAPSED_UV_AREA_EPS
+    extent = (tri_uvs.max(axis=1) - tri_uvs.min(axis=1)).max(axis=1)
+    welded = _weld_indices(positions)[indices]
+    parent = list(range(len(indices)))
+
+    def find(item: int) -> int:
+        while parent[item] != item:
+            parent[item] = parent[parent[item]]
+            item = parent[item]
+        return item
+
+    edges: dict[tuple[int, int], list[tuple[int, np.ndarray, np.ndarray]]] = {}
+    for tri in np.flatnonzero(live):
+        for corner in range(3):
+            a, b = int(welded[tri, corner]), int(welded[tri, (corner + 1) % 3])
+            uv_a, uv_b = tri_uvs[tri, corner], tri_uvs[tri, (corner + 1) % 3]
+            if a > b:
+                a, b, uv_a, uv_b = b, a, uv_b, uv_a
+            edges.setdefault((a, b), []).append((int(tri), uv_a, uv_b))
+    for sharing in edges.values():
+        for i in range(len(sharing)):
+            for j in range(i + 1, len(sharing)):
+                tri_i, a_i, b_i = sharing[i]
+                tri_j, a_j, b_j = sharing[j]
+                tolerance = UV_ISLAND_JOIN_TOLERANCE * max(extent[tri_i], extent[tri_j]) + 1e-7
+                if np.abs(a_i - a_j).max() <= tolerance and np.abs(b_i - b_j).max() <= tolerance:
+                    parent[find(tri_i)] = find(tri_j)
+
+    roots = np.array([find(t) if live[t] else -1 for t in range(len(indices))], dtype=np.int64)
+    ids = np.full(len(indices), -1, dtype=np.int32)
+    if live.any():
+        _, relabelled = np.unique(roots[live], return_inverse=True)
+        ids[live] = relabelled
+    return ids
+
+
+def _check_atlas_gutters(
+    label: str, positions: np.ndarray, indices: np.ndarray, uvs: np.ndarray | None, image: np.ndarray | None
+) -> list[CheckResult]:
+    """Every UV island must keep a gutter of its own colour: no two islands' covered texels closer
+    than ATLAS_GUTTER_MIN_PX (scaled to the texture size), and the texels within half that of an
+    island must match the island's nearest covered texel. Catches the af-alp bleed - islands ~1 px
+    apart whose bake margins and mips carried each other's colours."""
+    name = f"{label}: atlas gutters"
+    if uvs is None or image is None:
+        return [CheckResult(name, True, "no TEXCOORD_0 base colour texture, skipped")]
+    height, width = image.shape[:2]
+    islands = _uv_islands(positions, indices, uvs)
+    live = islands >= 0
+    if not live.any():
+        return [CheckResult(name, True, "no textured faces, skipped")]
+    triangles = uvs[indices][live] * np.array([width, height], dtype=np.float64)
+    labels = atlas_raster.rasterize(triangles, islands[live], height, width)
+    reach = max(1, round(ATLAS_GUTTER_MIN_PX * width / ATLAS_GUTTER_REFERENCE_PX / 2))
+    grown, source, touching = atlas_raster.grow_sources(labels, reach)
+    ring = (grown >= 0) & (labels < 0) & (source >= 0)
+    bleeding = 0.0
+    if ring.any():
+        flat = image.reshape(-1, image.shape[-1])
+        differences = np.abs(image[ring] - flat[source[ring]]).max(axis=1)
+        bleeding = float((differences > ATLAS_BLEED_TOLERANCE).mean())
+    problems = []
+    if touching:
+        problems.append(f"{len(touching)} island pair(s) closer than {2 * reach} px")
+    if bleeding > ATLAS_BLEED_MAX_FRACTION:
+        problems.append(f"{bleeding:.1%} of gutter texels within {reach} px of an island carry another colour")
+    detail = "; ".join(problems) if problems else f"{int(islands.max()) + 1} islands at least {2 * reach} px apart, gutters clean"
+    return [CheckResult(name, not problems, detail)]
+
+
+def _weighted_percentile(values: np.ndarray, weights: np.ndarray, percentile: float) -> float:
+    order = np.argsort(values)
+    cumulative = np.cumsum(weights[order])
+    position = int(np.searchsorted(cumulative, cumulative[-1] * percentile / 100.0))
+    return float(values[order][min(position, len(values) - 1)])
+
+
+def _check_texel_density(label: str, positions: np.ndarray, indices: np.ndarray, uvs: np.ndarray | None) -> list[CheckResult]:
+    """Texels per metre must be near uniform across the surface: the area-weighted 95th over 5th
+    percentile of per-triangle density at most TEXEL_DENSITY_MAX_RATIO. Collapsed (hidden) faces are
+    left out - they deliberately own no texels."""
+    name = f"{label}: texel density"
+    if uvs is None:
+        return [CheckResult(name, True, "no TEXCOORD_0, skipped")]
+    corners = positions[indices]
+    world = 0.5 * np.linalg.norm(np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0]), axis=1)
+    uv_area = _uv_triangle_areas(uvs[indices])
+    live = (uv_area > COLLAPSED_UV_AREA_EPS) & (world > DEGENERATE_AREA_EPS)
+    if not live.any():
+        return [CheckResult(name, True, "no textured faces, skipped")]
+    density = np.sqrt(uv_area[live] / world[live])
+    low = _weighted_percentile(density, world[live], TEXEL_DENSITY_PERCENTILES[0])
+    high = _weighted_percentile(density, world[live], TEXEL_DENSITY_PERCENTILES[1])
+    ratio = high / max(low, 1e-12)
+    passed = ratio <= TEXEL_DENSITY_MAX_RATIO
+    return [CheckResult(name, passed, f"p95/p5 texel density ratio {ratio:.2f} (max {TEXEL_DENSITY_MAX_RATIO})")]
 
 
 def _polygon_area(polygon: np.ndarray) -> float:

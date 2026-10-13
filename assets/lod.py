@@ -23,6 +23,7 @@ import bmesh
 import bpy
 from mathutils.bvhtree import BVHTree
 
+from assets.atlas_bake import dilate_gutters
 from assets.game_ready import triangulate, uv_unwrap_and_pack
 
 LOD_RATIOS: tuple[float, float, float] = (1.0, 0.5, 0.15)
@@ -403,7 +404,7 @@ def bake_lod_textures(
     texel, so a texel can only ever hold colour that exists on the asset. Albedo and ORM are EMIT
     bakes of LOD0's raw texture values, so no lighting or AO darkening lands in them."""
     triangulate(lod_target)
-    uv_unwrap_and_pack([lod_target])
+    layout = uv_unwrap_and_pack([lod_target], atlas_size=image_size)
     lod0_material = lod0.data.materials[0]
     lod0_bsdf = _principled_bsdf(lod0_material)
 
@@ -420,6 +421,7 @@ def bake_lod_textures(
     scene.render.bake.use_selected_to_active = True
     scene.render.bake.cage_extrusion = _bound_box_diagonal(lod0) * DEFAULT_CAGE_EXTRUSION_RATIO
     scene.render.bake.margin = 4
+    scene.render.bake.margin_type = "EXTEND"
     try:
         base_color = tuple(lod0_bsdf.inputs["Base Color"].default_value)
         _transfer_emission(lod0, lod_target, albedo, _socket_feeding(lod0_bsdf.inputs["Base Color"]), base_color)
@@ -429,6 +431,8 @@ def bake_lod_textures(
         _transfer_bake(lod0, lod_target, normal, "NORMAL")
     finally:
         scene.render.bake.use_selected_to_active = False
+    for image in (albedo, orm, normal):
+        dilate_gutters(image, layout)
     return LodTextures(albedo=albedo.name, orm=orm.name, normal=normal.name)
 
 

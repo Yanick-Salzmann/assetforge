@@ -206,16 +206,21 @@ def _join_loose_parts(base: "bpy.types.Object", parts: list) -> None:
 def _uv_overlap_triangle_count(obj: "bpy.types.Object") -> int:
     """Count triangles whose UV footprint overlaps another triangle they don't share a mesh
     vertex with - vertex-sharing pairs are legitimately UV-adjacent (a shared edge/corner), so
-    only a bleed into an unrelated region of the atlas counts (af-3b4)."""
+    only a bleed into an unrelated region of the atlas counts (af-3b4). Hidden faces collapsed to
+    a zero-area UV point (game_ready.hidden_faces) own no texels and are left out, as
+    validate_asset's area-based overlap check leaves them out."""
     from assets.uv_islands import shapes_overlap
 
     mesh = obj.data
     mesh.calc_loop_triangles()
     uv_layer = mesh.uv_layers.active.data
-    triangles = [
-        (tuple(sorted(tri.vertices)), [tuple(uv_layer[li].uv) for li in tri.loops])
-        for tri in mesh.loop_triangles
-    ]
+    triangles = []
+    for tri in mesh.loop_triangles:
+        uvs = [tuple(uv_layer[li].uv) for li in tri.loops]
+        (ax, ay), (bx, by), (cx, cy) = uvs
+        if abs((bx - ax) * (cy - ay) - (by - ay) * (cx - ax)) < 1e-14:
+            continue
+        triangles.append((tuple(sorted(tri.vertices)), uvs))
     overlapping: set[int] = set()
     for i in range(len(triangles)):
         verts_i, uvs_i = triangles[i]

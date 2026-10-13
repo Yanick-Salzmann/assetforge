@@ -12,19 +12,82 @@ against stale geometry.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
 from typing import Sequence
 
 import bmesh
 import bpy
+import numpy as np
+from mathutils import Vector
+from mathutils.bvhtree import BVHTree
 
-from assets import atlas_bake, atlas_pack
+from assets import atlas_bake, atlas_pack, atlas_raster
 from assets.hardsurface import apply_transforms, recalc_normals
-from assets.uv_islands import axis_key, face_islands, project_point
+from assets.uv_islands import axis_key, face_islands, project_point, shapes_overlap
 
 ATLAS_SIZE = 2048
 ATLAS_MATERIAL_NAME = "atlas_material"
 TRIANGLE_UV_SHRINK = 0.005
+BLOCK_PX = 4
+GUTTER_PX_PER_ATLAS_PX = 1.0 / 128.0
+PLANE_PROJECTION_MIN_TILT = math.radians(3.0)
+PLANE_PROJECTION_MAX_FACES = 600
+BASE_FACE_NORMAL_Z = -0.99
+BASE_FACE_TOLERANCE = 1e-3
+HIDDEN_SAMPLE_PULL = 0.05
+INSIDE_RAY_DIRECTIONS = (Vector((0.3123, 0.4711, 0.8249)).normalized(), Vector((-0.6427, 0.2311, -0.7305)).normalized())
+INSIDE_RAY_MAX_HITS = 64
+INSIDE_RAY_STEP = 1e-5
+_AXES = (Vector((1.0, 0.0, 0.0)), Vector((0.0, 1.0, 0.0)), Vector((0.0, 0.0, 1.0)))
+_AXIS_PLANE = {0: (1, 2), 1: (0, 2), 2: (0, 1)}
+
+
+def gutter_px(atlas_px: int) -> int:
+    """Pixels between any two islands' content on an atlas_px atlas: 16 at 2048, never below
+    2 * BLOCK_PX, always a multiple of it - so each island keeps half the gutter of its own colour
+    through BC7 blocks and the first mip levels."""
+    step = 2 * BLOCK_PX
+    return max(step, int(atlas_px * GUTTER_PX_PER_ATLAS_PX) // step * step)
+
+
+@dataclass
+class AtlasLayout:
+    """The packed UV layout uv_unwrap_and_pack wrote, kept so the bake can fill each island's
+    gutter from that island alone (atlas_bake.dilate_gutters)."""
+
+    packing: atlas_pack.PixelPacking
+    owners: list[int]
+    triangles: list[tuple[tuple[float, float], ...]]
+    hidden_faces: int
+    plane_projected_islands: int
+    _labels: dict[int, np.ndarray] = field(default_factory=dict, repr=False)
+    _fills: dict[int, tuple] = field(default_factory=dict, repr=False)
+
+    def labels(self, size: int) -> np.ndarray:
+        """Island owning each pixel centre of a size x size image of this layout (-1 for none)."""
+        if size not in self._labels:
+            scale = size / self.packing.atlas_px
+            triangles = np.asarray(self.triangles, dtype=np.float64).reshape(-1, 3, 2) * scale
+            self._labels[size] = atlas_raster.rasterize(triangles, np.asarray(self.owners, dtype=np.int32), size, size)
+        return self._labels[size]
+
+    def fill(self, size: int) -> tuple:
+        """atlas_raster.fill_map for a size x size image, computed once and shared by every bake."""
+        if size not in self._fills:
+            self._fills[size] = atlas_raster.fill_map(self.labels(size), self.packing.footprints)
+        return self._fills[size]
+
+    def as_dict(self) -> dict:
+        return {
+            "atlas_px": self.packing.atlas_px,
+            "gutter_px": self.packing.gutter_px,
+            "block_px": self.packing.block_px,
+            "density_px_per_m": round(self.packing.density, 3),
+            "islands": len(self.packing.footprints),
+            "hidden_faces": self.hidden_faces,
+            "plane_projected_islands": self.plane_projected_islands,
+        }
 
 
 @dataclass
@@ -64,10 +127,139 @@ def triangulate(obj: bpy.types.Object) -> bpy.types.Object:
     return obj
 
 
-def uv_unwrap_and_pack(objects: Sequence[bpy.types.Object], margin: float = 0.01) -> None:
+def _inside(tree: BVHTree, point: Vector) -> bool:
+    for direction in INSIDE_RAY_DIRECTIONS:
+        hits = 0
+        origin = point
+        for _ in range(INSIDE_RAY_MAX_HITS):
+            location, _normal, _index, _distance = tree.ray_cast(origin, direction)
+            if location is None:
+                break
+            hits += 1
+            origin = location + direction * INSIDE_RAY_STEP
+        if hits % 2 == 0:
+            return False
+    return True
+
+
+def hidden_faces(meshes: Sequence[bmesh.types.BMesh]) -> list[set[int]]:
+    """Per mesh, the indices of faces no camera can see: downward faces lying on the asset's base
+    plane, and faces whose centre and (slightly pulled-in) corners all sit inside another part's
+    closed volume - a pot's foot sunk into the plinth, a beam end buried in a wall. Meshes must be
+    in a shared coordinate frame (transforms applied) and every part closed, which validate_asset
+    already requires. These faces keep their geometry - the mesh stays watertight - but get no
+    atlas texels (af-zla)."""
+    if not meshes:
+        return []
+    base_z = min(v.co.z for bm in meshes for v in bm.verts)
+    trees = [BVHTree.FromBMesh(bm) for bm in meshes]
+    boxes = []
+    for bm in meshes:
+        xs = [v.co.x for v in bm.verts]
+        ys = [v.co.y for v in bm.verts]
+        zs = [v.co.z for v in bm.verts]
+        boxes.append((Vector((min(xs), min(ys), min(zs))), Vector((max(xs), max(ys), max(zs)))))
+
+    def within(point: Vector, box) -> bool:
+        low, high = box
+        return all(low[k] <= point[k] <= high[k] for k in range(3))
+
+    hidden: list[set[int]] = []
+    for index, bm in enumerate(meshes):
+        found: set[int] = set()
+        for face in bm.faces:
+            corners = [v.co for v in face.verts]
+            if face.normal.z < BASE_FACE_NORMAL_Z and all(co.z <= base_z + BASE_FACE_TOLERANCE for co in corners):
+                found.add(face.index)
+                continue
+            centre = face.calc_center_median()
+            samples = [centre] + [co.lerp(centre, HIDDEN_SAMPLE_PULL) for co in corners]
+            for other, (tree, box) in enumerate(zip(trees, boxes)):
+                if other == index or not all(within(sample, box) for sample in samples):
+                    continue
+                if all(_inside(tree, sample) for sample in samples):
+                    found.add(face.index)
+                    break
+        hidden.append(found)
+    return hidden
+
+
+def _signed_area(points: Sequence[tuple[float, float]]) -> float:
+    total = 0.0
+    for i in range(len(points)):
+        x1, y1 = points[i]
+        x2, y2 = points[(i + 1) % len(points)]
+        total += x1 * y2 - x2 * y1
+    return total * 0.5
+
+
+def _plane_projection(group: Sequence[bmesh.types.BMFace], axis: int, sign: int, axis_points: dict) -> dict | None:
+    """Project a curved or slanted island onto the plane across its area-weighted normal instead of
+    the axis plane, so its texels are not stretched by up to 1/cos(54.7 deg) = 1.73 relative to the
+    rest of the atlas (af-alp.3). The basis is the axis plane's own basis rotated onto that normal,
+    keeping the island's handedness. None when the tilt is negligible, the island too large to
+    check, or the new projection would flip or overlap any face - the axis projection stands then."""
+    normal = Vector()
+    for face in group:
+        normal += face.normal * face.calc_area()
+    if normal.length < 1e-12 or len(group) > PLANE_PROJECTION_MAX_FACES:
+        return None
+    normal.normalize()
+    axis_direction = _AXES[axis] * sign
+    if normal.angle(axis_direction) < PLANE_PROJECTION_MIN_TILT:
+        return None
+    rotation = axis_direction.rotation_difference(normal)
+    first, second = _AXIS_PLANE[axis]
+    u_axis = rotation @ _AXES[first]
+    v_axis = rotation @ _AXES[second]
+    points = {face.index: [(v.co.dot(u_axis), v.co.dot(v_axis)) for v in face.verts] for face in group}
+    for face in group:
+        before = _signed_area(axis_points[face.index])
+        after = _signed_area(points[face.index])
+        if abs(after) < 1e-12 or (before > 0.0) != (after > 0.0):
+            return None
+    shapes = [points[face.index] for face in group]
+    bounds = [(min(p[0] for p in s), min(p[1] for p in s), max(p[0] for p in s), max(p[1] for p in s)) for s in shapes]
+    for i in range(len(shapes)):
+        for j in range(i + 1, len(shapes)):
+            a, b = bounds[i], bounds[j]
+            if a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1]:
+                continue
+            if shapes_overlap(shapes[i], shapes[j]):
+                return None
+    return points
+
+
+def _pack_with_fallback(sizes: list[tuple[float, float]], atlas_size: int) -> atlas_pack.PixelPacking:
+    """pack_pixels at gutter_px(atlas_size), halving the gutter (and the block grid with it) only
+    when the islands cannot fit at all - a tiny LOD texture with hundreds of islands still gets a
+    layout, and validate_asset's gutter check reports the narrower gutter instead of the build
+    failing outright."""
+    gutter = gutter_px(atlas_size)
+    while True:
+        block = max(1, min(BLOCK_PX, gutter // 2))
+        try:
+            return atlas_pack.pack_pixels(sizes, atlas_size, gutter, block)
+        except ValueError:
+            if gutter == 0:
+                raise
+            gutter = gutter // 2 if gutter > 2 else 0
+
+
+def uv_unwrap_and_pack(
+    objects: Sequence[bpy.types.Object],
+    atlas_size: int = ATLAS_SIZE,
+    cull_hidden: bool = True,
+) -> AtlasLayout:
     """Axis-project every object's faces into islands (grouped by contiguous dominant-normal-axis
     region) and pack every island from every object into one shared 0-1 atlas with a deterministic
-    shelf packer whose row width is searched so the packing fills the square (atlas_pack).
+    shelf packer in atlas pixels (atlas_pack.pack_pixels): one uniform texel density, and a
+    gutter_px(atlas_size) gutter between islands on a BC7-block grid, so neither the bake margin
+    nor any of the first mip levels can carry one island's colour into another (af-alp). Slanted
+    and curved islands are projected onto their own mean plane where that is safe
+    (_plane_projection), and faces nobody can see (hidden_faces) are collapsed to one point instead
+    of spending texels. Returns the AtlasLayout the bake needs to fill each gutter from its own
+    island.
 
     Does not use bpy.ops.uv.smart_project or bpy.ops.uv.pack_islands: on hard-surface meshes with
     many small bevel/greeble faces, smart_project collapses most islands to zero UV area (verified
@@ -84,18 +276,25 @@ def uv_unwrap_and_pack(objects: Sequence[bpy.types.Object], margin: float = 0.01
     the same island. The shrink gives every triangle real clearance from its neighbours instead.
     """
     islands: list[dict] = []
-    meshes_by_object: dict[int, tuple[bpy.types.Object, bmesh.types.BMesh]] = {}
+    meshes: list[tuple[bpy.types.Object, bmesh.types.BMesh]] = []
 
     for obj in objects:
         triangulate(obj)
         bm = bmesh.new()
         bm.from_mesh(obj.data)
         bm.faces.ensure_lookup_table()
-        meshes_by_object[id(bm)] = (obj, bm)
+        meshes.append((obj, bm))
 
-        for group in face_islands(bm):
-            axis, _sign = axis_key(group[0].normal)
+    hidden = hidden_faces([bm for _, bm in meshes]) if cull_hidden else [set() for _ in meshes]
+    plane_projected = 0
+    for (obj, bm), excluded in zip(meshes, hidden):
+        for group in face_islands(bm, excluded):
+            axis, sign = axis_key(group[0].normal)
             points = {face.index: [project_point(v.co, axis) for v in face.verts] for face in group}
+            tilted = _plane_projection(group, axis, sign, points)
+            if tilted is not None:
+                points = tilted
+                plane_projected += 1
             xs = [p[0] for pts in points.values() for p in pts]
             ys = [p[1] for pts in points.values() for p in pts]
             min_x, min_y = min(xs), min(ys)
@@ -110,26 +309,53 @@ def uv_unwrap_and_pack(objects: Sequence[bpy.types.Object], margin: float = 0.01
                 }
             )
 
+    hidden_count = sum(len(faces) for faces in hidden)
     sizes = [(isl["width"], isl["height"]) for isl in islands]
-    offsets, norm = atlas_pack.pack_square(sizes, margin)
+    if hidden_count:
+        sizes.append((0.0, 0.0))
+    packing = _pack_with_fallback(sizes, atlas_size)
+    density = packing.density
 
-    for isl, (off_x, off_y) in zip(islands, offsets):
+    owners: list[int] = []
+    triangles: list[tuple[tuple[float, float], ...]] = []
+    for index, isl in enumerate(islands):
         uv_layer = isl["bm"].loops.layers.uv.verify()
         min_x, min_y = isl["min"]
+        origin_x, origin_y = packing.content_origins[index]
         for face in isl["faces"]:
-            corners = [((px - min_x + off_x) / norm, (py - min_y + off_y) / norm) for px, py in isl["points"][face.index]]
-            centroid_x = sum(u for u, _ in corners) / len(corners)
-            centroid_y = sum(v for _, v in corners) / len(corners)
-            for loop, (u, v) in zip(face.loops, corners):
-                loop[uv_layer].uv = (
-                    centroid_x + (u - centroid_x) * (1.0 - TRIANGLE_UV_SHRINK),
-                    centroid_y + (v - centroid_y) * (1.0 - TRIANGLE_UV_SHRINK),
-                )
+            corners = [(origin_x + (px - min_x) * density, origin_y + (py - min_y) * density) for px, py in isl["points"][face.index]]
+            centroid_x = sum(x for x, _ in corners) / len(corners)
+            centroid_y = sum(y for _, y in corners) / len(corners)
+            shrunk = [
+                (centroid_x + (x - centroid_x) * (1.0 - TRIANGLE_UV_SHRINK), centroid_y + (y - centroid_y) * (1.0 - TRIANGLE_UV_SHRINK))
+                for x, y in corners
+            ]
+            for loop, (x, y) in zip(face.loops, shrunk):
+                loop[uv_layer].uv = (x / atlas_size, y / atlas_size)
+            owners.append(index)
+            triangles.append(tuple(shrunk))
 
-    for obj, bm in meshes_by_object.values():
+    if hidden_count:
+        hidden_x, hidden_y = packing.content_origins[-1]
+        hidden_uv = ((hidden_x + packing.block_px * 0.5) / atlas_size, (hidden_y + packing.block_px * 0.5) / atlas_size)
+        for (obj, bm), excluded in zip(meshes, hidden):
+            uv_layer = bm.loops.layers.uv.verify()
+            for face_index in excluded:
+                for loop in bm.faces[face_index].loops:
+                    loop[uv_layer].uv = hidden_uv
+
+    for obj, bm in meshes:
         bm.to_mesh(obj.data)
         bm.free()
         obj.data.update()
+
+    return AtlasLayout(
+        packing=packing,
+        owners=owners,
+        triangles=triangles,
+        hidden_faces=hidden_count,
+        plane_projected_islands=plane_projected,
+    )
 
 
 def consolidate_material(
