@@ -234,7 +234,118 @@ def tinted_glass_material(name: str = "tinted_glass") -> bpy.types.Material:
     return material
 
 
+def _wall_coords(tree: bpy.types.NodeTree, location: tuple[float, float] = (-1200.0, 0.0)) -> bpy.types.NodeSocket:
+    coord = tree.nodes.new("ShaderNodeTexCoord")
+    coord.location = location
+    split = tree.nodes.new("ShaderNodeSeparateXYZ")
+    split.location = (location[0] + 200.0, location[1])
+    tree.links.new(coord.outputs["Object"], split.inputs["Vector"])
+    along = tree.nodes.new("ShaderNodeMath")
+    along.operation = "ADD"
+    along.location = (location[0] + 400.0, location[1] + 100.0)
+    tree.links.new(split.outputs["X"], along.inputs[0])
+    tree.links.new(split.outputs["Y"], along.inputs[1])
+    combine = tree.nodes.new("ShaderNodeCombineXYZ")
+    combine.location = (location[0] + 600.0, location[1])
+    tree.links.new(along.outputs["Value"], combine.inputs["X"])
+    tree.links.new(split.outputs["Z"], combine.inputs["Y"])
+    return combine.outputs["Vector"]
+
+
+def _earth_material(name: str, low: Color, high: Color, roughness: float, scale: float = 4.0) -> bpy.types.Material:
+    material, tree, bsdf = _bsdf_material(name)
+    tint = _noise(tree, scale=scale, detail=5.0)
+    tint_ramp = _ramp(tree, tint.outputs["Fac"], low, high)
+    tree.links.new(tint_ramp.outputs["Color"], bsdf.inputs["Base Color"])
+    bsdf.inputs["Roughness"].default_value = roughness
+    bsdf.inputs["Metallic"].default_value = 0.0
+    return material
+
+
+def mudbrick_material(name: str = "mudbrick") -> bpy.types.Material:
+    material, tree, bsdf = _bsdf_material(name)
+    tint = _noise(tree, scale=9.0, detail=4.0, location=(-900.0, 250.0))
+    tint_ramp = _ramp(tree, tint.outputs["Fac"], (0.33, 0.24, 0.15, 1.0), (0.47, 0.36, 0.23, 1.0), location=(-650.0, 250.0))
+
+    brick = tree.nodes.new("ShaderNodeTexBrick")
+    brick.location = (-350.0, 0.0)
+    brick.offset = 0.5
+    brick.inputs["Scale"].default_value = 1.0
+    brick.inputs["Brick Width"].default_value = 0.36
+    brick.inputs["Row Height"].default_value = 0.12
+    brick.inputs["Mortar Size"].default_value = 0.012
+    brick.inputs["Mortar"].default_value = (0.52, 0.44, 0.33, 1.0)
+    tree.links.new(_wall_coords(tree), brick.inputs["Vector"])
+    tree.links.new(tint_ramp.outputs["Color"], brick.inputs["Color1"])
+    tree.links.new(tint_ramp.outputs["Color"], brick.inputs["Color2"])
+    tree.links.new(brick.outputs["Color"], bsdf.inputs["Base Color"])
+
+    bsdf.inputs["Roughness"].default_value = 0.93
+    bsdf.inputs["Metallic"].default_value = 0.0
+    return material
+
+
+def mud_plaster_material(name: str = "mud_plaster") -> bpy.types.Material:
+    return _earth_material(name, (0.55, 0.44, 0.31, 1.0), (0.66, 0.55, 0.4, 1.0), 0.92, scale=3.0)
+
+
+def limestone_material(name: str = "limestone") -> bpy.types.Material:
+    return _earth_material(name, (0.68, 0.62, 0.5, 1.0), (0.8, 0.75, 0.63, 1.0), 0.8, scale=7.0)
+
+
+def terracotta_material(name: str = "terracotta") -> bpy.types.Material:
+    return _earth_material(name, (0.48, 0.2, 0.09, 1.0), (0.62, 0.3, 0.15, 1.0), 0.75, scale=6.0)
+
+
+def raw_clay_material(name: str = "raw_clay") -> bpy.types.Material:
+    return _earth_material(name, (0.27, 0.22, 0.17, 1.0), (0.37, 0.3, 0.23, 1.0), 0.45, scale=5.0)
+
+
+def kiln_clay_material(name: str = "kiln_clay") -> bpy.types.Material:
+    return _earth_material(name, (0.36, 0.2, 0.12, 1.0), (0.55, 0.36, 0.22, 1.0), 0.95, scale=5.0)
+
+
+def reed_material(name: str = "reed") -> bpy.types.Material:
+    material, tree, bsdf = _bsdf_material(name)
+    tint = _noise(tree, scale=4.0, detail=2.0, location=(-900.0, 150.0))
+    tint_ramp = _ramp(tree, tint.outputs["Fac"], (0.5, 0.4, 0.2, 1.0), (0.66, 0.55, 0.3, 1.0), location=(-650.0, 150.0))
+
+    stalks = tree.nodes.new("ShaderNodeTexWave")
+    stalks.location = (-650.0, -150.0)
+    stalks.wave_type = "BANDS"
+    stalks.bands_direction = "X"
+    stalks.inputs["Scale"].default_value = 40.0
+    stalks.inputs["Distortion"].default_value = 1.5
+    stalks_ramp = _ramp(tree, stalks.outputs["Fac"], (0.72, 0.72, 0.72, 1.0), (1.0, 1.0, 1.0, 1.0), location=(-350.0, -150.0))
+
+    mix = tree.nodes.new("ShaderNodeMix")
+    mix.data_type = "RGBA"
+    mix.blend_type = "MULTIPLY"
+    mix.inputs["Factor"].default_value = 1.0
+    mix.location = (-100.0, 150.0)
+    tree.links.new(tint_ramp.outputs["Color"], mix.inputs["A"])
+    tree.links.new(stalks_ramp.outputs["Color"], mix.inputs["B"])
+    tree.links.new(mix.outputs["Result"], bsdf.inputs["Base Color"])
+
+    bsdf.inputs["Roughness"].default_value = 0.85
+    bsdf.inputs["Metallic"].default_value = 0.0
+    return material
+
+
+EGYPTIAN_BLUE: Color = (0.05, 0.22, 0.42, 1.0)
+OCHRE_RED: Color = (0.45, 0.12, 0.05, 1.0)
+
+
 MATERIAL_BUILDERS: dict[str, Callable[[str], bpy.types.Material]] = {
+    "mudbrick": mudbrick_material,
+    "mud_plaster": mud_plaster_material,
+    "limestone": limestone_material,
+    "terracotta": terracotta_material,
+    "raw_clay": raw_clay_material,
+    "kiln_clay": kiln_clay_material,
+    "reed": reed_material,
+    "paint_egyptian_blue": lambda name: paint_material(name, EGYPTIAN_BLUE),
+    "paint_ochre_red": lambda name: paint_material(name, OCHRE_RED),
     "concrete": concrete_material,
     "plaster": plaster_material,
     "brick": brick_material,
