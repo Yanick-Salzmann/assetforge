@@ -811,3 +811,48 @@ def triangular_gable(
     half_span = span * 0.5
     profile = [(centre_x - half_span, base_z), (centre_x + half_span, base_z), (centre_x, apex_z)]
     return prism(name, profile, y - thickness * 0.5, y + thickness * 0.5, axis="Y")
+
+
+def smooth_by_angle(obj: bpy.types.Object, angle: float = math.radians(50.0)) -> bpy.types.Object:
+    """Shade smooth with every edge sharper than angle (or on an open border) kept hard, so curved
+    lathe/cylinder parts read round while box corners stay crisp."""
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    for face in bm.faces:
+        face.smooth = True
+    for edge in bm.edges:
+        edge.smooth = edge.is_manifold and edge.calc_face_angle(math.pi) < angle
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.update()
+    return obj
+
+
+def wobble(obj: bpy.types.Object, amplitude: float, seed: int, wavelength: float = 1.0, keep_below_z: float | None = None) -> bpy.types.Object:
+    """Displace every vertex by a smooth seeded field of at most amplitude per axis - hand-made
+    mudbrick, plastered walls and thrown pots instead of CAD-straight solids. The field is a sum of
+    sines over world position with period around wavelength, so coincident vertices of one mesh
+    move together and the mesh stays closed. Vertices below keep_below_z do not move (a footing
+    that must stay flush with the ground)."""
+    rng = random.Random(seed)
+    terms = []
+    for _ in range(3):
+        for _ in range(3):
+            k = Vector((rng.uniform(-1.0, 1.0), rng.uniform(-1.0, 1.0), rng.uniform(-1.0, 1.0))).normalized() * (2.0 * math.pi / (wavelength * rng.uniform(0.7, 1.4)))
+            terms.append((k, rng.uniform(0.0, 2.0 * math.pi)))
+    mesh = obj.data
+    world = obj.matrix_world
+    inverse = world.inverted()
+    for vertex in mesh.vertices:
+        position = world @ vertex.co
+        if keep_below_z is not None and position.z < keep_below_z:
+            continue
+        offset = Vector((0.0, 0.0, 0.0))
+        for axis in range(3):
+            total = 0.0
+            for k, phase in terms[axis * 3:axis * 3 + 3]:
+                total += math.sin(k.dot(position) + phase)
+            offset[axis] = amplitude * total / 3.0
+        vertex.co = inverse @ (position + offset)
+    mesh.update()
+    return obj

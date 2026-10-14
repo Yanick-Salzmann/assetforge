@@ -215,6 +215,15 @@ def _run_checks(hs) -> dict:
     gable_wall = hs.triangular_gable("gable_wall", span=4.0, base_z=3.0, apex_z=4.5, thickness=0.3, y=6.0)
     checks["triangular_gable"] = _mesh_report(gable_wall)
 
+    lumpy = hs.bevelled_box("lumpy", size=(2.0, 0.5, 1.5), bevel_width=0.05, location=(30.0, 0.0, 0.0))
+    before = [v.co.copy() for v in lumpy.data.vertices]
+    hs.wobble(lumpy, 0.02, seed=7, wavelength=0.8, keep_below_z=0.01)
+    hs.smooth_by_angle(lumpy)
+    checks["wobble"] = _mesh_report(lumpy)
+    moved = [(v.co - b).length for v, b in zip(lumpy.data.vertices, before)]
+    checks["wobble"]["bounded"] = max(moved) <= 0.02 * 3 ** 0.5 + 1e-6 and max(moved) > 0.0
+    checks["wobble"]["footing_flush"] = all(abs(v.co.z - b.z) < 1e-9 for v, b in zip(lumpy.data.vertices, before) if b.z < 0.01)
+
     return checks
 
 
@@ -231,7 +240,7 @@ def main() -> None:
         ok = all(
             report["non_manifold_edges"] == 0 and report["loose_verts"] == 0 and report["degenerate_faces"] == 0
             for report in checks.values()
-        ) and checks["cylinder_between"]["reaches_target"] and checks["stairs_monotonic"]["ok"] and checks["door_frame_frame"]["brackets_opening"] and checks["attach_to_surface"]["clears_standoff"] and checks["box_between"]["spans_endpoints"] and checks["box_between_up"]["width_follows_up"] and checks["roof_slope"]["top_on_plane"]
+        ) and checks["cylinder_between"]["reaches_target"] and checks["stairs_monotonic"]["ok"] and checks["door_frame_frame"]["brackets_opening"] and checks["attach_to_surface"]["clears_standoff"] and checks["box_between"]["spans_endpoints"] and checks["box_between_up"]["width_follows_up"] and checks["roof_slope"]["top_on_plane"] and checks["wobble"]["bounded"] and checks["wobble"]["footing_flush"]
         payload = {"ok": ok, "checks": checks}
     except Exception:
         payload = {"ok": False, "error": traceback.format_exc()}

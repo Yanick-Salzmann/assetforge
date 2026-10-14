@@ -674,6 +674,101 @@ def packed_earth_material(name: str = "packed_earth", stains: Sequence[Stain] = 
     return material
 
 
+COPPER_WEATHERING = Weathering(
+    roughness=(0.38, 0.62),
+    edge_colour=(0.78, 0.45, 0.27, 1.0),
+    edge_strength=0.7,
+    edge_radius_m=0.02,
+    grime_strength=0.35,
+    dust_strength=0.25,
+    soot_colour=(0.08, 0.05, 0.04, 1.0),
+    soot_coverage=0.2,
+    bump_scale=14.0,
+    bump_strength=0.15,
+)
+CHARCOAL_WEATHERING = Weathering(
+    roughness=(0.7, 0.9),
+    edge_colour=(0.16, 0.15, 0.14, 1.0),
+    edge_strength=0.5,
+    edge_radius_m=0.02,
+    grime_strength=0.0,
+    dust_colour=(0.3, 0.27, 0.23, 1.0),
+    dust_strength=0.2,
+    streak_strength=0.0,
+    macro_range=(0.75, 1.15),
+    bump_scale=18.0,
+    bump_strength=0.6,
+)
+SLAG_WEATHERING = Weathering(
+    roughness=(0.35, 0.75),
+    edge_colour=(0.24, 0.2, 0.18, 1.0),
+    edge_strength=0.45,
+    edge_radius_m=0.02,
+    grime_strength=0.0,
+    dust_strength=0.3,
+    streak_strength=0.0,
+    bump_scale=12.0,
+    bump_strength=0.55,
+)
+MALACHITE_WEATHERING = Weathering(
+    roughness=(0.62, 0.86),
+    edge_colour=(0.3, 0.52, 0.38, 1.0),
+    edge_strength=0.45,
+    edge_radius_m=0.02,
+    grime_strength=0.2,
+    dust_strength=0.35,
+    streak_strength=0.0,
+    bump_scale=16.0,
+    bump_strength=0.5,
+)
+LEATHER_WEATHERING = Weathering(
+    roughness=(0.55, 0.8),
+    edge_colour=(0.42, 0.3, 0.2, 1.0),
+    edge_strength=0.55,
+    edge_radius_m=0.03,
+    soot_colour=(0.08, 0.06, 0.05, 1.0),
+    soot_coverage=0.2,
+    bump_scale=9.0,
+    bump_strength=0.3,
+)
+COPPER: Color = (0.56, 0.28, 0.15, 1.0)
+VERDIGRIS: Color = (0.2, 0.42, 0.34, 1.0)
+
+
+def aged_copper_material(name: str = "aged_copper") -> bpy.types.Material:
+    material, tree, bsdf = _bsdf_material(name)
+    position = _position(tree)
+    tint = _tint(tree, (0.38, 0.17, 0.09, 1.0), COPPER, scale=6.0)
+    patina = _map_range(tree, _world_noise(tree, position, scale=3.5, detail=6.0), 0.58, 0.68, 0.0, 0.85)
+    _weather(tree, bsdf, _mix_colour(tree, tint, VERDIGRIS, patina), COPPER_WEATHERING)
+    tree.links.new(_map_range(tree, patina, 0.0, 0.85, 0.9, 0.1), bsdf.inputs["Metallic"])
+    return material
+
+
+def charcoal_material(name: str = "charcoal") -> bpy.types.Material:
+    material, tree, bsdf = _bsdf_material(name)
+    lumps = _voronoi(tree, _position(tree), scale=22.0, feature="DISTANCE_TO_EDGE")
+    seams = _ramp(tree, _map_range(tree, lumps.outputs["Distance"], 0.0, 0.08), (0.02, 0.02, 0.02, 1.0), (0.09, 0.085, 0.08, 1.0)).outputs["Color"]
+    _weather(tree, bsdf, _multiply_colour(tree, seams, _tint(tree, (0.8, 0.8, 0.8, 1.0), (1.0, 1.0, 1.0, 1.0), scale=8.0)), CHARCOAL_WEATHERING)
+    return material
+
+
+def slag_material(name: str = "slag") -> bpy.types.Material:
+    return _weathered_material(name, (0.06, 0.05, 0.05, 1.0), (0.2, 0.13, 0.1, 1.0), SLAG_WEATHERING, scale=9.0)
+
+
+def malachite_material(name: str = "malachite") -> bpy.types.Material:
+    material, tree, bsdf = _bsdf_material(name)
+    tint = _tint(tree, (0.05, 0.22, 0.14, 1.0), (0.16, 0.42, 0.28, 1.0), scale=12.0)
+    rock = _map_range(tree, _world_noise(tree, _position(tree), scale=5.0, detail=5.0), 0.5, 0.62)
+    _weather(tree, bsdf, _mix_colour(tree, tint, (0.36, 0.3, 0.22, 1.0), rock), MALACHITE_WEATHERING)
+    return material
+
+
+def leather_material(name: str = "leather") -> bpy.types.Material:
+    return _weathered_material(name, (0.2, 0.12, 0.07, 1.0), (0.34, 0.21, 0.12, 1.0), LEATHER_WEATHERING, scale=3.0)
+
+
 EGYPTIAN_BLUE: Color = (0.08, 0.2, 0.3, 1.0)
 OCHRE_RED: Color = (0.38, 0.13, 0.06, 1.0)
 
@@ -689,6 +784,11 @@ MATERIAL_BUILDERS: dict[str, Callable[[str], bpy.types.Material]] = {
     "whitewash": whitewash_material,
     "aged_wood": aged_wood_material,
     "packed_earth": packed_earth_material,
+    "aged_copper": aged_copper_material,
+    "charcoal": charcoal_material,
+    "slag": slag_material,
+    "malachite": malachite_material,
+    "leather": leather_material,
     "paint_egyptian_blue": lambda name: egyptian_paint_material(name, EGYPTIAN_BLUE),
     "paint_ochre_red": lambda name: egyptian_paint_material(name, OCHRE_RED),
     "concrete": concrete_material,

@@ -64,6 +64,16 @@ def main() -> None:
         layout = game_ready.uv_unwrap_and_pack(objects)
         _stage(f"uv unwrap and pack {layout.as_dict()}", started)
 
+        bpy.ops.object.select_all(action="DESELECT")
+        for obj in objects:
+            obj.select_set(True)
+        bpy.context.view_layer.objects.active = objects[0]
+        bpy.ops.object.join()
+        lod0_object = bpy.context.view_layer.objects.active
+        lod0_object.name = name
+        objects = [lod0_object]
+        _stage("joined", started)
+
         atlas_bake.prepare_bake()
         atlas_bake.bake_albedo(objects, atlas_size=game_ready.ATLAS_SIZE, layout=layout)
         _stage("albedo baked", started)
@@ -78,13 +88,6 @@ def main() -> None:
         game_ready.enforce_power_of_two_textures(material, game_ready.ATLAS_SIZE)
         _stage("atlas material", started)
 
-        bpy.ops.object.select_all(action="DESELECT")
-        for obj in objects:
-            obj.select_set(True)
-        bpy.context.view_layer.objects.active = objects[0]
-        bpy.ops.object.join()
-        lod0_object = bpy.context.view_layer.objects.active
-        lod0_object.name = name
         lod_set = lod.generate_lods(lod0_object)
         _stage("lods", started)
 
