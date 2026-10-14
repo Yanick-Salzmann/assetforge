@@ -1,12 +1,12 @@
 ---
 name: asset-building
-description: Model a hero building end to end - brief, live bpy modelling over assets/hardsurface.py, contact sheet, written critique against the brief, validate, a patch loop capped at 8 iterations, human approval, game_ready + LODs, export. Budget 4000-15000 tris, one material, 2048 atlas. Trigger on "/asset-building", "model a building called X", "build a hero building", or any request to model a building from scratch.
+description: Model a hero building end to end - brief, live bpy modelling over assets/hardsurface.py, contact sheet, written critique against the brief, validate, a patch loop capped at 8 iterations, human approval, game_ready + LODs, export. Budget 4000-40000 tris, one material, 2048 atlas. Trigger on "/asset-building", "model a building called X", "build a hero building", or any request to model a building from scratch.
 ---
 
 # asset-building
 
 Produces one deliverable set under `out/assets/<name>/`: `<name>.glb`, `asset.json`,
-`recipe.py`, `textures/`, `contact_sheet.png`. Budget: 4000-15000 tris (hero_building), one
+`recipe.py`, `textures/`, `contact_sheet.png`. Budget: 4000-40000 tris (hero_building), one
 shared material, 2048 atlas, LOD0/1/2 always shipped. 1 Blender unit = 1 metre, Z-up, origin at
 base centre, `+Y` forward - the contact sheet and `validate_asset` both check these, not just
 this doc.
@@ -22,7 +22,7 @@ Before touching Blender, pin down:
 
 - **name** - lowercase alphanumerics/dashes/underscores only (`assets.recipe.validate_name`),
   becomes the output directory.
-- **kind** - `hero_building` (4000-15000 tris).
+- **kind** - `hero_building` (4000-40000 tris).
 - **footprint and height in metres** - checked against the 1.8 m human reference every contact
   sheet includes.
 - **key features** - roofline, window/door placement, wall material (brick, concrete, plaster),

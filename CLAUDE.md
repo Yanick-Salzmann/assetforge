@@ -290,7 +290,7 @@ validator too.
 
 | Kind | Tris | Notes |
 |---|---|---|
-| Hero building | 4000-15000 | LOD0/1/2 always shipped |
+| Hero building | 4000-40000 | LOD0/1/2 always shipped |
 | Prop | 200-1500 | 6-12 per set, one atlas per set |
 | Vehicle / machinery | 5000-20000 | same path as buildings |
 | Hero vehicle | 15000-60000 | `hero_vehicle`: close-up centrepiece vehicles |
