@@ -108,7 +108,7 @@ def main() -> None:
             and checks["slots_distinct"]
             and all(checks["no_baked_color"].values())
             and all(checks["use_nodes"].values())
-            and len(checks["registered_materials"]) == 7
+            and {"concrete", "plaster", "brick", "metal", "glass", "roofing", "wood"} <= set(checks["registered_materials"])
         )
         payload = {"ok": ok, "checks": checks}
     except Exception:

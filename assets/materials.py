@@ -14,8 +14,9 @@ CLAUDE.md's asset conventions.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable, Mapping
+from typing import Callable, Iterable, Mapping, Sequence
 
 import bpy
 
@@ -252,20 +253,262 @@ def _wall_coords(tree: bpy.types.NodeTree, location: tuple[float, float] = (-120
     return combine.outputs["Vector"]
 
 
-def _earth_material(name: str, low: Color, high: Color, roughness: float, scale: float = 4.0) -> bpy.types.Material:
-    material, tree, bsdf = _bsdf_material(name)
-    tint = _noise(tree, scale=scale, detail=5.0)
-    tint_ramp = _ramp(tree, tint.outputs["Fac"], low, high)
-    tree.links.new(tint_ramp.outputs["Color"], bsdf.inputs["Base Color"])
-    bsdf.inputs["Roughness"].default_value = roughness
+@dataclass(frozen=True)
+class Weathering:
+    roughness: tuple[float, float]
+    edge_colour: Color
+    edge_strength: float = 0.6
+    edge_radius_m: float = 0.05
+    grime_colour: Color = (0.13, 0.1, 0.07, 1.0)
+    grime_strength: float = 0.55
+    grime_height_m: float = 0.7
+    dust_colour: Color = (0.42, 0.35, 0.25, 1.0)
+    dust_strength: float = 0.45
+    soot_colour: Color | None = None
+    soot_coverage: float = 0.0
+    flake_coverage: float = 0.0
+    flake_scale: float = 1.4
+    streak_strength: float = 0.12
+    macro_range: tuple[float, float] = (0.86, 1.08)
+    bump_scale: float = 6.0
+    bump_strength: float = 0.25
+
+
+def _position(tree: bpy.types.NodeTree) -> bpy.types.NodeSocket:
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    geometry.location = (-1800.0, 0.0)
+    return geometry.outputs["Position"]
+
+
+def _world_noise(
+    tree: bpy.types.NodeTree,
+    position: bpy.types.NodeSocket,
+    scale: float,
+    detail: float = 4.0,
+    stretch: tuple[float, float, float] = (1.0, 1.0, 1.0),
+) -> bpy.types.NodeSocket:
+    node = _noise(tree, scale=scale, detail=detail, location=(-1400.0, 0.0))
+    if stretch == (1.0, 1.0, 1.0):
+        tree.links.new(position, node.inputs["Vector"])
+        return node.outputs["Fac"]
+    squash = tree.nodes.new("ShaderNodeVectorMath")
+    squash.operation = "MULTIPLY"
+    squash.inputs[1].default_value = stretch
+    tree.links.new(position, squash.inputs[0])
+    tree.links.new(squash.outputs["Vector"], node.inputs["Vector"])
+    return node.outputs["Fac"]
+
+
+def _map_range(
+    tree: bpy.types.NodeTree,
+    value: bpy.types.NodeSocket,
+    from_min: float,
+    from_max: float,
+    to_min: float = 0.0,
+    to_max: float = 1.0,
+) -> bpy.types.NodeSocket:
+    node = tree.nodes.new("ShaderNodeMapRange")
+    node.clamp = True
+    node.inputs["From Min"].default_value = from_min
+    node.inputs["From Max"].default_value = from_max
+    node.inputs["To Min"].default_value = to_min
+    node.inputs["To Max"].default_value = to_max
+    tree.links.new(value, node.inputs["Value"])
+    return node.outputs["Result"]
+
+
+def _math(tree: bpy.types.NodeTree, operation: str, a: bpy.types.NodeSocket, b: bpy.types.NodeSocket | float) -> bpy.types.NodeSocket:
+    node = tree.nodes.new("ShaderNodeMath")
+    node.operation = operation
+    node.use_clamp = True
+    tree.links.new(a, node.inputs[0])
+    if isinstance(b, float):
+        node.inputs[1].default_value = b
+    else:
+        tree.links.new(b, node.inputs[1])
+    return node.outputs["Value"]
+
+
+def _multiply_colour(tree: bpy.types.NodeTree, base: bpy.types.NodeSocket, factor: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
+    node = tree.nodes.new("ShaderNodeMix")
+    node.data_type = "RGBA"
+    node.blend_type = "MULTIPLY"
+    node.inputs["Factor"].default_value = 1.0
+    tree.links.new(base, node.inputs["A"])
+    tree.links.new(factor, node.inputs["B"])
+    return node.outputs["Result"]
+
+
+def _mix_colour(tree: bpy.types.NodeTree, base: bpy.types.NodeSocket, colour: Color, factor: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
+    node = tree.nodes.new("ShaderNodeMix")
+    node.data_type = "RGBA"
+    tree.links.new(factor, node.inputs["Factor"])
+    tree.links.new(base, node.inputs["A"])
+    node.inputs["B"].default_value = colour
+    return node.outputs["Result"]
+
+
+def _edge_mask(tree: bpy.types.NodeTree, radius_m: float) -> bpy.types.NodeSocket:
+    bevel = tree.nodes.new("ShaderNodeBevel")
+    bevel.samples = 16
+    bevel.inputs["Radius"].default_value = radius_m
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    dot = tree.nodes.new("ShaderNodeVectorMath")
+    dot.operation = "DOT_PRODUCT"
+    tree.links.new(bevel.outputs["Normal"], dot.inputs[0])
+    tree.links.new(geometry.outputs["Normal"], dot.inputs[1])
+    return _map_range(tree, dot.outputs["Value"], 0.97, 0.75)
+
+
+def _weather(
+    tree: bpy.types.NodeTree,
+    bsdf: bpy.types.ShaderNodeBsdfPrincipled,
+    colour: bpy.types.NodeSocket,
+    weathering: Weathering,
+    recess: bpy.types.NodeSocket | None = None,
+) -> None:
+    position = _position(tree)
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    height = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(position, height.inputs["Vector"])
+    facing = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(geometry.outputs["Normal"], facing.inputs["Vector"])
+
+    macro = _map_range(tree, _world_noise(tree, position, scale=0.35, detail=3.0), 0.3, 0.7, *weathering.macro_range)
+    macro_colour = tree.nodes.new("ShaderNodeCombineColor")
+    for channel in ("Red", "Green", "Blue"):
+        tree.links.new(macro, macro_colour.inputs[channel])
+    colour = _multiply_colour(tree, colour, macro_colour.outputs["Color"])
+
+    if weathering.soot_colour is not None:
+        clouds = _world_noise(tree, position, scale=2.2, detail=3.0)
+        threshold = 0.5 + 0.2 * (1.0 - weathering.soot_coverage)
+        soot = _map_range(tree, clouds, threshold, threshold + 0.12, 0.0, 0.85)
+        colour = _mix_colour(tree, colour, weathering.soot_colour, soot)
+
+    weather_streaks = _world_noise(tree, position, scale=2.0, detail=4.0, stretch=(5.0, 5.0, 0.35))
+    colour = _mix_colour(tree, colour, weathering.grime_colour, _map_range(tree, weather_streaks, 0.45, 0.75, 0.0, weathering.streak_strength))
+
+    if weathering.flake_coverage > 0.0:
+        blotches = _world_noise(tree, position, scale=weathering.flake_scale, detail=6.0)
+        threshold = 0.72 - 0.3 * weathering.flake_coverage
+        flakes = _map_range(tree, blotches, threshold, threshold + 0.04)
+        colour = _mix_colour(tree, colour, weathering.edge_colour, flakes)
+
+    chips = _map_range(tree, _world_noise(tree, position, scale=9.0, detail=6.0), 0.35, 0.6)
+    edge = _math(tree, "MULTIPLY", _edge_mask(tree, weathering.edge_radius_m), chips)
+    colour = _mix_colour(tree, colour, weathering.edge_colour, _math(tree, "MULTIPLY", edge, weathering.edge_strength))
+
+    rise = _map_range(tree, height.outputs["Z"], 0.0, weathering.grime_height_m, 1.0, 0.0)
+    streaks = _map_range(tree, _world_noise(tree, position, scale=3.0, detail=5.0, stretch=(2.5, 2.5, 0.6)), 0.3, 0.7, 0.4, 1.0)
+    grime = _math(tree, "MULTIPLY", _math(tree, "MULTIPLY", rise, streaks), weathering.grime_strength)
+    colour = _mix_colour(tree, colour, weathering.grime_colour, grime)
+
+    upward = _map_range(tree, facing.outputs["Z"], 0.55, 0.95)
+    drifts = _map_range(tree, _world_noise(tree, position, scale=1.6, detail=4.0), 0.35, 0.65, 0.3, 1.0)
+    dust = _math(tree, "MULTIPLY", _math(tree, "MULTIPLY", upward, drifts), weathering.dust_strength)
+    colour = _mix_colour(tree, colour, weathering.dust_colour, dust)
+    tree.links.new(colour, bsdf.inputs["Base Color"])
+
+    low, high = weathering.roughness
+    roughness = _map_range(tree, _world_noise(tree, position, scale=4.0, detail=5.0), 0.3, 0.7, low, high)
+    roughness = _math(tree, "ADD", roughness, _math(tree, "MULTIPLY", dust, 0.3))
+    roughness = _math(tree, "SUBTRACT", roughness, _math(tree, "MULTIPLY", edge, 0.12))
+    tree.links.new(roughness, bsdf.inputs["Roughness"])
+
+    relief = _math(tree, "SUBTRACT", _world_noise(tree, position, scale=weathering.bump_scale, detail=6.0), _math(tree, "MULTIPLY", edge, 0.6))
+    if recess is not None:
+        relief = _math(tree, "SUBTRACT", relief, recess)
+    bump = tree.nodes.new("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = weathering.bump_strength
+    bump.inputs["Distance"].default_value = 0.02
+    tree.links.new(relief, bump.inputs["Height"])
+    tree.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
     bsdf.inputs["Metallic"].default_value = 0.0
+
+
+def _tint(tree: bpy.types.NodeTree, low: Color, high: Color, scale: float, detail: float = 5.0) -> bpy.types.NodeSocket:
+    mottle = _world_noise(tree, _position(tree), scale=scale, detail=detail)
+    return _ramp(tree, mottle, low, high).outputs["Color"]
+
+
+def _weathered_material(name: str, low: Color, high: Color, weathering: Weathering, scale: float = 4.0) -> bpy.types.Material:
+    material, tree, bsdf = _bsdf_material(name)
+    _weather(tree, bsdf, _tint(tree, low, high, scale), weathering)
     return material
+
+
+MUD: Color = (0.3, 0.22, 0.14, 1.0)
+
+MUDBRICK_WEATHERING = Weathering(roughness=(0.86, 0.97), edge_colour=(0.46, 0.38, 0.27, 1.0), edge_strength=0.5, bump_scale=5.0, bump_strength=0.4)
+MUD_PLASTER_WEATHERING = Weathering(roughness=(0.84, 0.96), edge_colour=MUD, edge_strength=0.55, flake_coverage=0.2, bump_scale=3.0, bump_strength=0.3)
+WHITEWASH_WEATHERING = Weathering(
+    roughness=(0.8, 0.94),
+    edge_colour=(0.4, 0.33, 0.23, 1.0),
+    edge_strength=0.7,
+    flake_coverage=0.35,
+    streak_strength=0.12,
+    grime_strength=0.65,
+    grime_height_m=0.9,
+    bump_scale=3.0,
+    bump_strength=0.25,
+)
+LIMESTONE_WEATHERING = Weathering(roughness=(0.72, 0.9), edge_colour=(0.78, 0.74, 0.64, 1.0), edge_strength=0.4, bump_scale=8.0, bump_strength=0.35)
+TERRACOTTA_WEATHERING = Weathering(
+    roughness=(0.8, 0.94),
+    edge_colour=(0.6, 0.42, 0.28, 1.0),
+    edge_strength=0.55,
+    edge_radius_m=0.03,
+    soot_colour=(0.07, 0.05, 0.04, 1.0),
+    soot_coverage=0.25,
+    dust_strength=0.35,
+    bump_scale=10.0,
+    bump_strength=0.15,
+)
+RAW_CLAY_WEATHERING = Weathering(
+    roughness=(0.55, 0.85),
+    edge_colour=(0.42, 0.35, 0.27, 1.0),
+    edge_strength=0.35,
+    edge_radius_m=0.03,
+    grime_strength=0.3,
+    dust_strength=0.3,
+    macro_range=(0.8, 1.1),
+    bump_scale=7.0,
+    bump_strength=0.35,
+)
+KILN_WEATHERING = Weathering(
+    roughness=(0.86, 0.97),
+    edge_colour=(0.55, 0.4, 0.28, 1.0),
+    edge_strength=0.5,
+    soot_colour=(0.05, 0.04, 0.035, 1.0),
+    soot_coverage=0.55,
+    bump_scale=4.0,
+    bump_strength=0.45,
+)
+REED_WEATHERING = Weathering(roughness=(0.78, 0.92), edge_colour=(0.68, 0.6, 0.42, 1.0), edge_strength=0.4, dust_strength=0.35, bump_scale=12.0, bump_strength=0.2)
+AGED_WOOD_WEATHERING = Weathering(
+    roughness=(0.72, 0.9),
+    edge_colour=(0.5, 0.45, 0.37, 1.0),
+    edge_strength=0.55,
+    edge_radius_m=0.03,
+    bump_scale=10.0,
+    bump_strength=0.25,
+)
+EGYPT_PAINT_WEATHERING = Weathering(
+    roughness=(0.78, 0.92),
+    edge_colour=(0.56, 0.52, 0.44, 1.0),
+    edge_strength=0.85,
+    flake_coverage=0.2,
+    flake_scale=4.0,
+    bump_scale=3.0,
+    bump_strength=0.2,
+)
 
 
 def mudbrick_material(name: str = "mudbrick") -> bpy.types.Material:
     material, tree, bsdf = _bsdf_material(name)
-    tint = _noise(tree, scale=9.0, detail=4.0, location=(-900.0, 250.0))
-    tint_ramp = _ramp(tree, tint.outputs["Fac"], (0.33, 0.24, 0.15, 1.0), (0.47, 0.36, 0.23, 1.0), location=(-650.0, 250.0))
+    tint = _tint(tree, (0.25, 0.18, 0.11, 1.0), (0.36, 0.27, 0.17, 1.0), scale=9.0, detail=4.0)
+    alternate = _multiply_colour(tree, tint, _tint(tree, (0.82, 0.8, 0.78, 1.0), (1.0, 1.0, 1.0, 1.0), scale=2.0))
 
     brick = tree.nodes.new("ShaderNodeTexBrick")
     brick.location = (-350.0, 0.0)
@@ -274,66 +517,165 @@ def mudbrick_material(name: str = "mudbrick") -> bpy.types.Material:
     brick.inputs["Brick Width"].default_value = 0.36
     brick.inputs["Row Height"].default_value = 0.12
     brick.inputs["Mortar Size"].default_value = 0.012
-    brick.inputs["Mortar"].default_value = (0.52, 0.44, 0.33, 1.0)
+    brick.inputs["Bias"].default_value = 0.0
+    brick.inputs["Mortar"].default_value = (0.4, 0.33, 0.24, 1.0)
     tree.links.new(_wall_coords(tree), brick.inputs["Vector"])
-    tree.links.new(tint_ramp.outputs["Color"], brick.inputs["Color1"])
-    tree.links.new(tint_ramp.outputs["Color"], brick.inputs["Color2"])
-    tree.links.new(brick.outputs["Color"], bsdf.inputs["Base Color"])
-
-    bsdf.inputs["Roughness"].default_value = 0.93
-    bsdf.inputs["Metallic"].default_value = 0.0
+    tree.links.new(tint, brick.inputs["Color1"])
+    tree.links.new(alternate, brick.inputs["Color2"])
+    _weather(tree, bsdf, brick.outputs["Color"], MUDBRICK_WEATHERING)
     return material
 
 
 def mud_plaster_material(name: str = "mud_plaster") -> bpy.types.Material:
-    return _earth_material(name, (0.55, 0.44, 0.31, 1.0), (0.66, 0.55, 0.4, 1.0), 0.92, scale=3.0)
+    return _weathered_material(name, (0.34, 0.26, 0.17, 1.0), (0.44, 0.35, 0.24, 1.0), MUD_PLASTER_WEATHERING, scale=1.5)
+
+
+def whitewash_material(name: str = "whitewash") -> bpy.types.Material:
+    return _weathered_material(name, (0.52, 0.48, 0.4, 1.0), (0.64, 0.6, 0.51, 1.0), WHITEWASH_WEATHERING, scale=1.2)
 
 
 def limestone_material(name: str = "limestone") -> bpy.types.Material:
-    return _earth_material(name, (0.68, 0.62, 0.5, 1.0), (0.8, 0.75, 0.63, 1.0), 0.8, scale=7.0)
+    return _weathered_material(name, (0.5, 0.45, 0.35, 1.0), (0.64, 0.59, 0.48, 1.0), LIMESTONE_WEATHERING, scale=3.0)
 
 
 def terracotta_material(name: str = "terracotta") -> bpy.types.Material:
-    return _earth_material(name, (0.48, 0.2, 0.09, 1.0), (0.62, 0.3, 0.15, 1.0), 0.75, scale=6.0)
+    return _weathered_material(name, (0.36, 0.15, 0.07, 1.0), (0.5, 0.24, 0.12, 1.0), TERRACOTTA_WEATHERING, scale=5.0)
 
 
 def raw_clay_material(name: str = "raw_clay") -> bpy.types.Material:
-    return _earth_material(name, (0.27, 0.22, 0.17, 1.0), (0.37, 0.3, 0.23, 1.0), 0.45, scale=5.0)
+    return _weathered_material(name, (0.2, 0.16, 0.12, 1.0), (0.31, 0.25, 0.19, 1.0), RAW_CLAY_WEATHERING, scale=4.0)
 
 
 def kiln_clay_material(name: str = "kiln_clay") -> bpy.types.Material:
-    return _earth_material(name, (0.36, 0.2, 0.12, 1.0), (0.55, 0.36, 0.22, 1.0), 0.95, scale=5.0)
+    return _weathered_material(name, (0.27, 0.15, 0.09, 1.0), (0.42, 0.27, 0.16, 1.0), KILN_WEATHERING, scale=2.5)
+
+
+def _banded(tree: bpy.types.NodeTree, tint: bpy.types.NodeSocket, direction: str, scale: float, distortion: float, floor: float) -> bpy.types.NodeSocket:
+    bands = tree.nodes.new("ShaderNodeTexWave")
+    bands.wave_type = "BANDS"
+    bands.bands_direction = direction
+    bands.inputs["Scale"].default_value = scale
+    bands.inputs["Distortion"].default_value = distortion
+    bands.inputs["Detail"].default_value = 3.0
+    bands_ramp = _ramp(tree, bands.outputs["Fac"], (floor, floor, floor, 1.0), (1.0, 1.0, 1.0, 1.0))
+    return _multiply_colour(tree, tint, bands_ramp.outputs["Color"])
 
 
 def reed_material(name: str = "reed") -> bpy.types.Material:
     material, tree, bsdf = _bsdf_material(name)
-    tint = _noise(tree, scale=4.0, detail=2.0, location=(-900.0, 150.0))
-    tint_ramp = _ramp(tree, tint.outputs["Fac"], (0.5, 0.4, 0.2, 1.0), (0.66, 0.55, 0.3, 1.0), location=(-650.0, 150.0))
-
-    stalks = tree.nodes.new("ShaderNodeTexWave")
-    stalks.location = (-650.0, -150.0)
-    stalks.wave_type = "BANDS"
-    stalks.bands_direction = "X"
-    stalks.inputs["Scale"].default_value = 40.0
-    stalks.inputs["Distortion"].default_value = 1.5
-    stalks_ramp = _ramp(tree, stalks.outputs["Fac"], (0.72, 0.72, 0.72, 1.0), (1.0, 1.0, 1.0, 1.0), location=(-350.0, -150.0))
-
-    mix = tree.nodes.new("ShaderNodeMix")
-    mix.data_type = "RGBA"
-    mix.blend_type = "MULTIPLY"
-    mix.inputs["Factor"].default_value = 1.0
-    mix.location = (-100.0, 150.0)
-    tree.links.new(tint_ramp.outputs["Color"], mix.inputs["A"])
-    tree.links.new(stalks_ramp.outputs["Color"], mix.inputs["B"])
-    tree.links.new(mix.outputs["Result"], bsdf.inputs["Base Color"])
-
-    bsdf.inputs["Roughness"].default_value = 0.85
-    bsdf.inputs["Metallic"].default_value = 0.0
+    tint = _tint(tree, (0.38, 0.3, 0.16, 1.0), (0.52, 0.43, 0.24, 1.0), scale=4.0, detail=2.0)
+    _weather(tree, bsdf, _banded(tree, tint, "X", 40.0, 1.5, 0.72), REED_WEATHERING)
     return material
 
 
-EGYPTIAN_BLUE: Color = (0.05, 0.22, 0.42, 1.0)
-OCHRE_RED: Color = (0.45, 0.12, 0.05, 1.0)
+def aged_wood_material(name: str = "aged_wood") -> bpy.types.Material:
+    material, tree, bsdf = _bsdf_material(name)
+    position = _position(tree)
+    grain = _world_noise(tree, position, scale=4.0, detail=6.0, stretch=(6.0, 6.0, 0.5))
+    tint = _ramp(tree, grain, (0.18, 0.14, 0.1, 1.0), (0.36, 0.29, 0.21, 1.0)).outputs["Color"]
+    _weather(tree, bsdf, tint, AGED_WOOD_WEATHERING)
+    return material
+
+
+def egyptian_paint_material(name: str, colour: Color) -> bpy.types.Material:
+    shade = tuple(channel * 0.8 for channel in colour[:3]) + (1.0,)
+    return _weathered_material(name, shade, colour, EGYPT_PAINT_WEATHERING, scale=2.0)
+
+
+@dataclass(frozen=True)
+class Stain:
+    centre: tuple[float, float]
+    radius_m: float
+    colour: Color
+    strength: float = 0.7
+
+
+PACKED_EARTH_WEATHERING = Weathering(
+    roughness=(0.82, 0.96),
+    edge_colour=(0.42, 0.35, 0.25, 1.0),
+    edge_strength=0.4,
+    grime_strength=0.0,
+    dust_strength=0.15,
+    streak_strength=0.0,
+    macro_range=(0.8, 1.1),
+    bump_scale=6.0,
+    bump_strength=0.35,
+)
+
+
+def _voronoi(tree: bpy.types.NodeTree, position: bpy.types.NodeSocket, scale: float, feature: str = "F1") -> bpy.types.ShaderNodeTexVoronoi:
+    node = tree.nodes.new("ShaderNodeTexVoronoi")
+    node.feature = feature
+    node.inputs["Scale"].default_value = scale
+    tree.links.new(position, node.inputs["Vector"])
+    return node
+
+
+def _stain_mask(tree: bpy.types.NodeTree, position: bpy.types.NodeSocket, stain: Stain) -> bpy.types.NodeSocket:
+    offset = tree.nodes.new("ShaderNodeVectorMath")
+    offset.operation = "SUBTRACT"
+    offset.inputs[1].default_value = (stain.centre[0], stain.centre[1], 0.0)
+    tree.links.new(position, offset.inputs[0])
+    flatten = tree.nodes.new("ShaderNodeVectorMath")
+    flatten.operation = "MULTIPLY"
+    flatten.inputs[1].default_value = (1.0, 1.0, 0.0)
+    tree.links.new(offset.outputs["Vector"], flatten.inputs[0])
+    distance = tree.nodes.new("ShaderNodeVectorMath")
+    distance.operation = "LENGTH"
+    tree.links.new(flatten.outputs["Vector"], distance.inputs[0])
+    ragged = _map_range(tree, _world_noise(tree, position, scale=1.8, detail=5.0), 0.3, 0.7, -0.35, 0.35)
+    reach = _math(tree, "ADD", _map_range(tree, distance.outputs["Value"], 0.0, stain.radius_m, 1.0, 0.0), ragged)
+    return _math(tree, "MULTIPLY", reach, stain.strength)
+
+
+def packed_earth_material(name: str = "packed_earth", stains: Sequence[Stain] = ()) -> bpy.types.Material:
+    material, tree, bsdf = _bsdf_material(name)
+    position = _position(tree)
+    broad = _world_noise(tree, position, scale=0.25, detail=3.0)
+    mottle = _world_noise(tree, position, scale=1.5, detail=6.0)
+    blend = _math(tree, "ADD", _math(tree, "MULTIPLY", broad, 0.6), _math(tree, "MULTIPLY", mottle, 0.4))
+    colour = _ramp(tree, _map_range(tree, blend, 0.35, 0.65), (0.25, 0.19, 0.13, 1.0), (0.42, 0.34, 0.23, 1.0)).outputs["Color"]
+
+    patches = _voronoi(tree, position, scale=1.1)
+    patch_value = tree.nodes.new("ShaderNodeSeparateColor")
+    tree.links.new(patches.outputs["Color"], patch_value.inputs["Color"])
+    patch_shade = _map_range(tree, patch_value.outputs["Red"], 0.0, 1.0, 0.88, 1.06)
+    patch_colour = tree.nodes.new("ShaderNodeCombineColor")
+    for channel in ("Red", "Green", "Blue"):
+        tree.links.new(patch_shade, patch_colour.inputs[channel])
+    colour = _multiply_colour(tree, colour, patch_colour.outputs["Color"])
+
+    for stain in stains:
+        colour = _mix_colour(tree, colour, stain.colour, _stain_mask(tree, position, stain))
+
+    wobble = _noise(tree, scale=1.2, detail=4.0)
+    tree.links.new(position, wobble.inputs["Vector"])
+    warp = tree.nodes.new("ShaderNodeVectorMath")
+    warp.operation = "MULTIPLY_ADD"
+    warp.inputs[1].default_value = (0.35, 0.35, 0.35)
+    tree.links.new(wobble.outputs["Color"], warp.inputs[0])
+    tree.links.new(position, warp.inputs[2])
+    crack_cells = _voronoi(tree, warp.outputs["Vector"], scale=1.6, feature="DISTANCE_TO_EDGE")
+    crack_lines = _map_range(tree, crack_cells.outputs["Distance"], 0.03, 0.0)
+    crack_zones = _map_range(tree, _world_noise(tree, position, scale=0.45, detail=3.0), 0.56, 0.64)
+    cracks = _math(tree, "MULTIPLY", crack_lines, crack_zones)
+    colour = _mix_colour(tree, colour, (0.12, 0.09, 0.06, 1.0), _math(tree, "MULTIPLY", cracks, 0.8))
+
+    grit = _voronoi(tree, position, scale=14.0)
+    grit_pick = tree.nodes.new("ShaderNodeSeparateColor")
+    tree.links.new(grit.outputs["Color"], grit_pick.inputs["Color"])
+    stones = _math(tree, "MULTIPLY", _map_range(tree, grit.outputs["Distance"], 0.32, 0.22), _map_range(tree, grit_pick.outputs["Green"], 0.84, 0.88))
+    light_stone = _map_range(tree, grit_pick.outputs["Blue"], 0.45, 0.55)
+    dark_stone = _map_range(tree, grit_pick.outputs["Blue"], 0.55, 0.45)
+    colour = _mix_colour(tree, colour, (0.17, 0.13, 0.09, 1.0), _math(tree, "MULTIPLY", stones, dark_stone))
+    colour = _mix_colour(tree, colour, (0.47, 0.41, 0.31, 1.0), _math(tree, "MULTIPLY", stones, _math(tree, "MULTIPLY", light_stone, 0.7)))
+
+    _weather(tree, bsdf, colour, PACKED_EARTH_WEATHERING, recess=_math(tree, "SUBTRACT", _math(tree, "MULTIPLY", cracks, 0.8), _math(tree, "MULTIPLY", stones, 0.4)))
+    return material
+
+
+EGYPTIAN_BLUE: Color = (0.08, 0.2, 0.3, 1.0)
+OCHRE_RED: Color = (0.38, 0.13, 0.06, 1.0)
 
 
 MATERIAL_BUILDERS: dict[str, Callable[[str], bpy.types.Material]] = {
@@ -344,8 +686,11 @@ MATERIAL_BUILDERS: dict[str, Callable[[str], bpy.types.Material]] = {
     "raw_clay": raw_clay_material,
     "kiln_clay": kiln_clay_material,
     "reed": reed_material,
-    "paint_egyptian_blue": lambda name: paint_material(name, EGYPTIAN_BLUE),
-    "paint_ochre_red": lambda name: paint_material(name, OCHRE_RED),
+    "whitewash": whitewash_material,
+    "aged_wood": aged_wood_material,
+    "packed_earth": packed_earth_material,
+    "paint_egyptian_blue": lambda name: egyptian_paint_material(name, EGYPTIAN_BLUE),
+    "paint_ochre_red": lambda name: egyptian_paint_material(name, OCHRE_RED),
     "concrete": concrete_material,
     "plaster": plaster_material,
     "brick": brick_material,
