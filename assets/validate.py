@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from assets import atlas_raster, team_colour
+from assets import animation_manifest, atlas_raster, team_colour
 from library import gltf
 from terrain import config
 
@@ -143,6 +143,7 @@ def validate_asset(name: str, kind: str) -> ValidationReport:
         checks.append(_check_lod_chain(lod_tris))
     if kind in team_colour.KINDS:
         checks.append(_check_team_mask(name, kind, missing_uvs))
+    checks.append(_check_animation_manifest(name))
 
     return ValidationReport(
         name=name,
@@ -577,6 +578,21 @@ def _check_team_mask(name: str, kind: str, missing_uvs: int) -> CheckResult:
         detail = f"mask covers {coverage:.4%} of the atlas; nothing would take the team colour"
         return CheckResult(label, False, detail)
     return CheckResult(label, True, f"{width}x{height} mask covers {coverage:.1%} of the atlas")
+
+
+def _check_animation_manifest(name: str) -> CheckResult:
+    label = "animations manifest"
+    manifest_path = config.ASSET_OUT_DIR / name / "asset.json"
+    if not manifest_path.is_file():
+        return CheckResult(label, True, "no asset.json, static")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if animation_manifest.MANIFEST_KEY not in manifest:
+        return CheckResult(label, True, "static, no clips")
+    errors = animation_manifest.manifest_errors(manifest[animation_manifest.MANIFEST_KEY])
+    if errors:
+        return CheckResult(label, False, "; ".join(errors))
+    clips = ", ".join(entry["name"] for entry in manifest[animation_manifest.MANIFEST_KEY])
+    return CheckResult(label, True, f"clips {clips or '(none)'}")
 
 
 def _is_power_of_two(value: int) -> bool:

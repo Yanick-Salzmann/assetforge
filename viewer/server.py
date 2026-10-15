@@ -58,6 +58,7 @@ def list_assets(asset_root: Path) -> list[dict]:
                 "triangle_counts": triangle_counts,
                 "bbox_min": manifest.get("bbox_min"),
                 "bbox_max": manifest.get("bbox_max"),
+                "animations": manifest.get("animations", []),
             }
         )
     return assets

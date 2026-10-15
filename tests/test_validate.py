@@ -587,3 +587,35 @@ def test_texel_density_flags_one_island_scaled_far_down():
     positions, indices, uvs = _two_quads(gap_px=40.0)
     uvs[4:] = uvs[4] + (uvs[4:] - uvs[4]) * 0.3
     assert not validate._check_texel_density("m", positions, indices, uvs)[0].passed
+
+
+def _write_animated_manifest(name: str, animations: object) -> None:
+    out_dir = config.ASSET_OUT_DIR / name
+    out_dir.mkdir(parents=True, exist_ok=True)
+    manifest = {"name": name, "animations": animations}
+    (out_dir / "asset.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def test_static_asset_passes_animation_manifest_check():
+    _write_team_manifest("crate", None)
+    assert validate._check_animation_manifest("crate").passed
+
+
+def test_valid_animations_pass():
+    clip = {
+        "name": "working_wheel_spin",
+        "state": "working",
+        "kind": "rigid",
+        "duration_s": 2.0,
+        "fps": 24,
+        "loop": True,
+        "nodes": ["Wheel_ANIM"],
+    }
+    _write_animated_manifest("mill", [clip])
+    result = validate._check_animation_manifest("mill")
+    assert result.passed, result.detail
+
+
+def test_malformed_animations_fail():
+    _write_animated_manifest("mill", [{"name": "spin"}])
+    assert not validate._check_animation_manifest("mill").passed

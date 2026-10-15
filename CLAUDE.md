@@ -270,6 +270,14 @@ validator too.
   engine shades `albedo * mix(1, team_rgb, mask)`, so paint the masked albedo light neutral
   grey. Required for `unit`, optional for `creature`, refused for every other kind; validated
   as power-of-two with at least 0.1% coverage.
+- Animation (`assets/animation_manifest.py`): `asset.json` `animations[]`, one entry per glTF clip
+  with `name`, `state`, `kind`, `duration_s`, `fps`, `loop`, `nodes`; absent means static.
+  `name` is `<state>_<clip>` and equals the Blender action/NLA strip name (the exporter uses it as
+  the clip name). `state` is `idle` (ambient, must loop) or `working` (only while the building is
+  occupied). `kind` `rigid` animates `<part>_ANIM` nodes, each with its origin at its pivot;
+  `skinned` lists the animated bones. `duration_s * fps` is a whole number of frames. Export with
+  `export_animation_mode="ACTIONS"`, `export_force_sampling` and `export_anim_slide_to_zero`
+  (clips start at t=0); `export_apply` keeps the armature skin. `validate_asset` checks the schema.
 - No baked lighting and no AO darkening in the albedo. The engine lights it.
 - Power-of-two textures, 2048 atlas, one material per asset.
 - Atlas layout (`game_ready.uv_unwrap_and_pack`, af-alp): islands are packed in atlas pixels at
