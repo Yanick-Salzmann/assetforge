@@ -22,7 +22,7 @@ import numpy as np
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
-from assets import atlas_bake, atlas_pack, atlas_raster
+from assets import atlas_bake, atlas_pack, atlas_raster, uv_strips
 from assets.hardsurface import apply_transforms, recalc_normals
 from assets.uv_islands import axis_key, face_islands, project_point, shapes_overlap
 
@@ -61,6 +61,7 @@ class AtlasLayout:
     triangles: list[tuple[tuple[float, float], ...]]
     hidden_faces: int
     plane_projected_islands: int
+    strip_islands: int = 0
     _labels: dict[int, np.ndarray] = field(default_factory=dict, repr=False)
     _fills: dict[int, tuple] = field(default_factory=dict, repr=False)
 
@@ -87,6 +88,7 @@ class AtlasLayout:
             "islands": len(self.packing.footprints),
             "hidden_faces": self.hidden_faces,
             "plane_projected_islands": self.plane_projected_islands,
+            "strip_islands": self.strip_islands,
         }
 
 
@@ -246,6 +248,16 @@ def _pack_with_fallback(sizes: list[tuple[float, float]], atlas_size: int) -> at
             gutter = gutter // 2 if gutter > 2 else 0
 
 
+def _strip_islands(bm: bmesh.types.BMesh, excluded: set[int]) -> list[dict]:
+    positions = np.array([tuple(v.co) for v in bm.verts], dtype=np.float64).reshape(-1, 3)
+    triangles = np.array([[v.index for v in face.verts] for face in bm.faces], dtype=np.int64).reshape(-1, 3)
+    rows = [face.index for face in bm.faces if face.index not in excluded]
+    islands = []
+    for strip in uv_strips.strip_islands(positions, triangles, rows):
+        islands.append({"faces": [bm.faces[row] for row in strip.triangles], "points": dict(zip(strip.triangles, strip.points))})
+    return islands
+
+
 def uv_unwrap_and_pack(
     objects: Sequence[bpy.types.Object],
     atlas_size: int = ATLAS_SIZE,
@@ -258,7 +270,9 @@ def uv_unwrap_and_pack(
     nor any of the first mip levels can carry one island's colour into another (af-alp). Slanted
     and curved islands are projected onto their own mean plane where that is safe
     (_plane_projection), and faces nobody can see (hidden_faces) are collapsed to one point instead
-    of spending texels. Returns the AtlasLayout the bake needs to fill each gutter from its own
+    of spending texels. The side of every revolved part (lathe, frustum, cylinder_between) is
+    unwrapped first as a few continuous strips (assets/uv_strips.py, af-zch.1) instead of one
+    island per normal direction; caps and everything else take the axis path. Returns the AtlasLayout the bake needs to fill each gutter from its own
     island.
 
     Does not use bpy.ops.uv.smart_project or bpy.ops.uv.pack_islands: on hard-surface meshes with
@@ -282,19 +296,28 @@ def uv_unwrap_and_pack(
         triangulate(obj)
         bm = bmesh.new()
         bm.from_mesh(obj.data)
+        bm.verts.ensure_lookup_table()
+        bm.verts.index_update()
         bm.faces.ensure_lookup_table()
         meshes.append((obj, bm))
 
     hidden = hidden_faces([bm for _, bm in meshes]) if cull_hidden else [set() for _ in meshes]
     plane_projected = 0
+    strip_count = 0
     for (obj, bm), excluded in zip(meshes, hidden):
-        for group in face_islands(bm, excluded):
+        strips = _strip_islands(bm, excluded)
+        strip_count += len(strips)
+        stripped = {face.index for strip in strips for face in strip["faces"]}
+        groups = [(strip["faces"], strip["points"]) for strip in strips]
+        for group in face_islands(bm, excluded | stripped):
             axis, sign = axis_key(group[0].normal)
             points = {face.index: [project_point(v.co, axis) for v in face.verts] for face in group}
             tilted = _plane_projection(group, axis, sign, points)
             if tilted is not None:
                 points = tilted
                 plane_projected += 1
+            groups.append((group, points))
+        for group, points in groups:
             xs = [p[0] for pts in points.values() for p in pts]
             ys = [p[1] for pts in points.values() for p in pts]
             min_x, min_y = min(xs), min(ys)
@@ -355,6 +378,7 @@ def uv_unwrap_and_pack(
         triangles=triangles,
         hidden_faces=hidden_count,
         plane_projected_islands=plane_projected,
+        strip_islands=strip_count,
     )
 
 

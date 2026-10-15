@@ -277,7 +277,9 @@ validator too.
   on a 4 px block grid, and every bake fills each gutter from its own island only
   (`atlas_bake.dilate_gutters` with the returned `AtlasLayout`) - pass `layout=` to every bake.
   Faces nobody can see (downward on the base plane, or buried inside another part) keep their
-  geometry but are collapsed to a zero-area UV point. `validate_asset` fails islands closer than
+  geometry but are collapsed to a zero-area UV point. The side of every revolved part (lathe, frustum,
+  cylinder_between; 8+ segments) is unwrapped as a few continuous strips (`assets/uv_strips.py`,
+  u = angle x band radius, v = profile arc length) instead of one island per normal direction. `validate_asset` fails islands closer than
   8 px (scaled to texture size), gutter texels carrying another island's colour, and a p95/p5
   texel density ratio above 2.
 - Canonical export is `.glb`, with `asset.json` and `recipe.py` beside it, in
