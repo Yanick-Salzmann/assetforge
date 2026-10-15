@@ -110,6 +110,8 @@ const state = {
   asset: null,
   root: null,
   meshes: [],
+  mixer: null,
+  clips: [],
   lod: 0,
   mode: "textured",
   camera: "frame",
@@ -119,6 +121,7 @@ const state = {
 };
 window.viewerState = { ready: false, asset: null, terrain: null, lod: null, error: null };
 const view = { dirty: true, matrix: new THREE.Matrix4(), projection: new THREE.Matrix4() };
+const animationClock = new THREE.Clock();
 
 function setStatus(text) {
   statusLine.textContent = text;
@@ -170,6 +173,12 @@ function disposeRoot() {
     return;
   }
   scene.remove(state.root);
+  if (state.mixer) {
+    state.mixer.stopAllAction();
+    state.mixer.uncacheRoot(state.root);
+  }
+  state.mixer = null;
+  state.clips = [];
   state.root.traverse((node) => {
     if (node.isMesh) {
       node.geometry.dispose();
@@ -680,6 +689,27 @@ function populateLods(lods) {
   );
 }
 
+function backfaceOverlay(node) {
+  if (!node.isSkinnedMesh) {
+    return new THREE.Mesh(node.geometry, debugMaterials.backface);
+  }
+  const overlay = new THREE.SkinnedMesh(node.geometry, debugMaterials.backface);
+  overlay.bind(node.skeleton, node.bindMatrix);
+  return overlay;
+}
+
+function playClips(clips) {
+  state.clips = clips.map((clip) => ({ name: clip.name, duration_s: clip.duration }));
+  if (clips.length === 0) {
+    return;
+  }
+  state.mixer = new THREE.AnimationMixer(state.root);
+  for (const clip of clips) {
+    state.mixer.clipAction(clip).play();
+  }
+  animationClock.getDelta();
+}
+
 async function loadAsset(name, wanted = {}) {
   const asset = state.assets.find((entry) => entry.name === name);
   if (!asset) {
@@ -714,13 +744,14 @@ async function loadAsset(name, wanted = {}) {
   for (const node of loaded) {
     node.castShadow = true;
     node.receiveShadow = true;
-    const overlay = new THREE.Mesh(node.geometry, debugMaterials.backface);
+    const overlay = backfaceOverlay(node);
     overlay.visible = false;
     overlay.raycast = () => {};
     node.add(overlay);
     state.meshes.push({ mesh: node, original: node.material, overlay, lod: lodIndexOf(node) });
   }
   scene.add(state.root);
+  playClips(gltf.animations);
   const lods = [...new Set(state.meshes.map((entry) => entry.lod))].sort((a, b) => a - b);
   populateLods(lods.map((lod) => `LOD${lod}`));
   const wantedLod = wanted.lod ? Number(wanted.lod.replace("LOD", "")) : 0;
@@ -735,7 +766,7 @@ async function loadAsset(name, wanted = {}) {
     frameCamera();
   }
   setStatus("");
-  window.viewerState = { ready: true, asset: name, terrain: null, lod: state.lod, error: null, triangles: window.viewerState.triangles };
+  window.viewerState = { ready: true, asset: name, terrain: null, lod: state.lod, error: null, triangles: window.viewerState.triangles, clips: state.clips };
 }
 
 function footprintOf(asset) {
@@ -915,6 +946,11 @@ function tick() {
   resize();
   controls.update();
   advanceDay(performance.now());
+  const animationDelta = animationClock.getDelta();
+  if (state.mixer) {
+    state.mixer.update(animationDelta);
+    view.dirty = true;
+  }
   if (state.terrain) {
     fitTerrainClip();
     if (state.terrain.water.visible) {
