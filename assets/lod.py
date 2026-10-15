@@ -31,9 +31,9 @@ DEFAULT_TEXTURE_SIZE = 1024
 DEFAULT_CAGE_EXTRUSION_RATIO = 0.02
 DEFAULT_BAKE_SAMPLES = 4
 DEFAULT_BAKE_DEVICE = "OPTIX"
-MIN_PROTECTED_PART_DIAGONAL_RATIO = 0.05
 MIN_CLOSED_SHAPE_TRIANGLES = 12
 LOD_DEVIATION_RATIOS: tuple[float, float, float] = (0.0, 0.008, 0.02)
+PART_DEVIATION_RATIOS: tuple[float, float, float] = (0.0, 0.04, 0.1)
 DEVIATION_RELAXATION_STEPS: tuple[float, ...] = (0.0, 0.25, 0.5, 0.75)
 MAX_CULLED_AREA_FRACTION = 0.1
 
@@ -212,31 +212,46 @@ def _reduce_part(
     original: bpy.types.Mesh,
     previous: bpy.types.Mesh,
     ratio: float,
-    overall_diagonal: float,
     tolerance: float,
+    part_deviation_ratio: float,
 ) -> bpy.types.Mesh:
     """Reduce one loose part toward ratio * its LOD0 triangle count, starting from its previous
-    LOD, accepting the first candidate whose deviation from the LOD0 part stays within tolerance.
+    LOD, accepting the first candidate whose deviation from the LOD0 part stays within both the
+    asset-wide tolerance and part_deviation_ratio of the part's own diagonal, and that opens no
+    new boundary edges.
 
-    Parts that are small next to the whole asset (hinges, finials, quoins) or that the ratio would
-    push below a closed box (12 tris - long thin beams, barge boards) keep their previous shape;
-    collapsing them punches holes (af-6cu, af-dds). For everything else the ratio is relaxed in
-    steps toward no reduction until the shape holds, so a part that cannot lose triangles without
-    folding in (a boolean-cut tower wall at LOD2) simply keeps more of them."""
-    original_triangles = _mesh_triangle_count(original)
-    small = _mesh_diagonal(original) < overall_diagonal * MIN_PROTECTED_PART_DIAGONAL_RATIO
-    if small or original_triangles * ratio < MIN_CLOSED_SHAPE_TRIANGLES:
-        return previous.copy()
+    The part-relative cap is what lets small parts (pots, finials, hinges) be reduced at all
+    without losing their silhouette: the asset-wide tolerance alone is larger than a whole pot,
+    so it would accept a pot collapsed to a tetrahedron. The target never drops below a closed
+    box (12 tris - long thin beams, barge boards), and a candidate that punches a hole is refused
+    (af-6cu, af-dds). The ratio is relaxed in steps toward no reduction until the shape holds, so
+    a part that cannot lose triangles without folding in (a boolean-cut tower wall at LOD2) simply
+    keeps more of them; many-part buildings (af-x36) shed most of their LOD2 count here."""
+    target = max(_mesh_triangle_count(original) * ratio, MIN_CLOSED_SHAPE_TRIANGLES)
     previous_triangles = _mesh_triangle_count(previous)
-    relative = original_triangles * ratio / max(previous_triangles, 1)
+    relative = target / max(previous_triangles, 1)
     if relative >= 1.0:
         return previous.copy()
+    part_tolerance = min(tolerance, _mesh_diagonal(original) * part_deviation_ratio)
+    previous_boundary = _boundary_edge_count(previous)
     for step in DEVIATION_RELAXATION_STEPS:
         candidate = _collapsed(previous, relative + (1.0 - relative) * step)
-        if candidate.polygons and _deviation(original, candidate) <= tolerance:
+        if (
+            candidate.polygons
+            and _boundary_edge_count(candidate) <= previous_boundary
+            and _deviation(original, candidate) <= part_tolerance
+        ):
             return candidate
         bpy.data.meshes.remove(candidate)
     return previous.copy()
+
+
+def _boundary_edge_count(mesh: bpy.types.Mesh) -> int:
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    count = sum(1 for edge in bm.edges if len(edge.link_faces) == 1)
+    bm.free()
+    return count
 
 
 def _joined_object(name: str, meshes: list[bpy.types.Mesh], material: bpy.types.Material) -> bpy.types.Object:
@@ -475,7 +490,7 @@ def generate_lods(
         reduced = [
             None
             if prior is None or part_index in culled
-            else _reduce_part(original, prior, ratio, overall_diagonal, tolerance)
+            else _reduce_part(original, prior, ratio, tolerance, PART_DEVIATION_RATIOS[index])
             for part_index, (original, prior) in enumerate(zip(originals, previous))
         ]
         kept = [mesh for mesh in reduced if mesh is not None]
