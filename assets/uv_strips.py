@@ -32,6 +32,7 @@ BAND_MAX_AREA_RATIO = 1.6
 APEX_RADIUS_FRACTION = 1e-6
 MIN_BAND_TRIANGLES = 8
 OVERLAP_TOLERANCE = 1e-9
+CONTINUITY_TOLERANCE = 1e-9
 
 
 @dataclass
@@ -265,6 +266,21 @@ def _seam(theta: np.ndarray) -> float:
     return float(ordered[widest] + gaps[widest] * 0.5)
 
 
+def _continuous(local: np.ndarray, u: np.ndarray, period: float) -> bool:
+    """True when every vertex lands on one u for all its triangles, up to whole turns across the
+    seam. A cone's apex sits on the axis, has no angle of its own and takes each face's angle
+    instead, so its fan unwraps as a sawtooth of one-triangle islands touching at the apex row
+    (af-5my) - such a band is left to axis projection."""
+    first = np.full(int(local.max()) + 1, np.nan)
+    flat_local = local.ravel()
+    flat_u = u.ravel()
+    order = np.arange(len(flat_local))[::-1]
+    first[flat_local[order]] = flat_u[order]
+    offset = flat_u - first[flat_local]
+    residual = offset - period * np.round(offset / period)
+    return bool(np.all(np.abs(residual) <= CONTINUITY_TOLERANCE * period))
+
+
 def _unwrap_band(frame: _Frame, band: list[int], band_vertices: np.ndarray, corners: np.ndarray, normals: np.ndarray, areas: np.ndarray, theta: np.ndarray, radial: np.ndarray, rho: np.ndarray, scale: float) -> Strip | None:
     rows = np.asarray(band)
     weights = areas[rows]
@@ -292,6 +308,8 @@ def _unwrap_band(frame: _Frame, band: list[int], band_vertices: np.ndarray, corn
     vertex_h[local.ravel()] = h.ravel()
     vertex_rho[local.ravel()] = corner_rho.ravel()
     v = _profile_lengths(local, vertex_h, vertex_rho, tangents)[local]
+    if not _continuous(local, u, 2.0 * math.pi * radius):
+        return None
 
     signed = 0.5 * ((u[:, 1] - u[:, 0]) * (v[:, 2] - v[:, 0]) - (u[:, 2] - u[:, 0]) * (v[:, 1] - v[:, 0]))
     if np.all(signed < 0.0):

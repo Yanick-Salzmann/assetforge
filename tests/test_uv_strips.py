@@ -73,6 +73,18 @@ def _assert_valid(strips, positions, triangles):
         for row, points in zip(strip.triangles, strip.points):
             ratio = _uv_area(points) / areas[row]
             assert uv_strips.BAND_MIN_AREA_RATIO <= ratio <= uv_strips.BAND_MAX_AREA_RATIO
+        _assert_continuous(strip, triangles)
+
+
+def _assert_continuous(strip, triangles):
+    period = 2.0 * math.pi * strip.radius
+    seen = {}
+    for row, points in zip(strip.triangles, strip.points):
+        for vertex, (u, v) in zip(triangles[row], points):
+            first = seen.setdefault(int(vertex), (u, v))
+            assert v == pytest.approx(first[1], abs=1e-9)
+            turns = round((u - first[0]) / period)
+            assert u - first[0] - turns * period == pytest.approx(0.0, abs=1e-9 * period)
 
 
 def test_straight_cylinder_side_is_one_strip_and_caps_are_left_out():
@@ -112,6 +124,12 @@ def test_tilted_offset_log_is_found_through_its_principal_axis():
     strips = uv_strips.strip_islands(positions, triangles)
     assert len(strips) == 1
     assert len(strips[0].triangles) == 24
+    _assert_valid(strips, positions, triangles)
+
+
+def test_cone_side_keeps_its_apex_in_one_place():
+    positions, triangles = _lathe([(0.5, 0.0), (0.0, 1.0)], segments=16)
+    strips = uv_strips.strip_islands(positions, triangles)
     _assert_valid(strips, positions, triangles)
 
 
