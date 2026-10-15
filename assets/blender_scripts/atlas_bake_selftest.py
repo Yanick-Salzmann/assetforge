@@ -76,6 +76,17 @@ def _face_centroid_uv(obj: "bpy.types.Object", face_index: int) -> tuple[float, 
     return sum(us) / len(us), sum(vs) / len(vs)
 
 
+def _face_uv_area(obj: "bpy.types.Object", face_index: int) -> float:
+    polygon = obj.data.polygons[face_index]
+    uv_layer = obj.data.uv_layers.active.data
+    points = [tuple(uv_layer[li].uv) for li in range(polygon.loop_start, polygon.loop_start + polygon.loop_total)]
+    twice_area = sum(
+        points[i][0] * points[(i + 1) % len(points)][1] - points[(i + 1) % len(points)][0] * points[i][1]
+        for i in range(len(points))
+    )
+    return abs(twice_area) * 0.5
+
+
 def _read_pixels(image: "bpy.types.Image") -> "array.array":
     width, height = image.size
     buf = array.array("f", [0.0]) * (width * height * 4)
@@ -165,8 +176,13 @@ def main() -> None:
         albedo_pixels = _read_pixels(bake_result.albedo)
         orm_pixels = _read_pixels(bake_result.orm)
 
+        visible_face_slot = {
+            face_index: slot for face_index, slot in face_slot.items() if _face_uv_area(obj, face_index) > 1e-9
+        }
+        every_slot_sampled = set(visible_face_slot.values()) == set(expected)
+
         sample_checks = []
-        for face_index, slot in face_slot.items():
+        for face_index, slot in visible_face_slot.items():
             u, v = _face_centroid_uv(obj, face_index)
             r, g, b, _ = _sample(albedo_pixels, ATLAS_SIZE, u, v)
             occlusion, roughness, metallic, _ = _sample(orm_pixels, ATLAS_SIZE, u, v)
@@ -212,6 +228,7 @@ def main() -> None:
             and manifest["materials"] == [material.name]
             and rewire_is_idempotent
             and names_are_exact
+            and every_slot_sampled
             and all(check["albedo_close"] and check["roughness_close"] and check["metallic_close"] for check in sample_checks)
         )
         payload = {
