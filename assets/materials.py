@@ -623,9 +623,9 @@ def _stain_mask(tree: bpy.types.NodeTree, position: bpy.types.NodeSocket, stain:
     distance = tree.nodes.new("ShaderNodeVectorMath")
     distance.operation = "LENGTH"
     tree.links.new(flatten.outputs["Vector"], distance.inputs[0])
-    ragged = _map_range(tree, _world_noise(tree, position, scale=1.8, detail=5.0), 0.3, 0.7, -0.35, 0.35)
-    reach = _math(tree, "ADD", _map_range(tree, distance.outputs["Value"], 0.0, stain.radius_m, 1.0, 0.0), ragged)
-    return _math(tree, "MULTIPLY", reach, stain.strength)
+    ragged = _map_range(tree, _world_noise(tree, position, scale=1.8, detail=5.0), 0.3, 0.7, 0.3, 1.7)
+    reach = _math(tree, "MULTIPLY", _map_range(tree, distance.outputs["Value"], 0.0, stain.radius_m, 1.0, 0.0), ragged)
+    return _math(tree, "MULTIPLY", _map_range(tree, reach, 0.0, 1.0), stain.strength)
 
 
 def packed_earth_material(name: str = "packed_earth", stains: Sequence[Stain] = ()) -> bpy.types.Material:
@@ -731,6 +731,42 @@ LEATHER_WEATHERING = Weathering(
     bump_scale=9.0,
     bump_strength=0.3,
 )
+GRAIN_WEATHERING = Weathering(
+    roughness=(0.7, 0.9),
+    edge_colour=(0.72, 0.58, 0.32, 1.0),
+    edge_strength=0.3,
+    edge_radius_m=0.02,
+    grime_strength=0.15,
+    dust_strength=0.25,
+    streak_strength=0.0,
+    bump_scale=60.0,
+    bump_strength=0.45,
+)
+STRAW_WEATHERING = Weathering(roughness=(0.75, 0.92), edge_colour=(0.78, 0.68, 0.45, 1.0), edge_strength=0.35, grime_strength=0.3, dust_strength=0.3, streak_strength=0.0, bump_scale=20.0, bump_strength=0.3)
+SACKCLOTH_WEATHERING = Weathering(
+    roughness=(0.85, 0.97),
+    edge_colour=(0.7, 0.63, 0.5, 1.0),
+    edge_strength=0.45,
+    edge_radius_m=0.04,
+    grime_strength=0.45,
+    grime_height_m=0.3,
+    dust_strength=0.5,
+    streak_strength=0.0,
+    bump_scale=40.0,
+    bump_strength=0.25,
+)
+GRANITE_WEATHERING = Weathering(
+    roughness=(0.55, 0.8),
+    edge_colour=(0.6, 0.55, 0.5, 1.0),
+    edge_strength=0.45,
+    edge_radius_m=0.02,
+    grime_strength=0.3,
+    dust_strength=0.5,
+    dust_colour=(0.78, 0.72, 0.6, 1.0),
+    streak_strength=0.0,
+    bump_scale=14.0,
+    bump_strength=0.3,
+)
 COPPER: Color = (0.56, 0.28, 0.15, 1.0)
 VERDIGRIS: Color = (0.2, 0.42, 0.34, 1.0)
 
@@ -769,6 +805,116 @@ def leather_material(name: str = "leather") -> bpy.types.Material:
     return _weathered_material(name, (0.2, 0.12, 0.07, 1.0), (0.34, 0.21, 0.12, 1.0), LEATHER_WEATHERING, scale=3.0)
 
 
+def grain_material(name: str = "grain") -> bpy.types.Material:
+    material, tree, bsdf = _bsdf_material(name)
+    tint = _tint(tree, (0.48, 0.34, 0.14, 1.0), (0.72, 0.55, 0.26, 1.0), scale=30.0, detail=3.0)
+    kernels = _voronoi(tree, _position(tree), scale=90.0, feature="DISTANCE_TO_EDGE")
+    seams = _ramp(tree, _map_range(tree, kernels.outputs["Distance"], 0.0, 0.12), (0.62, 0.62, 0.62, 1.0), (1.0, 1.0, 1.0, 1.0)).outputs["Color"]
+    _weather(tree, bsdf, _multiply_colour(tree, tint, seams), GRAIN_WEATHERING)
+    return material
+
+
+def straw_material(name: str = "straw") -> bpy.types.Material:
+    material, tree, bsdf = _bsdf_material(name)
+    tint = _tint(tree, (0.5, 0.42, 0.22, 1.0), (0.7, 0.6, 0.36, 1.0), scale=6.0, detail=3.0)
+    _weather(tree, bsdf, _banded(tree, tint, "Y", 55.0, 6.0, 0.7), STRAW_WEATHERING)
+    return material
+
+
+def sackcloth_material(name: str = "sackcloth") -> bpy.types.Material:
+    material, tree, bsdf = _bsdf_material(name)
+    tint = _tint(tree, (0.5, 0.43, 0.32, 1.0), (0.66, 0.59, 0.46, 1.0), scale=3.0, detail=4.0)
+    _weather(tree, bsdf, _banded(tree, tint, "Z", 140.0, 0.4, 0.85), SACKCLOTH_WEATHERING)
+    return material
+
+
+def granite_material(name: str = "granite") -> bpy.types.Material:
+    material, tree, bsdf = _bsdf_material(name)
+    tint = _tint(tree, (0.2, 0.17, 0.16, 1.0), (0.42, 0.33, 0.3, 1.0), scale=4.0)
+    specks = _voronoi(tree, _position(tree), scale=60.0)
+    speck_value = tree.nodes.new("ShaderNodeSeparateColor")
+    tree.links.new(specks.outputs["Color"], speck_value.inputs["Color"])
+    speck_mask = _map_range(tree, speck_value.outputs["Red"], 0.82, 0.9)
+    _weather(tree, bsdf, _mix_colour(tree, tint, (0.68, 0.6, 0.55, 1.0), speck_mask), GRANITE_WEATHERING)
+    return material
+
+
+MASONRY_WEATHERING = Weathering(
+    roughness=(0.76, 0.93),
+    edge_colour=(0.74, 0.68, 0.56, 1.0),
+    edge_strength=0.45,
+    edge_radius_m=0.04,
+    grime_strength=0.35,
+    grime_height_m=0.5,
+    dust_strength=0.55,
+    dust_colour=(0.6, 0.52, 0.38, 1.0),
+    streak_strength=0.06,
+    bump_scale=5.0,
+    bump_strength=0.45,
+)
+TURA_WEATHERING = Weathering(
+    roughness=(0.45, 0.7),
+    edge_colour=(0.86, 0.83, 0.76, 1.0),
+    edge_strength=0.3,
+    edge_radius_m=0.03,
+    grime_strength=0.2,
+    grime_height_m=0.4,
+    dust_strength=0.3,
+    dust_colour=(0.66, 0.58, 0.44, 1.0),
+    streak_strength=0.04,
+    macro_range=(0.94, 1.04),
+    bump_scale=10.0,
+    bump_strength=0.12,
+)
+ROPE_WEATHERING = Weathering(
+    roughness=(0.8, 0.95),
+    edge_colour=(0.6, 0.52, 0.36, 1.0),
+    edge_strength=0.3,
+    edge_radius_m=0.01,
+    grime_strength=0.2,
+    dust_strength=0.3,
+    streak_strength=0.0,
+    bump_scale=60.0,
+    bump_strength=0.35,
+)
+
+
+def _ashlar(name: str, low: Color, high: Color, joint: Color, size: tuple[float, float], joint_m: float, weathering: Weathering) -> bpy.types.Material:
+    material, tree, bsdf = _bsdf_material(name)
+    tint = _tint(tree, low, high, scale=2.5, detail=5.0)
+    alternate = _multiply_colour(tree, tint, _tint(tree, (0.88, 0.86, 0.82, 1.0), (1.04, 1.03, 1.0, 1.0), scale=0.7))
+    block = tree.nodes.new("ShaderNodeTexBrick")
+    block.location = (-350.0, 0.0)
+    block.offset = 0.5
+    block.inputs["Scale"].default_value = 1.0
+    block.inputs["Brick Width"].default_value = size[0]
+    block.inputs["Row Height"].default_value = size[1]
+    block.inputs["Mortar Size"].default_value = joint_m
+    block.inputs["Mortar Smooth"].default_value = 0.3
+    block.inputs["Bias"].default_value = 0.0
+    block.inputs["Mortar"].default_value = joint
+    tree.links.new(_wall_coords(tree), block.inputs["Vector"])
+    tree.links.new(tint, block.inputs["Color1"])
+    tree.links.new(alternate, block.inputs["Color2"])
+    _weather(tree, bsdf, block.outputs["Color"], weathering)
+    return material
+
+
+def limestone_masonry_material(name: str = "limestone_masonry") -> bpy.types.Material:
+    return _ashlar(name, (0.48, 0.42, 0.31, 1.0), (0.62, 0.55, 0.42, 1.0), (0.3, 0.25, 0.18, 1.0), (1.3, 0.8), 0.03, MASONRY_WEATHERING)
+
+
+def tura_limestone_material(name: str = "tura_limestone") -> bpy.types.Material:
+    return _ashlar(name, (0.68, 0.65, 0.58, 1.0), (0.8, 0.77, 0.7, 1.0), (0.55, 0.51, 0.43, 1.0), (1.6, 0.8), 0.006, TURA_WEATHERING)
+
+
+def rope_material(name: str = "rope") -> bpy.types.Material:
+    material, tree, bsdf = _bsdf_material(name)
+    tint = _tint(tree, (0.36, 0.28, 0.16, 1.0), (0.5, 0.41, 0.25, 1.0), scale=8.0, detail=3.0)
+    _weather(tree, bsdf, _banded(tree, tint, "DIAGONAL", 70.0, 1.0, 0.65), ROPE_WEATHERING)
+    return material
+
+
 EGYPTIAN_BLUE: Color = (0.08, 0.2, 0.3, 1.0)
 OCHRE_RED: Color = (0.38, 0.13, 0.06, 1.0)
 
@@ -789,6 +935,13 @@ MATERIAL_BUILDERS: dict[str, Callable[[str], bpy.types.Material]] = {
     "slag": slag_material,
     "malachite": malachite_material,
     "leather": leather_material,
+    "grain": grain_material,
+    "straw": straw_material,
+    "sackcloth": sackcloth_material,
+    "granite": granite_material,
+    "limestone_masonry": limestone_masonry_material,
+    "tura_limestone": tura_limestone_material,
+    "rope": rope_material,
     "paint_egyptian_blue": lambda name: egyptian_paint_material(name, EGYPTIAN_BLUE),
     "paint_ochre_red": lambda name: egyptian_paint_material(name, OCHRE_RED),
     "concrete": concrete_material,
