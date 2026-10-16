@@ -128,6 +128,26 @@ def render_contact_sheet(name: str) -> list:
 
 
 @mcp.tool
+def render_animation_sheet(name: str, clip: str, trail: bool = True) -> list:
+    """Render one clip of out/assets/<name>/<name>.glb as a filmstrip: one 3/4 camera at 8 evenly
+    spaced frames across the loop, framed on every sampled pose, plus a motion-trail tile that
+    smears moving parts along their path. Read it before declaring motion good - it must expose
+    parts that detach from their pivot, pass through each other or pop at the loop seam.
+    """
+    from assets import animation_sheet
+
+    result, rendered = animation_sheet.animation_sheet_preview(name, clip, trail=trail)
+    summary = {
+        "name": name,
+        "clip": result.clip,
+        "frames": result.frames,
+        "device": result.device,
+        "sheet_path": str(result.sheet),
+    }
+    return _result(summary, rendered)
+
+
+@mcp.tool
 def search_cc0_materials(query: str = "") -> list[dict]:
     """Search PolyHaven's public texture catalog (cached on disk) for CC0 tiling materials by
     keyword, e.g. "weathered wood plank" or "roofing shingle". Returns slug/name/categories
