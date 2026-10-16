@@ -276,6 +276,10 @@ validator too.
   the clip name). `state` is `idle` (ambient, must loop) or `working` (only while the building is
   occupied). `kind` `rigid` animates `<part>_ANIM` nodes, each with its origin at its pivot;
   `skinned` lists the animated bones. `duration_s * fps` is a whole number of frames.
+  Rigid clips are built with `assets/motion.py`: `pivot_part` moves a part's origin to its pivot
+  and names it `<part>_ANIM`; `animate_spin/oscillate/hinge/crank/gear_train` key the
+  `assets/animation.py` primitives one sample per frame into one `<state>_<clip>` action (a slot
+  per part, pushed to NLA) at the scene fps and return the `animations[]` entry.
   `export_asset(..., animations=[...])` keeps the hierarchy: top-level objects go under a root node
   named after the asset that carries the base-centre shift (measured in rest pose), one material
   per LOD, and the glb's clips must match the entries before asset.json is written. Export with

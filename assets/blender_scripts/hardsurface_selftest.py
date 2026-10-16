@@ -227,6 +227,80 @@ def _run_checks(hs) -> dict:
     return checks
 
 
+def _world_bbox(obj) -> list[float]:
+    import mathutils
+
+    corners = [obj.matrix_world @ mathutils.Vector(c) for c in obj.bound_box]
+    return [min(c[i] for c in corners) for i in range(3)] + [max(c[i] for c in corners) for i in range(3)]
+
+
+def _animated_fixture(hs, out_dir: Path) -> dict:
+    """A crank-slider and a gear pair on a base plate, pivoted and animated through assets.motion
+    and exported through assets.export: the clips must reach the glb, the rod's far end must ride
+    the piston's wrist pin, and re-running a helper must replace its clip rather than stack one."""
+    import mathutils
+
+    from assets import export, motion
+    from terrain import config
+
+    config.ASSET_OUT_DIR = out_dir
+    scene = bpy.context.scene
+    scene.render.fps = 24
+    material = bpy.data.materials.new("motion_atlas")
+    material.use_nodes = True
+    radius = 0.3
+    rod_length = 0.9
+    centre = (49.0, -0.15, 1.0)
+
+    plate = hs.bevelled_box("motion_plate", size=(3.0, 1.0, 0.2), bevel_width=0.0, location=(50.0, 0.0, 0.0))
+    crank = hs.box_between("crank", centre, (centre[0] + radius, centre[1], centre[2]), 0.08, 0.08)
+    crank_before = _world_bbox(crank)
+    motion.pivot_part(crank, centre, axis="Y")
+    pin = (centre[0] + radius, -0.25, centre[2])
+    rod = hs.box_between("rod", pin, (pin[0] + rod_length, pin[1], pin[2]), 0.06, 0.06)
+    motion.pivot_part(rod, pin, axis="Y")
+    wrist = (centre[0] + radius + rod_length, -0.35, centre[2])
+    piston = hs.bevelled_box("piston", size=(0.25, 0.25, 0.25), bevel_width=0.0, location=(wrist[0], wrist[1], wrist[2] - 0.125))
+    motion.pivot_part(piston, wrist, axis="Y")
+    gears = []
+    for index, (x, gear_radius) in enumerate(((51.2, 0.2), (51.7, 0.3))):
+        gear = hs.cylinder_between(f"gear{index}", (x, -0.05, 1.0), (x, 0.05, 1.0), gear_radius, segments=12)
+        gears.append(motion.pivot_part(gear, (x, 0.0, 1.0), axis="Y"))
+    parts = [plate, crank, rod, piston, *gears]
+    for part in parts:
+        part.data.materials.append(material)
+
+    motion.animate_crank(crank, rod, piston, radius, rod_length, 1.0)
+    actions_before = len(bpy.data.actions)
+    crank_entry = motion.animate_crank(crank, rod, piston, radius, rod_length, 1.0)
+    gear_entry = motion.animate_gear_train(gears, [12, 18], 1.0)
+
+    rod_tip_errors = []
+    for frame in (1, 4, 7, 13, 19):
+        scene.frame_set(frame)
+        tip = rod.matrix_world @ mathutils.Vector((rod_length, 0.0, 0.0))
+        offset = tip - piston.matrix_world.translation
+        rod_tip_errors.append(max(abs(offset.x), abs(offset.z)))
+    scene.frame_set(1)
+
+    result = export.export_asset(parts, name="hardsurface-motion", kind="prop", animations=[crank_entry, gear_entry])
+    document = export.glb_document(result.glb_path)
+    names = [node.get("name") for node in document.get("nodes", [])]
+    clips = {
+        animation["name"]: sorted({names[channel["target"]["node"]] for channel in animation["channels"]})
+        for animation in document.get("animations", [])
+    }
+    checks = {
+        "pivot_keeps_geometry": all(abs(a - b) < 1e-5 for a, b in zip(crank_before, _world_bbox(crank))),
+        "anim_names": [part.name for part in parts[1:]] == ["crank_ANIM", "rod_ANIM", "piston_ANIM", "gear0_ANIM", "gear1_ANIM"],
+        "clip_replaced": len(bpy.data.actions) == actions_before + 1 and len(crank.animation_data.nla_tracks) == 1,
+        "rod_rides_wrist_pin": max(rod_tip_errors) < 1e-4,
+        "gear_loop_s": gear_entry["duration_s"] == 3.0,
+        "glb_clips": clips == {"working_crank": ["crank_ANIM", "piston_ANIM", "rod_ANIM"], "working_gears": ["gear0_ANIM", "gear1_ANIM"]},
+    }
+    return {"checks": checks, "rod_tip_errors": rod_tip_errors, "clips": clips, "ok": all(checks.values())}
+
+
 def main() -> None:
     repo_root, result_path = _read_args()
     sys.path.insert(0, str(repo_root))
@@ -241,7 +315,9 @@ def main() -> None:
             report["non_manifold_edges"] == 0 and report["loose_verts"] == 0 and report["degenerate_faces"] == 0
             for report in checks.values()
         ) and checks["cylinder_between"]["reaches_target"] and checks["stairs_monotonic"]["ok"] and checks["door_frame_frame"]["brackets_opening"] and checks["attach_to_surface"]["clears_standoff"] and checks["box_between"]["spans_endpoints"] and checks["box_between_up"]["width_follows_up"] and checks["roof_slope"]["top_on_plane"] and checks["wobble"]["bounded"] and checks["wobble"]["footing_flush"]
-        payload = {"ok": ok, "checks": checks}
+        motion_check = _animated_fixture(hs, result_path.parent / "assets_out")
+        ok = ok and motion_check["ok"]
+        payload = {"ok": ok, "checks": checks, "motion_check": motion_check}
     except Exception:
         payload = {"ok": False, "error": traceback.format_exc()}
 
