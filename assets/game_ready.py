@@ -122,6 +122,16 @@ def is_moving_part(obj: bpy.types.Object) -> bool:
     return bool(animation_manifest.ANIM_NODE_NAME.match(obj.name))
 
 
+def is_skinned_part(obj: bpy.types.Object) -> bool:
+    """A mesh deformed by an armature (assets.cloth): it rests in the armature's bind pose, so it
+    keeps its transform, stays out of the static join and never loses faces as hidden."""
+    return obj.type == "MESH" and any(modifier.type == "ARMATURE" and modifier.object is not None for modifier in obj.modifiers)
+
+
+def is_animated_part(obj: bpy.types.Object) -> bool:
+    return is_moving_part(obj) or is_skinned_part(obj)
+
+
 def triangulate(obj: bpy.types.Object) -> bpy.types.Object:
     """Convert every ngon/quad to triangles so later UV packing sees the same primitives the
     exporter and validator do - packing ngons approximates their shape and leaves more islands
@@ -276,7 +286,7 @@ def _hidden_in_world(meshes: Sequence[tuple[bpy.types.Object, bmesh.types.BMesh]
         copy.transform(obj.matrix_world)
         world.append(copy)
     try:
-        return hidden_faces(world, [is_moving_part(obj) for obj, _ in meshes])
+        return hidden_faces(world, [is_animated_part(obj) for obj, _ in meshes])
     finally:
         for copy in world:
             copy.free()
@@ -472,7 +482,7 @@ def game_ready_pass(objects: Sequence[bpy.types.Object], atlas_size: int = ATLAS
         raise ValueError("game_ready_pass requires at least one object")
 
     for obj in objects:
-        if not is_moving_part(obj):
+        if not is_animated_part(obj):
             apply_transforms(obj)
         recalc_normals(obj)
 

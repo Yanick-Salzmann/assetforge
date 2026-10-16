@@ -210,6 +210,13 @@ def test_triangle_overlap_area_of_disjoint_triangles_is_zero():
     assert validate._triangle_overlap_area(tri_a, tri_b) == 0.0
 
 
+def test_collapsed_uv_triangle_overlaps_nothing():
+    tri = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]])
+    point = np.array([[2.0, 2.0], [2.0, 2.0], [2.0, 2.0]])
+    assert validate._triangle_overlap_area(tri, point) == 0.0
+    assert validate._triangle_overlap_area(point, tri) == 0.0
+
+
 def test_check_triangle_budget():
     low, high = validate.TRI_BUDGETS["prop"]
     assert validate._check_triangle_budget(low, "prop").passed

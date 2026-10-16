@@ -361,6 +361,54 @@ def _animated_lod_export(export_module, out_dir) -> dict:
     return {"checks": checks, "nodes": names, "counts": counts, "ok": all(checks.values())}
 
 
+def _cloth_lod_export(export_module, out_dir) -> dict:
+    """A detailed body with a banner (assets.cloth) on a rod joined into it, through
+    game_ready_pass, generate_lods(skinned=...) and export: the cloth keeps its skin and is never
+    culled, every LOD carries its own copy deformed by the one rig, and the wind clip ships."""
+    from assets import cloth, game_ready, lod, motion
+
+    _clear_animation_scene()
+    bpy.context.scene.pop(motion.CLIPS_PROPERTY, None)
+    material = bpy.data.materials.new("cloth_lod_atlas")
+    material.use_nodes = True
+    body = _detailed_box("Hall", material)
+    banner = cloth.banner("Hall_banner", material=material, top_centre=(0.0, 1.2, 1.6), width=0.6, length=1.0)
+    entry = cloth.animate_wind(banner, 2.5, seed=3)
+    for other in bpy.context.selected_objects:
+        other.select_set(False)
+    for part in (body, *banner.rods):
+        part.select_set(True)
+    bpy.context.view_layer.objects.active = body
+    bpy.ops.object.join()
+
+    game_ready.game_ready_pass([body, banner.cloth], atlas_size=256)
+    skinned_kept = game_ready.is_skinned_part(banner.cloth) and banner.cloth.parent == banner.rig
+    lod_set = lod.generate_lods(body, ratios=(1.0, 0.5, 0.15), texture_size=128, skinned=[banner.cloth])
+
+    name = "export-selftest-cloth-lod"
+    result = export_module.export_asset([*lod_set.objects, banner.rig], name=name, kind="prop", animations=[entry])
+    document = export_module.glb_document(result.glb_path)
+    names = [node.get("name") for node in document.get("nodes", [])]
+    skinned_nodes = sorted(node["name"] for node in document.get("nodes", []) if "skin" in node)
+    copies = ["Hall_banner_cloth", "Hall_banner_cloth_LOD1", "Hall_banner_cloth_LOD2"]
+    counts = result.triangle_counts
+    checks = {
+        "skinned_kept": skinned_kept,
+        "levels": [[obj.name for obj in level] for level in lod_set.levels]
+        == [["Hall_LOD0", copies[0]], ["Hall_LOD1", copies[1]], ["Hall_LOD2", copies[2]]],
+        "copies_skinned": skinned_nodes == copies,
+        "one_skin": len(document.get("skins", [])) == 1,
+        "clip": [animation.get("name") for animation in document.get("animations", [])] == [entry["name"]],
+        "copies_share_rig": all(
+            bpy.data.objects[copy].parent == banner.rig and bpy.data.objects[copy].modifiers["Armature"].object == banner.rig
+            for copy in copies
+        ),
+        "lod_counts": list(counts) == ["LOD0", "LOD1", "LOD2"] and counts["LOD0"] > counts["LOD1"] > counts["LOD2"] > 0,
+        "one_material_per_lod": len(result.materials) == 3,
+    }
+    return {"checks": checks, "nodes": names, "counts": counts, "ok": all(checks.values())}
+
+
 def _skinned_export(export_module, out_dir) -> dict:
     from assets import animation_manifest
 
@@ -494,7 +542,8 @@ def main() -> None:
         skinned_check = _skinned_export(export, out_dir)
         fx_check = _fx_socket_export(export, out_dir)
         animated_lod_check = _animated_lod_export(export, out_dir)
-        ok = ok and rigid_check["ok"] and skinned_check["ok"] and fx_check["ok"] and animated_lod_check["ok"]
+        cloth_lod_check = _cloth_lod_export(export, out_dir)
+        ok = ok and rigid_check["ok"] and skinned_check["ok"] and fx_check["ok"] and animated_lod_check["ok"] and cloth_lod_check["ok"]
 
         payload = {
             "ok": ok,
@@ -507,6 +556,7 @@ def main() -> None:
             "skinned_check": skinned_check,
             "fx_check": fx_check,
             "animated_lod_check": animated_lod_check,
+            "cloth_lod_check": cloth_lod_check,
         }
     except Exception:
         payload = {"ok": False, "error": traceback.format_exc()}

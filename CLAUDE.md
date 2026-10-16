@@ -312,7 +312,11 @@ validator too.
   attached edge (pinned to bone 0) to the free edge, each bone's local Z across the cloth, plus closed
   rods `<name>_rod<i>` with the cloth `STANDOFF_M` off them. `cloth.animate_wind(rig, duration_s, seed)`
   keys `idle_wind_<name>` with the per-kind `cloth_shapes.MAX_BEND`; export `rig.objects` with the
-  entry. `assets/blender_scripts/cloth_selftest.py` exports and validates every type.
+  entry. `assets/blender_scripts/cloth_selftest.py` exports and validates every type. On a
+  building, build it as `<asset>_<label>` so `game_ready_build.py` collects it: armature-deformed
+  meshes (`game_ready.is_skinned_part`) stay out of the static join, keep their bind pose, are never
+  culled as hidden, and `lod.generate_lods(skinned=[...])` gives each LOD an unreduced `<cloth>_LOD<n>`
+  copy on the same rig; the rods join the body and the skinned clips export with the rigs.
 - FX sockets (`assets/fx_manifest.py`, `assets/fx.py`): `asset.json` `fx[]`, one entry per emitter
   with `node`, `type` (fire, smoke, sparks, steam, flicker_light), `state` (idle/working), `rate`
   (per second), `size` (m) and `colour` (linear RGB). `node` is an empty named `FX_<type>[_<label>]`

@@ -52,3 +52,7 @@ def test_export_asset_writes_glb_textures_and_manifest(tmp_path, monkeypatch):
     ]
     assert len(animation_checks) >= 6, [check.name for check in report.checks]
     assert all(check.passed for check in animation_checks), [check for check in animation_checks if not check.passed]
+    cloth_report = validate.validate_asset("export-selftest-cloth-lod", "prop")
+    failed = [f"{check.name}: {check.detail}" for check in cloth_report.checks if not check.passed]
+    assert not failed, failed
+    assert list(cloth_report.lod_triangle_counts) == ["LOD0", "LOD1", "LOD2"], cloth_report.lod_triangle_counts

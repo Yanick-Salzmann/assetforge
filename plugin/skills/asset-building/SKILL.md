@@ -138,6 +138,11 @@ coast = motion.animate_oscillate(wheel, 0.3, 4.0, state="idle", clip="wheel_coas
   save the .blend first, then swap every part onto one temporary clay material for the preview -
   the pre-bake sheet is clay anyway. FX sockets from `fx.add_fx_socket` go in with
   `fx=fx.recorded_fx()` and their empties among the parts; step 8 picks them up from the scene.
+- Cloth (flags, pennants, banners, awnings) comes from `assets.cloth`, named `<name>_<label>` so
+  step 8 collects it: `rig = cloth.awning("<name>_awning", material=mat, edge_centre=..., width=...,
+  facing_deg=...)` then `cloth.animate_wind(rig, duration_s, seed)` records an idle skinned clip.
+  The rods are static parts; the cloth stays skinned to its rig through the bake and every LOD.
+  Pass the rig objects (`rig.objects`) to the preview export with the other parts.
 - The 3/4 filmstrip camera is fixed: a part hidden under a roof or awning shows `moving_fraction`
   0.0. Then add a review close-up (hide the occluders, put a temporary marker on the rotor) and
   show it to the reviewer alongside the filmstrips.

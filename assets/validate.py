@@ -530,6 +530,8 @@ def _triangle_overlap_area(tri_a: np.ndarray, tri_b: np.ndarray) -> float:
     signed_area_b = (tri_b[1][0] - tri_b[0][0]) * (tri_b[2][1] - tri_b[0][1]) - (tri_b[1][1] - tri_b[0][1]) * (
         tri_b[2][0] - tri_b[0][0]
     )
+    if abs(signed_area_b) <= 2.0 * COLLAPSED_UV_AREA_EPS or _polygon_area(tri_a) <= COLLAPSED_UV_AREA_EPS:
+        return 0.0
     clip = tri_b if signed_area_b >= 0 else tri_b[::-1]
     polygon = tri_a
     for i in range(3):

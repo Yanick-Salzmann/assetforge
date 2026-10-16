@@ -27,7 +27,7 @@ from mathutils.bvhtree import BVHTree
 
 from assets import animation_manifest
 from assets.atlas_bake import dilate_gutters
-from assets.game_ready import is_moving_part, triangulate, uv_unwrap_and_pack
+from assets.game_ready import is_moving_part, is_skinned_part, triangulate, uv_unwrap_and_pack
 
 LOD_RATIOS: tuple[float, float, float] = (1.0, 0.5, 0.15)
 DEFAULT_TEXTURE_SIZE = 1024
@@ -568,12 +568,23 @@ def _mirror_part(part: bpy.types.Object, copy: bpy.types.Object, counterparts: d
     _share_animation(part, copy)
 
 
+def _skinned_copy(part: bpy.types.Object, index: int) -> bpy.types.Object:
+    copy = part.copy()
+    copy.data = part.data.copy()
+    copy.name = f"{part.name}_LOD{index}"
+    copy.data.name = f"{copy.name}_mesh"
+    for collection in part.users_collection:
+        collection.objects.link(copy)
+    return copy
+
+
 def generate_lods(
     lod0: bpy.types.Object,
     ratios: tuple[float, float, float] = LOD_RATIOS,
     texture_size: int = DEFAULT_TEXTURE_SIZE,
     deviation_ratios: tuple[float, float, float] = LOD_DEVIATION_RATIOS,
     moving: Sequence[bpy.types.Object] = (),
+    skinned: Sequence[bpy.types.Object] = (),
 ) -> LodSet:
     """Build LOD1 and LOD2 from lod0 one loose part at a time, then bake an albedo/ORM/normal set
     from lod0 onto each one's own fresh UVs (texture_size for LOD1, half that for LOD2). lod0
@@ -591,7 +602,11 @@ def generate_lods(
     Each is reduced on its own, in its own pivot frame and against the whole asset's diagonal,
     into a <part>_LOD<n>_ANIM copy with the same parent (or its copy), rest transform and clips,
     so every LOD plays the same animation. Each LOD's static body and copies share one material
-    and texture set, baked from every LOD0 object."""
+    and texture set, baked from every LOD0 object.
+
+    skinned lists armature-deformed meshes (assets.cloth panels). They are already a few hundred
+    triangles, so each LOD gets an unreduced <part>_LOD<n> copy with the same parent, vertex
+    groups and Armature modifier, deformed by the same bones and baked into that LOD's set."""
     if len(ratios) != 3 or ratios[0] != 1.0:
         raise ValueError("ratios must be a 3-tuple with ratios[0] == 1.0 (LOD0 is full resolution)")
     if not lod0.data.materials:
@@ -600,12 +615,17 @@ def generate_lods(
     unnamed = [part.name for part in moving if not is_moving_part(part)]
     if unnamed:
         raise ValueError(f"moving parts must be named <part>{animation_manifest.ANIM_SUFFIX}: {unnamed}")
+    skinned = list(skinned)
+    unskinned = [part.name for part in skinned if not is_skinned_part(part)]
+    if unskinned:
+        raise ValueError(f"skinned parts need an Armature modifier with an armature: {unskinned}")
 
     base_name = lod0.name
     lod0.name = f"{base_name}_LOD0"
-    sources = [lod0, *moving]
-    overall_diagonal = _group_diagonal(sources)
-    reductions = [_reduce_object(obj, ratios, overall_diagonal, deviation_ratios) for obj in sources]
+    rigid_sources = [lod0, *moving]
+    sources = [*rigid_sources, *skinned]
+    overall_diagonal = _group_diagonal(rigid_sources)
+    reductions = [_reduce_object(obj, ratios, overall_diagonal, deviation_ratios) for obj in rigid_sources]
 
     levels = [sources]
     textures: list[LodTextures | None] = [None]
@@ -619,7 +639,7 @@ def generate_lods(
         for part in moving:
             _mirror_part(part, counterparts[part], counterparts)
         bpy.context.view_layer.update()
-        level = [body, *(counterparts[part] for part in moving)]
+        level = [body, *(counterparts[part] for part in moving), *(_skinned_copy(part, index) for part in skinned)]
         textures.append(bake_lod_textures(sources, level, image_size=max(texture_size >> (index - 1), 64)))
         levels.append(level)
 

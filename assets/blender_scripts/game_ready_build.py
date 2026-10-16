@@ -12,7 +12,9 @@ Every mesh object named `<name>_*` in the .blend is one part of the asset. Parts
 nodes through the bake and every LOD, and the clips and mechanisms motion recorded on the scene
 (motion.recorded_clips, motion.recorded_mechanisms) are exported with them, as are the FX_<type>
 sockets fx.add_fx_socket recorded (fx.recorded_fx); a socket parented to a static part is
-unparented in place before the static parts are joined. Export is refused
+unparented in place before the static parts are joined. Meshes deformed by an armature (assets.cloth
+panels) are skinned parts: they stay out of the join, keep their bind pose, get an unreduced copy
+per LOD, and their armatures and the skinned clips over those armatures' bones go out with them. Export is refused
 unless the asset's approval gate is open and the approval names every one of those clips. Progress goes to stdout as `[game_ready] <stage>` lines;
 the outcome goes to result_json as {"ok": true, ...} or {"ok": false, "error": <traceback>}.
 """
@@ -43,6 +45,15 @@ def _parts(name: str) -> list:
     return [obj for obj in bpy.data.objects if obj.type == "MESH" and obj.name.startswith(prefix)]
 
 
+def _rigs(skinned: list) -> list:
+    rigs = []
+    for part in skinned:
+        for modifier in part.modifiers:
+            if modifier.type == "ARMATURE" and modifier.object is not None and modifier.object not in rigs:
+                rigs.append(modifier.object)
+    return rigs
+
+
 def main() -> None:
     repo_root, name, kind, result_path = _read_args()
     sys.path.insert(0, str(repo_root))
@@ -62,19 +73,28 @@ def main() -> None:
             raise ValueError(f"no mesh objects named {name}_* in {bpy.data.filepath}")
         moving = [obj for obj in objects if game_ready.is_moving_part(obj)]
         moving_names = {obj.name for obj in moving}
-        animations = [entry for entry in motion.recorded_clips() if set(entry["nodes"]) <= moving_names]
+        skinned = [obj for obj in objects if game_ready.is_skinned_part(obj) and not game_ready.is_moving_part(obj)]
+        rigs = _rigs(skinned)
+        for rig in rigs:
+            rig.data.pose_position = "REST"
+        bone_names = {bone.name for rig in rigs for bone in rig.data.bones}
+        animations = [
+            entry
+            for entry in motion.recorded_clips()
+            if set(entry["nodes"]) <= (moving_names if entry["kind"] == "rigid" else bone_names)
+        ]
         clip_names = {entry["name"] for entry in animations}
         mechanisms = [entry for entry in motion.recorded_mechanisms() if entry["clip"] in clip_names]
         gate.open_gate(name).require_approved(clips=[entry["name"] for entry in animations])
         fx_entries = fx.recorded_fx()
         sockets = [bpy.data.objects[entry["node"]] for entry in fx_entries]
-        _stage(f"{len(objects)} parts, clips {[entry['name'] for entry in animations]}, fx {[entry['node'] for entry in fx_entries]}", started)
+        _stage(f"{len(objects)} parts, {len(skinned)} skinned, clips {[entry['name'] for entry in animations]}, fx {[entry['node'] for entry in fx_entries]}", started)
 
-        static = [obj for obj in objects if not game_ready.is_moving_part(obj)]
+        static = [obj for obj in objects if not game_ready.is_animated_part(obj)]
         if not static:
             raise ValueError(f"{name} has no static parts to carry the moving ones")
         for socket in sockets:
-            if socket.parent is not None and socket.parent.name not in moving_names:
+            if socket.parent is not None and socket.parent.name not in moving_names and socket.parent not in rigs:
                 world = socket.matrix_world.copy()
                 socket.parent = None
                 socket.matrix_world = world
@@ -92,8 +112,8 @@ def main() -> None:
         bpy.ops.object.join()
         lod0_object = bpy.context.view_layer.objects.active
         lod0_object.name = name
-        objects = [lod0_object, *moving]
-        _stage(f"joined, {len(moving)} moving part(s)", started)
+        objects = [lod0_object, *moving, *skinned]
+        _stage(f"joined, {len(moving)} moving part(s), {len(skinned)} skinned", started)
 
         atlas_bake.prepare_bake()
         atlas_bake.bake_albedo(objects, atlas_size=game_ready.ATLAS_SIZE, layout=layout)
@@ -109,11 +129,13 @@ def main() -> None:
         game_ready.enforce_power_of_two_textures(material, game_ready.ATLAS_SIZE)
         _stage("atlas material", started)
 
-        lod_set = lod.generate_lods(lod0_object, moving=moving)
+        lod_set = lod.generate_lods(lod0_object, moving=moving, skinned=skinned)
+        for rig in rigs:
+            rig.data.pose_position = "POSE"
         _stage("lods", started)
 
         result = export.export_asset(
-            [*lod_set.objects, *sockets], name=name, kind=kind, animations=animations, mechanisms=mechanisms, fx=fx_entries
+            [*lod_set.objects, *rigs, *sockets], name=name, kind=kind, animations=animations, mechanisms=mechanisms, fx=fx_entries
         )
         _stage("exported", started)
         payload = {"ok": True, "seconds": round(time.monotonic() - started), "atlas": layout.as_dict(), **result.as_dict()}
