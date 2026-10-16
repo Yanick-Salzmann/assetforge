@@ -9,20 +9,29 @@ ran on: it writes out/assets/<name>/<name>.glb (the glTF exporter converts Blend
 Y-up on write), out/assets/<name>/textures/ (every unique image any assigned material's Principled
 BSDF references), and out/assets/<name>/asset.json (tri counts per LOD, world bbox in metres,
 material and texture lists, budget category, contact sheet path).
+
+Passing animations (assets.animation_manifest entries) switches to the hierarchy-preserving path:
+every top-level object is parented under a temporary root empty named after the asset, the
+base-centre shift goes on that root so parent-space keyframes stay valid, every action is exported
+as a glTF clip, and the clips the glb actually carries are checked against the entries before they
+are written to asset.json's animations[]. Without animations the export is unchanged.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import re
-from dataclasses import dataclass
+import struct
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Sequence
+from typing import Iterator, Sequence
 
 import bpy
 from mathutils import Vector
 
-from assets import team_colour
+from assets import animation_manifest, team_colour
 from assets.recipe import validate_name
 from terrain import config
 
@@ -56,9 +65,10 @@ class ExportResult:
     triangle_counts: dict[str, int]
     bbox_min: tuple[float, float, float]
     bbox_max: tuple[float, float, float]
+    animations: list[dict] = field(default_factory=list)
 
     def as_dict(self) -> dict:
-        return {
+        result = {
             "glb_path": str(self.glb_path),
             "manifest_path": str(self.manifest_path),
             "textures": self.textures,
@@ -67,6 +77,9 @@ class ExportResult:
             "bbox_min": list(self.bbox_min),
             "bbox_max": list(self.bbox_max),
         }
+        if self.animations:
+            result["animations"] = self.animations
+        return result
 
 
 def _select_only(objects: Sequence[bpy.types.Object]) -> None:
@@ -82,9 +95,13 @@ def _lod_group(object_name: str) -> str:
     return f"LOD{match.group(1)}" if match else "LOD0"
 
 
+def _meshes(objects: Sequence[bpy.types.Object]) -> list[bpy.types.Object]:
+    return [obj for obj in objects if obj.type == "MESH"]
+
+
 def _triangle_counts(objects: Sequence[bpy.types.Object]) -> dict[str, int]:
     counts: dict[str, int] = {}
-    for obj in objects:
+    for obj in _meshes(objects):
         obj.data.calc_loop_triangles()
         group = _lod_group(obj.name)
         counts[group] = counts.get(group, 0) + len(obj.data.loop_triangles)
@@ -92,7 +109,7 @@ def _triangle_counts(objects: Sequence[bpy.types.Object]) -> dict[str, int]:
 
 
 def _world_bbox(objects: Sequence[bpy.types.Object]) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
-    corners = [obj.matrix_world @ Vector(corner) for obj in objects for corner in obj.bound_box]
+    corners = [obj.matrix_world @ Vector(corner) for obj in _meshes(objects) for corner in obj.bound_box]
     xs, ys, zs = (c.x for c in corners), (c.y for c in corners), (c.z for c in corners)
     xs, ys, zs = list(xs), list(ys), list(zs)
     return (min(xs), min(ys), min(zs)), (max(xs), max(ys), max(zs))
@@ -148,6 +165,124 @@ def export_glb(objects: Sequence[bpy.types.Object], glb_path: Path) -> Path:
     return glb_path
 
 
+def export_animated_glb(objects: Sequence[bpy.types.Object], glb_path: Path) -> Path:
+    """Export objects with every action as a clip named after it, sampled every frame and slid to
+    t=0, with armature skins kept."""
+    objects = list(objects)
+    if not objects:
+        raise ExportError("export requires at least one object")
+    glb_path.parent.mkdir(parents=True, exist_ok=True)
+    _select_only(objects)
+    bpy.ops.export_scene.gltf(
+        filepath=str(glb_path),
+        export_format="GLB",
+        use_selection=True,
+        export_apply=True,
+        export_animations=True,
+        export_animation_mode="ACTIONS",
+        export_frame_range=False,
+        export_force_sampling=True,
+        export_anim_slide_to_zero=True,
+        export_skins=True,
+        export_def_bones=False,
+    )
+    return glb_path
+
+
+def glb_document(glb_path: Path) -> dict:
+    data = glb_path.read_bytes()
+    length = struct.unpack_from("<I", data, 12)[0]
+    return json.loads(data[20:20 + length].decode("utf-8"))
+
+
+def _glb_clips(document: dict) -> dict[str, dict]:
+    nodes = document.get("nodes", [])
+    accessors = document.get("accessors", [])
+    clips: dict[str, dict] = {}
+    for animation in document.get("animations", []):
+        targets: set[str] = set()
+        end_s = 0.0
+        for channel in animation["channels"]:
+            targets.add(nodes[channel["target"]["node"]].get("name", ""))
+            sampler = animation["samplers"][channel["sampler"]]
+            end_s = max(end_s, accessors[sampler["input"]].get("max", [0.0])[0])
+        clips[animation.get("name", "")] = {"targets": targets, "end_s": end_s}
+    return clips
+
+
+def _bone_names(objects: Sequence[bpy.types.Object]) -> set[str]:
+    return {bone.name for obj in objects if obj.type == "ARMATURE" for bone in obj.data.bones}
+
+
+def _materials_per_lod(objects: Sequence[bpy.types.Object]) -> dict[str, set[str]]:
+    groups: dict[str, set[str]] = {}
+    for obj in _meshes(objects):
+        names = {slot.material.name for slot in obj.material_slots if slot.material is not None}
+        groups.setdefault(_lod_group(obj.name), set()).update(names)
+    return groups
+
+
+def _check_animation_inputs(objects: Sequence[bpy.types.Object], animations: Sequence[dict]) -> None:
+    errors = animation_manifest.manifest_errors(list(animations))
+    if errors:
+        raise ExportError("; ".join(errors))
+    object_names = {obj.name for obj in objects}
+    bones = _bone_names(objects)
+    for entry in animations:
+        known = object_names if entry["kind"] == "rigid" else bones
+        missing = [node for node in entry["nodes"] if node not in known]
+        if missing:
+            raise ExportError(f"{entry['name']}: {entry['kind']} nodes not in the export: {', '.join(missing)}")
+    for lod, materials in _materials_per_lod(objects).items():
+        if len(materials) > 1:
+            raise ExportError(f"{lod} spans {len(materials)} materials; an animated asset shares one atlas material")
+
+
+def _check_exported_clips(glb_path: Path, animations: Sequence[dict]) -> None:
+    clips = _glb_clips(glb_document(glb_path))
+    expected = {entry["name"] for entry in animations}
+    if set(clips) != expected:
+        raise ExportError(f"glb clips {sorted(clips)} do not match animations {sorted(expected)}")
+    for entry in animations:
+        clip = clips[entry["name"]]
+        missing = set(entry["nodes"]) - clip["targets"]
+        if missing:
+            raise ExportError(f"{entry['name']}: glb clip does not animate {', '.join(sorted(missing))}")
+        if not math.isclose(clip["end_s"], entry["duration_s"], abs_tol=0.5 / entry["fps"]):
+            raise ExportError(f"{entry['name']}: glb clip runs {clip['end_s']:.4f} s, manifest says {entry['duration_s']} s")
+
+
+def _top_level(objects: Sequence[bpy.types.Object]) -> list[bpy.types.Object]:
+    members = set(objects)
+    return [obj for obj in objects if obj.parent not in members]
+
+
+def _attach_root(objects: Sequence[bpy.types.Object], name: str, shift: Vector) -> tuple[bpy.types.Object, list]:
+    root = bpy.data.objects.new(name, None)
+    bpy.context.scene.collection.objects.link(root)
+    saved = []
+    for obj in _top_level(objects):
+        saved.append((obj, obj.parent, obj.parent_type, obj.parent_bone, obj.matrix_parent_inverse.copy()))
+        world = obj.matrix_world.copy()
+        basis = obj.matrix_basis.copy()
+        obj.parent = root
+        obj.parent_type = "OBJECT"
+        obj.matrix_parent_inverse = world @ basis.inverted()
+    root.location = -shift
+    bpy.context.view_layer.update()
+    return root, saved
+
+
+def _detach_root(root: bpy.types.Object, saved: list) -> None:
+    for obj, parent, parent_type, parent_bone, parent_inverse in saved:
+        obj.parent = parent
+        obj.parent_type = parent_type
+        obj.parent_bone = parent_bone
+        obj.matrix_parent_inverse = parent_inverse
+    bpy.data.objects.remove(root, do_unlink=True)
+    bpy.context.view_layer.update()
+
+
 def _base_centre_shift(objects: Sequence[bpy.types.Object]) -> Vector:
     """The translation that would put the combined bbox's base-centre at world origin - the
     "origin at base centre" export convention, computed fresh from wherever objects actually are
@@ -168,6 +303,7 @@ def export_asset(
     name: str,
     kind: str,
     team_mask: bpy.types.Image | None = None,
+    animations: Sequence[dict] | None = None,
 ) -> ExportResult:
     """Export objects to out/assets/<name>/<name>.glb, write their textures to textures/, and
     record tri counts per LOD, world bbox, materials and texture list in asset.json.
@@ -182,7 +318,11 @@ def export_asset(
     earlier version did) leaves objects rebuilt after one call in a different coordinate frame
     from objects that were already shifted by an earlier call, a drift no later call can undo.
     Reverting after every call keeps every object at its original, consistent design coordinates
-    no matter how many times the asset gets re-exported."""
+    no matter how many times the asset gets re-exported.
+
+    animations, a list of assets.animation_manifest entries, exports the hierarchy instead: rigid
+    <part>_ANIM nodes and armatures stay child nodes under a root named after the asset that
+    carries the base-centre shift, and the root is removed again afterwards."""
     objects = list(objects)
     if not objects:
         raise ExportError("export requires at least one object")
@@ -191,6 +331,10 @@ def export_asset(
     if team_mask is not None and kind not in team_colour.KINDS:
         raise ExportError(f"kind {kind!r} takes no team mask; only {team_colour.KINDS} do")
     validate_name(name)
+    animations = [dict(entry) for entry in animations or ()]
+    if animations:
+        _check_animation_inputs(objects, animations)
+        return _export_animated(objects, name, kind, team_mask, animations)
 
     shift = _base_centre_shift(objects)
     for obj in objects:
@@ -199,33 +343,82 @@ def export_asset(
     try:
         out_dir = config.ASSET_OUT_DIR / name
         glb_path = export_glb(objects, out_dir / f"{name}.glb")
-
-        materials = _unique_materials(objects)
-        textures = _export_textures(materials, out_dir / TEXTURES_DIRNAME)
-        triangle_counts = _triangle_counts(objects)
-        bbox_min, bbox_max = _world_bbox(objects)
-        material_names = [material.name for material in materials]
-
-        manifest = {
-            "name": name,
-            "kind": kind,
-            "glb": glb_path.name,
-            "textures": textures,
-            "materials": material_names,
-            "triangle_counts": triangle_counts,
-            "bbox_min": list(bbox_min),
-            "bbox_max": list(bbox_max),
-            "contact_sheet": CONTACT_SHEET_NAME,
-        }
-        if team_mask is not None:
-            _save_team_mask(team_mask, out_dir / TEXTURES_DIRNAME)
-            manifest[team_colour.MANIFEST_KEY] = team_colour.manifest_entry(TEXTURES_DIRNAME)
-        manifest_path = out_dir / MANIFEST_NAME
-        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        result = _write_manifest(objects, name, kind, team_mask, glb_path, [])
     finally:
         for obj in objects:
             obj.location = obj.location + shift
         bpy.context.view_layer.update()
+    return result
+
+
+def _export_animated(
+    objects: list[bpy.types.Object],
+    name: str,
+    kind: str,
+    team_mask: bpy.types.Image | None,
+    animations: list[dict],
+) -> ExportResult:
+    with _rest_pose(objects):
+        shift = _base_centre_shift(objects)
+    root, saved = _attach_root(objects, name, shift)
+    try:
+        out_dir = config.ASSET_OUT_DIR / name
+        glb_path = export_animated_glb([root, *objects], out_dir / f"{name}.glb")
+        _check_exported_clips(glb_path, animations)
+        with _rest_pose(objects):
+            return _write_manifest(objects, name, kind, team_mask, glb_path, animations)
+    finally:
+        _detach_root(root, saved)
+
+
+@contextmanager
+def _rest_pose(objects: Sequence[bpy.types.Object]) -> Iterator[None]:
+    armatures = [obj.data for obj in objects if obj.type == "ARMATURE"]
+    positions = [armature.pose_position for armature in armatures]
+    for armature in armatures:
+        armature.pose_position = "REST"
+    bpy.context.view_layer.update()
+    try:
+        yield
+    finally:
+        for armature, position in zip(armatures, positions):
+            armature.pose_position = position
+        bpy.context.view_layer.update()
+
+
+def _write_manifest(
+    objects: list[bpy.types.Object],
+    name: str,
+    kind: str,
+    team_mask: bpy.types.Image | None,
+    glb_path: Path,
+    animations: list[dict],
+) -> ExportResult:
+    out_dir = glb_path.parent
+    materials = _unique_materials(objects)
+    textures = _export_textures(materials, out_dir / TEXTURES_DIRNAME)
+    triangle_counts = _triangle_counts(objects)
+    bbox_min, bbox_max = _world_bbox(objects)
+    material_names = [material.name for material in materials]
+
+    manifest = {
+        "name": name,
+        "kind": kind,
+        "glb": glb_path.name,
+        "textures": textures,
+        "materials": material_names,
+        "triangle_counts": triangle_counts,
+        "bbox_min": list(bbox_min),
+        "bbox_max": list(bbox_max),
+        "contact_sheet": CONTACT_SHEET_NAME,
+    }
+    if team_mask is not None:
+        _save_team_mask(team_mask, out_dir / TEXTURES_DIRNAME)
+        manifest[team_colour.MANIFEST_KEY] = team_colour.manifest_entry(TEXTURES_DIRNAME)
+    if animations:
+        manifest[animation_manifest.MANIFEST_KEY] = animations
+    manifest_path = out_dir / MANIFEST_NAME
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     return ExportResult(
         glb_path=glb_path,
@@ -235,4 +428,5 @@ def export_asset(
         triangle_counts=triangle_counts,
         bbox_min=bbox_min,
         bbox_max=bbox_max,
+        animations=animations,
     )

@@ -275,7 +275,10 @@ validator too.
   `name` is `<state>_<clip>` and equals the Blender action/NLA strip name (the exporter uses it as
   the clip name). `state` is `idle` (ambient, must loop) or `working` (only while the building is
   occupied). `kind` `rigid` animates `<part>_ANIM` nodes, each with its origin at its pivot;
-  `skinned` lists the animated bones. `duration_s * fps` is a whole number of frames. Export with
+  `skinned` lists the animated bones. `duration_s * fps` is a whole number of frames.
+  `export_asset(..., animations=[...])` keeps the hierarchy: top-level objects go under a root node
+  named after the asset that carries the base-centre shift (measured in rest pose), one material
+  per LOD, and the glb's clips must match the entries before asset.json is written. Export with
   `export_animation_mode="ACTIONS"`, `export_force_sampling` and `export_anim_slide_to_zero`
   (clips start at t=0); `export_apply` keeps the armature skin. `validate_asset` checks the schema.
 - No baked lighting and no AO darkening in the albedo. The engine lights it.
