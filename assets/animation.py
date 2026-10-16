@@ -10,6 +10,7 @@ component period; `loop_duration` finds the shortest such clip for a set of peri
 from __future__ import annotations
 
 import math
+import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
@@ -18,6 +19,9 @@ TAU = 2.0 * math.pi
 GRAVITY_M_S2 = 9.80665
 FRAME_TOLERANCE = 1e-6
 PERIOD_DENOMINATOR_LIMIT = 10_000
+WIND_WAVE_PERIOD_S = 1.2
+FLUTTER_HARMONIC = 3
+WIND_WAVELENGTH_CHAINS = 1.5
 
 
 class MotionError(ValueError):
@@ -237,3 +241,76 @@ def gear_train(
         turns_clockwise = clockwise != (index % 2 == 1)
         tracks.append(spin(period, duration_s, fps, clockwise=turns_clockwise))
     return tracks
+
+
+@dataclass(frozen=True)
+class WindChain:
+    bend: tuple[Track, ...]
+    twist: tuple[Track, ...]
+
+
+def wind_weights(bones: int, exponent: float = 1.5) -> list[float]:
+    raw = [((index + 1) / bones) ** exponent for index in range(bones)]
+    total = sum(raw)
+    return [value / total for value in raw]
+
+
+def wind_wave(
+    bones: int,
+    duration_s: float,
+    fps: int,
+    seed: int,
+    strength: float = 1.0,
+    gust_period_s: float | None = None,
+    wavelength_bones: float | None = None,
+    max_bend: float = 0.8,
+    flutter: float = 0.35,
+    gust_depth: float = 0.35,
+) -> WindChain:
+    """A travelling wave down a bone chain hanging from its first bone, plus a faster flutter
+    twist, both under a slow gust envelope. Each bone bends by its share of max_bend * strength,
+    the share growing towards the free end, so the cumulative tip deflection stays within
+    max_bend * strength * (1 + gust_depth). Stronger wind runs more wave cycles per clip. Every
+    period divides duration_s, so the clip closes exactly; phases come from seed alone."""
+    if isinstance(bones, bool) or not isinstance(bones, int) or bones < 1:
+        raise MotionError(f"bones must be a positive integer, got {bones!r}")
+    if not math.isfinite(strength) or strength <= 0:
+        raise MotionError(f"strength must be positive, got {strength!r}")
+    if not 0.0 <= gust_depth < 1.0:
+        raise MotionError(f"gust_depth must be in [0, 1), got {gust_depth!r}")
+    frame_count(duration_s, fps)
+    gust_cycles = cycles(duration_s, gust_period_s or duration_s)
+    wave_cycles = max(1, round(duration_s * strength / WIND_WAVE_PERIOD_S))
+    wavelength = wavelength_bones or WIND_WAVELENGTH_CHAINS * bones
+    if not math.isfinite(wavelength) or wavelength <= 0:
+        raise MotionError(f"wavelength_bones must be positive, got {wavelength_bones!r}")
+    rng = random.Random(seed)
+    wave_phase = rng.uniform(0.0, TAU)
+    flutter_phase = rng.uniform(0.0, TAU)
+    gust_phase = rng.uniform(0.0, TAU)
+
+    def gust(time_s: float) -> float:
+        return 1.0 + gust_depth * math.sin(TAU * gust_cycles * time_s / duration_s + gust_phase)
+
+    bends = []
+    twists = []
+    for index, weight in enumerate(wind_weights(bones)):
+        amplitude = max_bend * strength * weight
+        lag = TAU * index / wavelength
+        bends.append(
+            sample(
+                duration_s,
+                fps,
+                lambda t, a=amplitude, k=lag: a * gust(t) * math.sin(TAU * wave_cycles * t / duration_s - k + wave_phase),
+            )
+        )
+        twists.append(
+            sample(
+                duration_s,
+                fps,
+                lambda t, a=amplitude * flutter, k=2.0 * lag: a
+                * gust(t)
+                * math.sin(TAU * FLUTTER_HARMONIC * wave_cycles * t / duration_s - k + flutter_phase),
+            )
+        )
+    return WindChain(bend=tuple(bends), twist=tuple(twists))

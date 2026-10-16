@@ -277,7 +277,7 @@ validator too.
   occupied). `kind` `rigid` animates `<part>_ANIM` nodes, each with its origin at its pivot;
   `skinned` lists the animated bones. `duration_s * fps` is a whole number of frames.
   Rigid clips are built with `assets/motion.py`: `pivot_part` moves a part's origin to its pivot
-  and names it `<part>_ANIM`; `animate_spin/oscillate/hinge/crank/gear_train` key the
+  and names it `<part>_ANIM`; `animate_spin/oscillate/hinge/crank/gear_train` (and `animate_wind`, an idle skinned clip on a bone chain from `animation.wind_wave`) key the
   `assets/animation.py` primitives one sample per frame into one `<state>_<clip>` action (a slot
   per part, pushed to NLA) at the scene fps and return the `animations[]` entry.
   `export_asset(..., animations=[...])` keeps the hierarchy: top-level objects go under a root node

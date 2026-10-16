@@ -153,3 +153,57 @@ def test_gear_train_rejects_partial_turns():
 def test_gear_train_rejects_bad_teeth():
     with pytest.raises(anim.MotionError):
         anim.gear_periods([12, 2], 1.0)
+
+
+def _wind(**overrides) -> anim.WindChain:
+    arguments = {"bones": 6, "duration_s": 4.0, "fps": FPS, "seed": 11} | overrides
+    return anim.wind_wave(**arguments)
+
+
+def test_wind_wave_closes_the_loop_for_every_bone():
+    chain = _wind(strength=1.7, gust_period_s=2.0)
+    for track in chain.bend + chain.twist:
+        assert track.frame_count == 96
+        assert track.seam_error() < SEAM
+        assert _seam_kink(track) < 1e-9
+
+
+def test_wind_wave_is_deterministic_per_seed():
+    assert _wind() == _wind()
+    assert _wind().bend[-1].values != _wind(seed=12).bend[-1].values
+
+
+def test_wind_wave_amplitude_grows_from_the_attached_edge():
+    chain = _wind()
+    peaks = [max(abs(value) for value in track.values) for track in chain.bend]
+    assert peaks == sorted(peaks)
+    assert peaks[0] < peaks[-1] / 3
+
+
+def test_wind_wave_tip_deflection_stays_within_the_bend_budget():
+    chain = _wind(strength=0.8, max_bend=0.5, gust_depth=0.25)
+    totals = [sum(track.values[frame] for track in chain.bend) for frame in range(chain.bend[0].frame_count + 1)]
+    assert max(abs(total) for total in totals) <= 0.5 * 0.8 * 1.25 + 1e-12
+
+
+def test_stronger_wind_runs_more_wave_cycles():
+    def crossings(track: anim.Track) -> int:
+        return sum(1 for a, b in zip(track.values, track.values[1:]) if a * b < 0)
+
+    assert crossings(_wind(strength=2.0).bend[0]) > crossings(_wind(strength=0.5).bend[0])
+
+
+def test_wind_wave_flutter_is_faster_than_the_wave():
+    chain = _wind(gust_depth=0.0)
+    bend_turns = sum(1 for a, b in zip(chain.bend[2].values, chain.bend[2].values[1:]) if a * b < 0)
+    twist_turns = sum(1 for a, b in zip(chain.twist[2].values, chain.twist[2].values[1:]) if a * b < 0)
+    assert twist_turns == pytest.approx(anim.FLUTTER_HARMONIC * bend_turns, abs=1)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [{"bones": 0}, {"strength": 0.0}, {"gust_period_s": 3.0}, {"gust_depth": 1.0}, {"duration_s": 4.01}, {"wavelength_bones": -1.0}],
+)
+def test_wind_wave_rejects_bad_parameters(overrides):
+    with pytest.raises(anim.MotionError):
+        _wind(**overrides)

@@ -301,6 +301,98 @@ def _animated_fixture(hs, out_dir: Path) -> dict:
     return {"checks": checks, "rod_tip_errors": rod_tip_errors, "clips": clips, "ok": all(checks.values())}
 
 
+def _wind_flag_fixture(hs, out_dir: Path) -> dict:
+    """A flag on a pole, skinned to a 6-bone chain running out from the pole and waved by
+    assets.motion.animate_wind: the free edge must swing sideways while the pole edge stays put,
+    and the clip must export as one skinned clip over the chain."""
+    from assets import export, motion
+    from terrain import config
+
+    config.ASSET_OUT_DIR = out_dir
+    scene = bpy.context.scene
+    scene.render.fps = 24
+    material = bpy.data.materials.new("flag_atlas")
+    material.use_nodes = True
+    bones = [f"flag{index}" for index in range(6)]
+    length = 1.2
+    height = 0.8
+    pole_x = 60.0
+    top = 2.4
+
+    pole = hs.cylinder_between("flag_pole", (pole_x, 0.0, 0.0), (pole_x, 0.0, top + 0.1), 0.03, segments=8)
+    cloth_mesh = bpy.data.meshes.new("flag_cloth_mesh")
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1.0)
+    for vert in bm.verts:
+        vert.co.x = (vert.co.x + 0.5) * length + 0.035
+        vert.co.y *= 0.01
+        vert.co.z = (vert.co.z - 0.5) * height
+    edges = [edge for edge in bm.edges if abs(edge.verts[0].co.x - edge.verts[1].co.x) > 1e-6]
+    bmesh.ops.subdivide_edges(bm, edges=edges, cuts=23, use_grid_fill=True)
+    bm.to_mesh(cloth_mesh)
+    bm.free()
+    cloth = bpy.data.objects.new("flag_cloth", cloth_mesh)
+    bpy.context.collection.objects.link(cloth)
+
+    rig = bpy.data.objects.new("flag_rig", bpy.data.armatures.new("flag_rig_data"))
+    rig.location = (pole_x, 0.0, top)
+    bpy.context.collection.objects.link(rig)
+    for other in bpy.context.selected_objects:
+        other.select_set(False)
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode="EDIT")
+    segment = length / len(bones)
+    parent = None
+    for index, bone_name in enumerate(bones):
+        bone = rig.data.edit_bones.new(bone_name)
+        bone.head = (0.035 + index * segment, 0.0, 0.0)
+        bone.tail = (0.035 + (index + 1) * segment, 0.0, 0.0)
+        bone.parent = parent
+        bone.use_connect = parent is not None
+        parent = bone
+    bpy.ops.object.mode_set(mode="OBJECT")
+    for index, bone_name in enumerate(bones):
+        group = cloth.vertex_groups.new(name=bone_name)
+        centre = 0.035 + (index + 0.5) * segment
+        for vert in cloth.data.vertices:
+            weight = max(0.0, 1.0 - abs(vert.co.x - centre) / segment)
+            if weight > 0.0:
+                group.add([vert.index], weight, "REPLACE")
+    cloth.parent = rig
+    cloth.modifiers.new("Armature", "ARMATURE").object = rig
+    for part in (pole, cloth):
+        part.data.materials.append(material)
+
+    entry = motion.animate_wind(rig, bones, 2.5, seed=5, strength=1.0)
+    root_drift = 0.0
+    tip_sideways = 0.0
+    tip_vertical = 0.0
+    for frame in range(1, 62, 4):
+        scene.frame_set(frame)
+        root = rig.matrix_world @ rig.pose.bones[bones[0]].head
+        tip = rig.matrix_world @ rig.pose.bones[bones[-1]].tail
+        root_drift = max(root_drift, (root - rig.matrix_world @ rig.data.bones[bones[0]].head_local).length)
+        tip_sideways = max(tip_sideways, abs(tip.y))
+        tip_vertical = max(tip_vertical, abs(tip.z - top))
+    scene.frame_set(1)
+
+    result = export.export_asset([pole, rig, cloth], name="hardsurface-flag", kind="prop", animations=[entry])
+    document = export.glb_document(result.glb_path)
+    checks = {
+        "entry": entry["kind"] == "skinned" and entry["state"] == "idle" and entry["nodes"] == bones,
+        "root_pinned": root_drift < 1e-5,
+        "tip_swings_sideways": tip_sideways > 0.1,
+        "tip_stays_level": tip_vertical < tip_sideways,
+        "glb_clip": [animation["name"] for animation in document.get("animations", [])] == ["idle_wind"],
+    }
+    return {
+        "checks": checks,
+        "tip_sideways": tip_sideways,
+        "tip_vertical": tip_vertical,
+        "ok": all(checks.values()),
+    }
+
+
 def main() -> None:
     repo_root, result_path = _read_args()
     sys.path.insert(0, str(repo_root))
@@ -316,8 +408,9 @@ def main() -> None:
             for report in checks.values()
         ) and checks["cylinder_between"]["reaches_target"] and checks["stairs_monotonic"]["ok"] and checks["door_frame_frame"]["brackets_opening"] and checks["attach_to_surface"]["clears_standoff"] and checks["box_between"]["spans_endpoints"] and checks["box_between_up"]["width_follows_up"] and checks["roof_slope"]["top_on_plane"] and checks["wobble"]["bounded"] and checks["wobble"]["footing_flush"]
         motion_check = _animated_fixture(hs, result_path.parent / "assets_out")
-        ok = ok and motion_check["ok"]
-        payload = {"ok": ok, "checks": checks, "motion_check": motion_check}
+        wind_check = _wind_flag_fixture(hs, result_path.parent / "assets_out")
+        ok = ok and motion_check["ok"] and wind_check["ok"]
+        payload = {"ok": ok, "checks": checks, "motion_check": motion_check, "wind_check": wind_check}
     except Exception:
         payload = {"ok": False, "error": traceback.format_exc()}
 

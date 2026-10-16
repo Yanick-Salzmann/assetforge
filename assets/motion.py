@@ -103,16 +103,20 @@ def write_clip(
     clip: str,
     fps: int,
     loop: bool = True,
+    bones: Sequence[str] = (),
 ) -> dict:
     """One action <state>_<clip> keying every (part, data_path, index, values) channel from
-    FIRST_FRAME, a slot per part, pushed to an NLA track per part; returns its animations[] entry."""
+    FIRST_FRAME, a slot per part, pushed to an NLA track per part; returns its animations[] entry.
+    With bones the clip is skinned: the parts are armatures keyed on those pose bones."""
     if not channels:
         raise MotionRigError("a clip needs at least one channel")
     lengths = {len(values) for _, _, _, values in channels}
     if len(lengths) != 1 or min(lengths) < 2:
         raise MotionRigError("every channel of a clip needs the same number of samples, at least 2")
     for obj, _, _, _ in channels:
-        if not animation_manifest.ANIM_NODE_NAME.match(obj.name):
+        if bones and obj.type != "ARMATURE":
+            raise MotionRigError(f"{obj.name}: skinned clips key armatures only")
+        if not bones and not animation_manifest.ANIM_NODE_NAME.match(obj.name):
             raise MotionRigError(f"{obj.name}: animated parts are named <part>{animation_manifest.ANIM_SUFFIX}; use pivot_part")
     samples = lengths.pop()
     name = animation_manifest.clip_name(state, clip)
@@ -150,7 +154,8 @@ def write_clip(
         nodes.append(obj_name)
 
     frames = samples - 1
-    return animation_manifest.manifest_entry(state, clip, "rigid", frames / fps, fps, nodes, loop=loop)
+    kind = "skinned" if bones else "rigid"
+    return animation_manifest.manifest_entry(state, clip, kind, frames / fps, fps, list(bones) or nodes, loop=loop)
 
 
 def _index(axis: str) -> int:
@@ -270,3 +275,40 @@ def animate_gear_train(
     channels = [(gear, "rotation_euler", _index(_axis(gear, axis)), track.values) for gear, track in zip(gears, tracks)]
     return write_clip(channels, state, clip, rate)
 
+
+
+def animate_wind(
+    rig: bpy.types.Object,
+    bones: Sequence[str],
+    duration_s: float,
+    seed: int,
+    strength: float = 1.0,
+    clip: str = "wind",
+    fps: int | None = None,
+    bend_axis: str = "Z",
+    twist_axis: str = "Y",
+    gust_period_s: float | None = None,
+    max_bend: float = 0.8,
+    flutter: float = 0.35,
+) -> dict:
+    """An idle wind clip on a bone chain listed from the attached edge outwards: each pose bone
+    bends about its local bend_axis with the travelling wave and twists about twist_axis (Y runs
+    along a bone) with the flutter, from assets.animation.wind_wave."""
+    if rig.type != "ARMATURE":
+        raise MotionRigError(f"{rig.name}: wind needs an armature")
+    if bend_axis not in AXES or twist_axis not in AXES or bend_axis == twist_axis:
+        raise MotionRigError(f"bend_axis and twist_axis must be two different axes of {AXES}")
+    missing = [bone for bone in bones if bone not in rig.pose.bones]
+    if missing:
+        raise MotionRigError(f"{rig.name} has no bones {missing}")
+    rate = _scene_fps(fps)
+    chain = animation.wind_wave(
+        len(bones), duration_s, rate, seed, strength=strength, gust_period_s=gust_period_s, max_bend=max_bend, flutter=flutter
+    )
+    channels = []
+    for bone, bend, twist in zip(bones, chain.bend, chain.twist):
+        rig.pose.bones[bone].rotation_mode = "XYZ"
+        data_path = f'pose.bones["{bone}"].rotation_euler'
+        channels.append((rig, data_path, _index(bend_axis), bend.values))
+        channels.append((rig, data_path, _index(twist_axis), twist.values))
+    return write_clip(channels, "idle", clip, rate, bones=bones)
