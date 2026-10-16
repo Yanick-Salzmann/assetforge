@@ -306,6 +306,13 @@ validator too.
   state: `idle` plays the idle clips, `working` the working clips plus every idle clip whose nodes
   no working clip touches; `#anim=<state>&clip=<name>` pins it, `window.viewerState.animation`
   reports it. Buildings on a terrain play idle with a per-instance phase hashed from name and index.
+- Cloth (`assets/cloth_shapes.py` pure, `assets/cloth.py` bpy): `cloth.flag/pennant/banner/awning(name,
+  material=..., **params)` build a closed thin-slab panel `<name>_cloth` (front/back UV islands at one
+  density, rim collapsed), skinned to a bone chain `<name>_rig` / `<name>_bone<i>` running from the
+  attached edge (pinned to bone 0) to the free edge, each bone's local Z across the cloth, plus closed
+  rods `<name>_rod<i>` with the cloth `STANDOFF_M` off them. `cloth.animate_wind(rig, duration_s, seed)`
+  keys `idle_wind_<name>` with the per-kind `cloth_shapes.MAX_BEND`; export `rig.objects` with the
+  entry. `assets/blender_scripts/cloth_selftest.py` exports and validates every type.
 - FX sockets (`assets/fx_manifest.py`, `assets/fx.py`): `asset.json` `fx[]`, one entry per emitter
   with `node`, `type` (fire, smoke, sparks, steam, flicker_light), `state` (idle/working), `rate`
   (per second), `size` (m) and `colour` (linear RGB). `node` is an empty named `FX_<type>[_<label>]`
