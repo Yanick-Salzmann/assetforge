@@ -283,7 +283,9 @@ def _animated_fixture(hs, out_dir: Path) -> dict:
         rod_tip_errors.append(max(abs(offset.x), abs(offset.z)))
     scene.frame_set(1)
 
-    result = export.export_asset(parts, name="hardsurface-motion", kind="prop", animations=[crank_entry, gear_entry])
+    mechanisms = [motion.crank_linkage(crank, rod, piston, crank_entry), motion.gear_mesh(gears, [12, 18], gear_entry)]
+    result = export.export_asset(parts, name="hardsurface-motion", kind="prop", animations=[crank_entry, gear_entry], mechanisms=mechanisms)
+    shipped = json.loads(result.manifest_path.read_text(encoding="utf-8"))
     document = export.glb_document(result.glb_path)
     names = [node.get("name") for node in document.get("nodes", [])]
     clips = {
@@ -296,6 +298,7 @@ def _animated_fixture(hs, out_dir: Path) -> dict:
         "clip_replaced": len(bpy.data.actions) == actions_before + 1 and len(crank.animation_data.nla_tracks) == 1,
         "rod_rides_wrist_pin": max(rod_tip_errors) < 1e-4,
         "gear_loop_s": gear_entry["duration_s"] == 3.0,
+        "mechanisms_shipped": shipped.get("mechanisms") == mechanisms,
         "glb_clips": clips == {"working_crank": ["crank_ANIM", "piston_ANIM", "rod_ANIM"], "working_gears": ["gear0_ANIM", "gear1_ANIM"]},
     }
     return {"checks": checks, "rod_tip_errors": rod_tip_errors, "clips": clips, "ok": all(checks.values())}

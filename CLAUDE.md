@@ -290,7 +290,13 @@ validator too.
   velocity, bones/clip length/keyframes stay within `MAX_BONES`/`CLIP_MAX_S`/`CLIP_MAX_KEYFRAMES`,
   and a swept-collision pass over each rigid clip finds no moving part sinking more than
   `CONTACT_TOLERANCE_M` into another LOD0 part beyond what already overlaps at rest. Skinned mesh
-  nodes are measured at their bind pose. The viewer (`viewer/static/animation.js`) plays clips by
+  nodes are measured at their bind pose.
+  Couplings (`assets/mechanism_manifest.py`, `assets/mechanism_checks.py`): `asset.json`
+  `mechanisms[]` on rigid clips - `gears` (`gears: [{node, teeth}]`, each meshing with the next:
+  parallel axes, opposite turn, tooth ratio within `GEAR_SLIP_TEETH`) and `linkage`
+  (`joints: [{node, on}]`, `node`'s origin stays pinned in `on`'s frame within
+  `LINKAGE_TOLERANCE_M`). `motion.gear_mesh`/`motion.crank_linkage` return the entries for
+  `export_asset(..., mechanisms=[...])`; `validate_asset` samples every frame. The viewer (`viewer/static/animation.js`) plays clips by
   state: `idle` plays the idle clips, `working` the working clips plus every idle clip whose nodes
   no working clip touches; `#anim=<state>&clip=<name>` pins it, `window.viewerState.animation`
   reports it. Buildings on a terrain play idle with a per-instance phase hashed from name and index.

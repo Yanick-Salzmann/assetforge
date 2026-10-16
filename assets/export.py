@@ -19,6 +19,10 @@ are written to asset.json's animations[]. Without animations the export is uncha
 Passing fx (assets.fx_manifest entries) ships each entry's FX_<type> socket empty (made by
 assets.fx.add_fx_socket and included in objects) as a glb node and records the entries in
 asset.json's fx[].
+
+Passing mechanisms (assets.mechanism_manifest entries: gear chains and pinned linkages on rigid
+clips) records them in asset.json's mechanisms[] for validate_asset's coupling checks; they need
+the animations they name.
 """
 
 from __future__ import annotations
@@ -35,7 +39,7 @@ from typing import Iterator, Sequence
 import bpy
 from mathutils import Vector
 
-from assets import animation_manifest, fx_manifest, team_colour
+from assets import animation_manifest, fx_manifest, mechanism_manifest, team_colour
 from assets.recipe import validate_name
 from terrain import config
 
@@ -71,6 +75,7 @@ class ExportResult:
     bbox_max: tuple[float, float, float]
     animations: list[dict] = field(default_factory=list)
     fx: list[dict] = field(default_factory=list)
+    mechanisms: list[dict] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         result = {
@@ -86,6 +91,8 @@ class ExportResult:
             result["animations"] = self.animations
         if self.fx:
             result["fx"] = self.fx
+        if self.mechanisms:
+            result["mechanisms"] = self.mechanisms
         return result
 
 
@@ -328,6 +335,7 @@ def export_asset(
     team_mask: bpy.types.Image | None = None,
     animations: Sequence[dict] | None = None,
     fx: Sequence[dict] | None = None,
+    mechanisms: Sequence[dict] | None = None,
 ) -> ExportResult:
     """Export objects to out/assets/<name>/<name>.glb, write their textures to textures/, and
     record tri counts per LOD, world bbox, materials and texture list in asset.json.
@@ -349,7 +357,10 @@ def export_asset(
     carries the base-centre shift, and the root is removed again afterwards.
 
     fx, a list of assets.fx_manifest entries, names FX_<type> socket empties among objects; every
-    socket needs an entry and every entry its socket."""
+    socket needs an entry and every entry its socket.
+
+    mechanisms, a list of assets.mechanism_manifest entries, couples the parts of the rigid clips
+    in animations; they are recorded in asset.json for validate_asset."""
     objects = list(objects)
     if not objects:
         raise ExportError("export requires at least one object")
@@ -361,9 +372,16 @@ def export_asset(
     animations = [dict(entry) for entry in animations or ()]
     fx = [dict(entry) for entry in fx or ()]
     _check_fx_inputs(objects, fx)
+    mechanisms = [dict(entry) for entry in mechanisms or ()]
+    if mechanisms:
+        if not animations:
+            raise ExportError("mechanisms couple animated parts; pass the animations they name")
+        errors = mechanism_manifest.manifest_errors(mechanisms, animations)
+        if errors:
+            raise ExportError("; ".join(errors))
     if animations:
         _check_animation_inputs(objects, animations)
-        return _export_animated(objects, name, kind, team_mask, animations, fx)
+        return _export_animated(objects, name, kind, team_mask, animations, fx, mechanisms)
 
     shift = _base_centre_shift(objects)
     top_level = _top_level(objects)
@@ -373,7 +391,7 @@ def export_asset(
     try:
         out_dir = config.ASSET_OUT_DIR / name
         glb_path = export_glb(objects, out_dir / f"{name}.glb")
-        result = _write_manifest(objects, name, kind, team_mask, glb_path, [], fx)
+        result = _write_manifest(objects, name, kind, team_mask, glb_path, [], fx, [])
     finally:
         for obj in top_level:
             obj.location = obj.location + shift
@@ -388,6 +406,7 @@ def _export_animated(
     team_mask: bpy.types.Image | None,
     animations: list[dict],
     fx: list[dict],
+    mechanisms: list[dict],
 ) -> ExportResult:
     with _rest_pose(objects):
         shift = _base_centre_shift(objects)
@@ -397,7 +416,7 @@ def _export_animated(
         glb_path = export_animated_glb([root, *objects], out_dir / f"{name}.glb")
         _check_exported_clips(glb_path, animations)
         with _rest_pose(objects):
-            return _write_manifest(objects, name, kind, team_mask, glb_path, animations, fx)
+            return _write_manifest(objects, name, kind, team_mask, glb_path, animations, fx, mechanisms)
     finally:
         _detach_root(root, saved)
 
@@ -425,6 +444,7 @@ def _write_manifest(
     glb_path: Path,
     animations: list[dict],
     fx: list[dict],
+    mechanisms: list[dict],
 ) -> ExportResult:
     out_dir = glb_path.parent
     materials = _unique_materials(objects)
@@ -451,6 +471,8 @@ def _write_manifest(
         manifest[animation_manifest.MANIFEST_KEY] = animations
     if fx:
         manifest[fx_manifest.MANIFEST_KEY] = fx
+    if mechanisms:
+        manifest[mechanism_manifest.MANIFEST_KEY] = mechanisms
     manifest_path = out_dir / MANIFEST_NAME
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -464,4 +486,5 @@ def _write_manifest(
         bbox_max=bbox_max,
         animations=animations,
         fx=fx,
+        mechanisms=mechanisms,
     )

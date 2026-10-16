@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from assets import animation_checks, animation_manifest, atlas_raster, fx_manifest, team_colour
+from assets import animation_checks, animation_manifest, atlas_raster, fx_manifest, mechanism_checks, mechanism_manifest, team_colour
 from library import gltf
 from terrain import config
 
@@ -161,6 +161,7 @@ def validate_asset(name: str, kind: str) -> ValidationReport:
     checks.append(manifest_check)
     if manifest_check.passed:
         checks.extend(_check_animations(document, buffers, animations, kind, rigid_parts))
+        checks.extend(_check_mechanisms(name, document, buffers, animations))
     checks.append(_check_fx(name, document, world_bbox_min, world_bbox_max))
 
     return ValidationReport(
@@ -629,6 +630,22 @@ def _check_animations(
     findings += animation_checks.seam_checks(document, animations, clips)
     findings += animation_checks.budget_checks(document, animations, clips, kind)
     findings += animation_checks.sweep_checks(document, animations, clips, rigid_parts)
+    return [CheckResult(*finding) for finding in findings]
+
+
+def _check_mechanisms(name: str, document: dict, buffers: list[bytes], animations: list[dict]) -> list[CheckResult]:
+    manifest_path = config.ASSET_OUT_DIR / name / "asset.json"
+    if not manifest_path.is_file():
+        return []
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if mechanism_manifest.MANIFEST_KEY not in manifest:
+        return []
+    mechanisms = manifest[mechanism_manifest.MANIFEST_KEY]
+    errors = mechanism_manifest.manifest_errors(mechanisms, animations)
+    if errors:
+        return [CheckResult("mechanisms", False, "; ".join(errors))]
+    clips = animation_checks.read_clips(document, buffers)
+    findings = mechanism_checks.mechanism_checks(document, animations, mechanisms, clips)
     return [CheckResult(*finding) for finding in findings]
 
 

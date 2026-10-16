@@ -9,6 +9,8 @@ pivot_part moves a part's origin onto its pivot without moving its geometry and 
 interpolation, writes it into one action named <state>_<clip> with a slot per animated part, pushes
 that action onto an NLA track of the same name, and returns the animations[] entry to hand to
 assets.export.export_asset. Calling a helper again with the same clip name replaces the clip.
+crank_linkage and gear_mesh return the matching mechanisms[] entries (assets.mechanism_manifest)
+for export_asset(..., mechanisms=[...]), so validate_asset checks the parts stay coupled.
 
 Rotations are about a principal axis of the part's parent space, so parts rest with identity
 rotation. The crank-slider works in the plane spanned by PLANE_AXES[axis] = (u, v), right-handed
@@ -26,6 +28,7 @@ from mathutils import Matrix, Vector
 
 from assets import animation
 from assets import animation_manifest
+from assets import mechanism_manifest
 
 FIRST_FRAME = 1
 AXES = ("X", "Y", "Z")
@@ -312,3 +315,12 @@ def animate_wind(
         channels.append((rig, data_path, _index(bend_axis), bend.values))
         channels.append((rig, data_path, _index(twist_axis), twist.values))
     return write_clip(channels, "idle", clip, rate, bones=bones)
+
+
+def crank_linkage(crank: bpy.types.Object, rod: bpy.types.Object, slider: bpy.types.Object, entry: dict) -> dict:
+    """The rod's crank-pin end rides the crank and the slider's wrist pin rides the rod."""
+    return mechanism_manifest.linkage_entry(entry["name"], [(rod.name, crank.name), (slider.name, rod.name)])
+
+
+def gear_mesh(gears: Sequence[bpy.types.Object], teeth: Sequence[int], entry: dict) -> dict:
+    return mechanism_manifest.gears_entry(entry["name"], [gear.name for gear in gears], list(teeth))
