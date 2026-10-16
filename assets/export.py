@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import json
 import math
-import re
 import struct
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -56,8 +55,6 @@ VALID_KINDS = (
     "creature",
     "organic_prop",
 )
-
-_LOD_SUFFIX = re.compile(r"_LOD(\d+)$")
 
 
 class ExportError(ValueError):
@@ -105,8 +102,7 @@ def _select_only(objects: Sequence[bpy.types.Object]) -> None:
 
 
 def _lod_group(object_name: str) -> str:
-    match = _LOD_SUFFIX.search(object_name)
-    return f"LOD{match.group(1)}" if match else "LOD0"
+    return f"LOD{animation_manifest.lod_index(object_name)}"
 
 
 def _meshes(objects: Sequence[bpy.types.Object]) -> list[bpy.types.Object]:
@@ -354,7 +350,9 @@ def export_asset(
 
     animations, a list of assets.animation_manifest entries, exports the hierarchy instead: rigid
     <part>_ANIM nodes and armatures stay child nodes under a root named after the asset that
-    carries the base-centre shift, and the root is removed again afterwards.
+    carries the base-centre shift, and the root is removed again afterwards. The reduced-LOD
+    copies lod.generate_lods made of a rigid node (<part>_LOD<n>_ANIM) are appended to its
+    entry's nodes.
 
     fx, a list of assets.fx_manifest entries, names FX_<type> socket empties among objects; every
     socket needs an entry and every entry its socket.
@@ -380,6 +378,8 @@ def export_asset(
         if errors:
             raise ExportError("; ".join(errors))
     if animations:
+        names = [obj.name for obj in objects]
+        animations = [animation_manifest.with_lod_copies(entry, names) for entry in animations]
         _check_animation_inputs(objects, animations)
         return _export_animated(objects, name, kind, team_mask, animations, fx, mechanisms)
 

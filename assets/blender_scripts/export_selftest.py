@@ -294,6 +294,72 @@ def _rigid_export(export_module, out_dir) -> dict:
     return {"checks": checks, "nodes": names, "ok": all(checks.values())}
 
 
+def _wheel(name: str, centre, material) -> "bpy.types.Object":
+    mesh = bpy.data.meshes.new(f"{name}_mesh")
+    bm = bmesh.new()
+    bmesh.ops.create_cone(bm, cap_ends=True, segments=24, radius1=0.6, radius2=0.6, depth=0.1)
+    bmesh.ops.translate(bm, vec=centre, verts=bm.verts[:])
+    bm.to_mesh(mesh)
+    bm.free()
+    obj = bpy.data.objects.new(name, mesh)
+    obj.data.materials.append(material)
+    bpy.context.collection.objects.link(obj)
+    return obj
+
+
+def _animated_lod_export(export_module, out_dir) -> dict:
+    """A detailed body carrying a spinning wheel parented to it, through game_ready_pass,
+    generate_lods(moving=...) and export: every LOD must carry its own reduced wheel copy under
+    that LOD's body, keyed by the one clip, on one material per LOD."""
+    from assets import game_ready, lod, motion
+
+    _clear_animation_scene()
+    bpy.context.scene.pop(motion.CLIPS_PROPERTY, None)
+    material = bpy.data.materials.new("animated_lod_atlas")
+    material.use_nodes = True
+    body = _detailed_box("Mill", material)
+    wheel = _wheel("Wheel", (0.0, 0.0, 1.2), material)
+    motion.pivot_part(wheel, (0.0, 0.0, 1.2), "Z")
+    wheel.parent = body
+    wheel.matrix_parent_inverse = body.matrix_world.inverted()
+    entry = motion.animate_spin(wheel, SPIN_FRAMES / FPS, state="idle", clip="wheel_spin")
+    recorded = motion.recorded_clips() == [entry]
+
+    game_ready.game_ready_pass([body, wheel], atlas_size=256)
+    pivot_kept = _close(list(wheel.location), [0.0, 0.0, 1.2])
+    lod_set = lod.generate_lods(body, ratios=(1.0, 0.5, 0.15), texture_size=128, moving=[wheel])
+
+    name = "export-selftest-animated-lod"
+    result = export_module.export_asset(lod_set.objects, name=name, kind="prop", animations=[entry])
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    document = export_module.glb_document(result.glb_path)
+    names = [node.get("name") for node in document.get("nodes", [])]
+    nodes = dict(zip(names, document.get("nodes", [])))
+    copies = ["Wheel_ANIM", "Wheel_LOD1_ANIM", "Wheel_LOD2_ANIM"]
+    clip_targets = sorted(
+        {names[channel["target"]["node"]] for animation in document.get("animations", []) for channel in animation["channels"]}
+    )
+    counts = result.triangle_counts
+    checks = {
+        "recorded": recorded,
+        "pivot_kept": pivot_kept,
+        "levels": [[obj.name for obj in level] for level in lod_set.levels]
+        == [["Mill_LOD0", "Wheel_ANIM"], ["Mill_LOD1", "Wheel_LOD1_ANIM"], ["Mill_LOD2", "Wheel_LOD2_ANIM"]],
+        "manifest_nodes": [clip["nodes"] for clip in manifest.get("animations", [])] == [copies],
+        "clip_targets": clip_targets == copies,
+        "copies_under_their_body": all(
+            [names[index] for index in nodes.get(f"Mill_LOD{level}", {}).get("children", [])] == [copy]
+            for level, copy in enumerate(copies)
+        ),
+        "copies_at_pivot": all(
+            _close(nodes.get(copy, {}).get("translation"), _gltf_vector((0.0, 0.0, 1.2))) for copy in copies
+        ),
+        "lod_counts": list(counts) == ["LOD0", "LOD1", "LOD2"] and counts["LOD0"] > counts["LOD1"] > counts["LOD2"] > 0,
+        "one_material_per_lod": len(result.materials) == 3 and len(result.textures) == 6,
+    }
+    return {"checks": checks, "nodes": names, "counts": counts, "ok": all(checks.values())}
+
+
 def _skinned_export(export_module, out_dir) -> dict:
     from assets import animation_manifest
 
@@ -426,7 +492,8 @@ def main() -> None:
         rigid_check = _rigid_export(export, out_dir)
         skinned_check = _skinned_export(export, out_dir)
         fx_check = _fx_socket_export(export, out_dir)
-        ok = ok and rigid_check["ok"] and skinned_check["ok"] and fx_check["ok"]
+        animated_lod_check = _animated_lod_export(export, out_dir)
+        ok = ok and rigid_check["ok"] and skinned_check["ok"] and fx_check["ok"] and animated_lod_check["ok"]
 
         payload = {
             "ok": ok,
@@ -438,6 +505,7 @@ def main() -> None:
             "rigid_check": rigid_check,
             "skinned_check": skinned_check,
             "fx_check": fx_check,
+            "animated_lod_check": animated_lod_check,
         }
     except Exception:
         payload = {"ok": False, "error": traceback.format_exc()}

@@ -15,7 +15,7 @@ import bpy
 from mathutils import Vector
 
 TRANSPARENT_BOUNCES = 64
-LOWER_LOD_SUFFIX = re.compile(r"_LOD[1-9]\d*$")
+LOWER_LOD_SUFFIX = re.compile(r"_LOD[1-9]\d*(?:_ANIM)?$")
 
 VIEW_DIRECTIONS = {
     "front": Vector((0.0, 1.0, 0.0)),

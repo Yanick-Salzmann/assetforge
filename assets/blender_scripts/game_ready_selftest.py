@@ -63,6 +63,43 @@ def _mesh_report(obj: "bpy.types.Object") -> dict:
     return {"non_manifold_edges": non_manifold, "loose_verts": loose, "location": list(obj.location)}
 
 
+def _collapsed_faces(obj: "bpy.types.Object") -> int:
+    layer = obj.data.uv_layers.active
+    collapsed = 0
+    for polygon in obj.data.polygons:
+        uvs = [layer.data[index].uv for index in polygon.loop_indices]
+        area = 0.0
+        for i in range(len(uvs)):
+            a, b = uvs[i], uvs[(i + 1) % len(uvs)]
+            area += a.x * b.y - b.x * a.y
+        if abs(area) < 1e-12:
+            collapsed += 1
+    return collapsed
+
+
+def _moving_part_case(gr) -> dict:
+    """A static stub and a moving <part>_ANIM plug, each half sunk into a body: the stub's buried
+    faces lose their texels, the plug keeps its pivot and every face, since it uncovers them when
+    it moves."""
+    from assets import motion
+
+    material = bpy.data.materials.new("scratch_moving")
+    body = _box("body", (2.0, 2.0, 2.0), (0.0, 0.0, 0.0), material)
+    stub = _box("stub", (0.4, 0.4, 0.4), (-0.5, 0.0, 1.7), material)
+    plug = _box("plug", (0.4, 0.4, 0.4), (0.5, 0.0, 1.7), material)
+    for obj in (body, stub, plug):
+        obj.scale = (1.0, 1.0, 1.0)
+        obj.rotation_euler = (0.0, 0.0, 0.0)
+    bpy.context.view_layer.update()
+    motion.pivot_part(plug, (0.5, 0.0, 1.7), "Z")
+    gr.game_ready_pass([body, stub, plug], atlas_size=512)
+    return {
+        "plug_location": [round(value, 6) for value in plug.location],
+        "stub_collapsed": _collapsed_faces(stub),
+        "plug_collapsed": _collapsed_faces(plug),
+    }
+
+
 def main() -> None:
     repo_root, result_path = _read_args()
     sys.path.insert(0, str(repo_root))
@@ -98,8 +135,16 @@ def main() -> None:
             and uv_min[0] >= -1e-6 and uv_min[1] >= -1e-6
             and uv_max[0] <= 1.0 + 1e-6 and uv_max[1] <= 1.0 + 1e-6
         )
+        moving = _moving_part_case(gr)
+        ok = (
+            ok
+            and moving["plug_location"] == [0.5, 0.0, 1.7]
+            and moving["stub_collapsed"] > 0
+            and moving["plug_collapsed"] == 0
+        )
         payload = {
             "ok": ok,
+            "moving": moving,
             "report": report.as_dict(),
             "mesh_checks": mesh_checks,
             "materials_used": sorted(materials_used),

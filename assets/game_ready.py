@@ -22,7 +22,7 @@ import numpy as np
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
-from assets import atlas_bake, atlas_pack, atlas_raster, uv_strips
+from assets import animation_manifest, atlas_bake, atlas_pack, atlas_raster, uv_strips
 from assets.hardsurface import apply_transforms, recalc_normals
 from assets.uv_islands import axis_key, face_islands, project_point, shapes_overlap
 
@@ -116,6 +116,12 @@ def _select_only(objects: Sequence[bpy.types.Object]) -> None:
     bpy.context.view_layer.objects.active = objects[0]
 
 
+def is_moving_part(obj: bpy.types.Object) -> bool:
+    """A rigid animated part (<part>_ANIM): its origin is its pivot, so its location is never
+    applied into the mesh, and faces it hides at rest may show once it moves."""
+    return bool(animation_manifest.ANIM_NODE_NAME.match(obj.name))
+
+
 def triangulate(obj: bpy.types.Object) -> bpy.types.Object:
     """Convert every ngon/quad to triangles so later UV packing sees the same primitives the
     exporter and validator do - packing ngons approximates their shape and leaves more islands
@@ -144,15 +150,17 @@ def _inside(tree: BVHTree, point: Vector) -> bool:
     return True
 
 
-def hidden_faces(meshes: Sequence[bmesh.types.BMesh]) -> list[set[int]]:
+def hidden_faces(meshes: Sequence[bmesh.types.BMesh], moving: Sequence[bool] | None = None) -> list[set[int]]:
     """Per mesh, the indices of faces no camera can see: downward faces lying on the asset's base
     plane, and faces whose centre and (slightly pulled-in) corners all sit inside another part's
     closed volume - a pot's foot sunk into the plinth, a beam end buried in a wall. Meshes must be
     in a shared coordinate frame (transforms applied) and every part closed, which validate_asset
     already requires. These faces keep their geometry - the mesh stays watertight - but get no
-    atlas texels (af-zla)."""
+    atlas texels (af-zla). A mesh flagged in moving (an animated part) neither loses faces nor
+    hides another's: what it covers at rest it uncovers in motion."""
     if not meshes:
         return []
+    moving = list(moving) if moving is not None else [False] * len(meshes)
     base_z = min(v.co.z for bm in meshes for v in bm.verts)
     trees = [BVHTree.FromBMesh(bm) for bm in meshes]
     boxes = []
@@ -169,6 +177,9 @@ def hidden_faces(meshes: Sequence[bmesh.types.BMesh]) -> list[set[int]]:
     hidden: list[set[int]] = []
     for index, bm in enumerate(meshes):
         found: set[int] = set()
+        if moving[index]:
+            hidden.append(found)
+            continue
         for face in bm.faces:
             corners = [v.co for v in face.verts]
             if face.normal.z < BASE_FACE_NORMAL_Z and all(co.z <= base_z + BASE_FACE_TOLERANCE for co in corners):
@@ -177,7 +188,7 @@ def hidden_faces(meshes: Sequence[bmesh.types.BMesh]) -> list[set[int]]:
             centre = face.calc_center_median()
             samples = [centre] + [co.lerp(centre, HIDDEN_SAMPLE_PULL) for co in corners]
             for other, (tree, box) in enumerate(zip(trees, boxes)):
-                if other == index or not all(within(sample, box) for sample in samples):
+                if other == index or moving[other] or not all(within(sample, box) for sample in samples):
                     continue
                 if all(_inside(tree, sample) for sample in samples):
                     found.add(face.index)
@@ -258,6 +269,19 @@ def _strip_islands(bm: bmesh.types.BMesh, excluded: set[int]) -> list[dict]:
     return islands
 
 
+def _hidden_in_world(meshes: Sequence[tuple[bpy.types.Object, bmesh.types.BMesh]]) -> list[set[int]]:
+    world = []
+    for obj, bm in meshes:
+        copy = bm.copy()
+        copy.transform(obj.matrix_world)
+        world.append(copy)
+    try:
+        return hidden_faces(world, [is_moving_part(obj) for obj, _ in meshes])
+    finally:
+        for copy in world:
+            copy.free()
+
+
 def uv_unwrap_and_pack(
     objects: Sequence[bpy.types.Object],
     atlas_size: int = ATLAS_SIZE,
@@ -301,7 +325,7 @@ def uv_unwrap_and_pack(
         bm.faces.ensure_lookup_table()
         meshes.append((obj, bm))
 
-    hidden = hidden_faces([bm for _, bm in meshes]) if cull_hidden else [set() for _ in meshes]
+    hidden = _hidden_in_world(meshes) if cull_hidden else [set() for _ in meshes]
     plane_projected = 0
     strip_count = 0
     for (obj, bm), excluded in zip(meshes, hidden):
@@ -438,13 +462,18 @@ def game_ready_pass(objects: Sequence[bpy.types.Object], atlas_size: int = ATLAS
     different coordinate frames permanently, no later call could reconcile it, and the drift
     compounded with every patch. assets/export.py:export_asset now computes the same base-centre
     point but only holds the shift for the instant it writes the glb, then reverts it - so the
-    live scene's object positions never accumulate anything across repeated calls."""
+    live scene's object positions never accumulate anything across repeated calls.
+
+    Animated parts (<part>_ANIM, from motion.pivot_part) keep their transform: the location is
+    their pivot and the rotation is keyed by their clips, so applying it would bake whatever frame
+    the scene sits on into the mesh. They already rest with identity rotation and scale."""
     objects = list(objects)
     if not objects:
         raise ValueError("game_ready_pass requires at least one object")
 
     for obj in objects:
-        apply_transforms(obj)
+        if not is_moving_part(obj):
+            apply_transforms(obj)
         recalc_normals(obj)
 
     uv_unwrap_and_pack(objects)

@@ -8,7 +8,8 @@ pivot_part moves a part's origin onto its pivot without moving its geometry and 
 <part>_ANIM. Every animate_* helper samples a primitive one key per frame from frame 1 with linear
 interpolation, writes it into one action named <state>_<clip> with a slot per animated part, pushes
 that action onto an NLA track of the same name, and returns the animations[] entry to hand to
-assets.export.export_asset. Calling a helper again with the same clip name replaces the clip.
+assets.export.export_asset, and records it on the scene (recorded_clips). Calling a helper again
+with the same clip name replaces the clip.
 crank_linkage and gear_mesh return the matching mechanisms[] entries (assets.mechanism_manifest)
 for export_asset(..., mechanisms=[...]), so validate_asset checks the parts stay coupled.
 
@@ -20,6 +21,7 @@ pin sits at r * u with the rod lying along +u from it.
 
 from __future__ import annotations
 
+import json
 import math
 from typing import Sequence
 
@@ -39,6 +41,7 @@ PLANE_AXES = {
     "Z": ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
 }
 CHANNELS = {"location": "location", "rotation": "rotation_euler"}
+CLIPS_PROPERTY = "assetforge_animations"
 
 
 class MotionRigError(ValueError):
@@ -85,6 +88,28 @@ def _scene_fps(fps: int | None) -> int:
     return scene_fps
 
 
+def recorded_clips() -> list[dict]:
+    """The animations[] entries of every clip written into this scene, in the order written - kept
+    on the scene so a saved .blend carries them to the headless game_ready_build."""
+    raw = bpy.context.scene.get(CLIPS_PROPERTY)
+    return list(json.loads(raw).values()) if raw else []
+
+
+def _store_clips(clips: dict) -> None:
+    bpy.context.scene[CLIPS_PROPERTY] = json.dumps(clips)
+
+
+def _record_clip(entry: dict) -> None:
+    clips = {clip["name"]: clip for clip in recorded_clips()}
+    clips[entry["name"]] = entry
+    _store_clips(clips)
+
+
+def _forget_clip(name: str) -> None:
+    clips = {clip["name"]: clip for clip in recorded_clips() if clip["name"] != name}
+    _store_clips(clips)
+
+
 def _remove_clip(name: str) -> None:
     action = bpy.data.actions.get(name)
     for obj in bpy.data.objects:
@@ -98,6 +123,7 @@ def _remove_clip(name: str) -> None:
             data.action = None
     if action is not None:
         bpy.data.actions.remove(action)
+    _forget_clip(name)
 
 
 def write_clip(
@@ -158,7 +184,9 @@ def write_clip(
 
     frames = samples - 1
     kind = "skinned" if bones else "rigid"
-    return animation_manifest.manifest_entry(state, clip, kind, frames / fps, fps, list(bones) or nodes, loop=loop)
+    entry = animation_manifest.manifest_entry(state, clip, kind, frames / fps, fps, list(bones) or nodes, loop=loop)
+    _record_clip(entry)
+    return entry
 
 
 def _index(axis: str) -> int:

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import io
 import json
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -45,7 +44,6 @@ UV_ISLAND_JOIN_TOLERANCE = 0.02
 COLLAPSED_UV_AREA_EPS = 1e-12
 TEXEL_DENSITY_MAX_RATIO = 2.0
 TEXEL_DENSITY_PERCENTILES = (5.0, 95.0)
-LOD_SUFFIX = re.compile(r"_LOD(\d+)$")
 
 
 class ValidationError(ValueError):
@@ -176,8 +174,7 @@ def validate_asset(name: str, kind: str) -> ValidationReport:
 
 
 def _lod_index(node_name: str) -> int:
-    match = LOD_SUFFIX.search(node_name)
-    return int(match.group(1)) if match else 0
+    return animation_manifest.lod_index(node_name)
 
 
 def _load_primitive(document: dict, buffers: list[bytes], primitive: dict):

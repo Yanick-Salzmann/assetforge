@@ -1022,7 +1022,7 @@ async function scatterPlacements(entry, mask, field) {
   return placements;
 }
 
-const REDUCED_LOD = /_LOD[1-9]\d*$/;
+const REDUCED_LOD = /_LOD[1-9]\d*(?:_ANIM)?$/;
 
 function meshParts(gltf, unitScale) {
   const parts = [];

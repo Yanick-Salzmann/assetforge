@@ -43,3 +43,12 @@ def test_export_asset_writes_glb_textures_and_manifest(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "ASSET_OUT_DIR", out_dir)
     checks = {check.name: check for check in validate.validate_asset("export-selftest-fx", "prop").checks}
     assert checks["fx sockets"].passed, checks["fx sockets"]
+    report = validate.validate_asset("export-selftest-animated-lod", "prop")
+    assert list(report.lod_triangle_counts) == ["LOD0", "LOD1", "LOD2"], report.lod_triangle_counts
+    animation_checks = [
+        check
+        for check in report.checks
+        if check.name in ("animations manifest", "animation clips") or check.name.startswith(("idle_", "Wheel_"))
+    ]
+    assert len(animation_checks) >= 6, [check.name for check in report.checks]
+    assert all(check.passed for check in animation_checks), [check for check in animation_checks if not check.passed]

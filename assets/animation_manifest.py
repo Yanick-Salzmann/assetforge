@@ -20,6 +20,7 @@ LOOPING_STATES = ("idle",)
 ANIM_SUFFIX = "_ANIM"
 CLIP_NAME = re.compile(r"^(idle|working)_[a-z0-9][a-z0-9_]{0,62}$")
 ANIM_NODE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}_ANIM$")
+LOD_NODE_SUFFIX = re.compile(r"_LOD(\d+)(?:_ANIM)?$")
 FIELDS = ("name", "state", "kind", "duration_s", "fps", "loop", "nodes")
 FRAME_TOLERANCE = 1e-3
 MAX_FPS = 120
@@ -34,6 +35,32 @@ def anim_node_name(part: str) -> str:
     if not ANIM_NODE_NAME.match(name):
         raise AnimationManifestError(f"part {part!r} does not make a valid animated node name")
     return name
+
+
+def lod_copy_name(node: str, lod: int) -> str:
+    """The reduced LOD's copy of rigid node <part>_ANIM: <part>_LOD<lod>_ANIM, keyed by the same clip."""
+    return anim_node_name(f"{node.removesuffix(ANIM_SUFFIX)}_LOD{lod}")
+
+
+def lod_index(node: str) -> int:
+    """The LOD a node belongs to: the n of a _LOD<n> or _LOD<n>_ANIM suffix, else 0."""
+    match = LOD_NODE_SUFFIX.search(node)
+    return int(match.group(1)) if match else 0
+
+
+def with_lod_copies(entry: Mapping, names: Sequence[str]) -> dict:
+    """entry with every reduced-LOD copy of its rigid nodes found in names appended to nodes."""
+    if entry["kind"] != "rigid":
+        return dict(entry)
+    present = set(names)
+    copies = []
+    for node in entry["nodes"]:
+        lod = 1
+        while lod_copy_name(node, lod) in present:
+            copies.append(lod_copy_name(node, lod))
+            lod += 1
+    extra = [copy for copy in copies if copy not in entry["nodes"]]
+    return {**entry, "nodes": [*entry["nodes"], *extra]}
 
 
 def clip_name(state: str, clip: str) -> str:

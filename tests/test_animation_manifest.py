@@ -115,3 +115,25 @@ def test_non_object_entry_rejected():
 def test_builder_rejects_bad_state():
     with pytest.raises(am.AnimationManifestError):
         am.manifest_entry("sleeping", "x", "rigid", 1.0, 24, ["X_ANIM"])
+
+
+def test_lod_copy_names_parse_back_to_their_lod():
+    assert am.lod_copy_name("wheel_ANIM", 2) == "wheel_LOD2_ANIM"
+    assert am.lod_index("wheel_LOD2_ANIM") == 2
+    assert am.lod_index("mill_LOD1") == 1
+    assert am.lod_index("wheel_ANIM") == 0
+    assert am.lod_index("mill") == 0
+
+
+def test_with_lod_copies_appends_present_rigid_copies_in_lod_order():
+    entry = am.manifest_entry("idle", "spin", "rigid", 2.0, 24, ["wheel_ANIM", "gear_ANIM"])
+    names = ["mill_LOD0", "wheel_ANIM", "gear_ANIM", "wheel_LOD2_ANIM", "wheel_LOD1_ANIM", "gear_LOD1_ANIM"]
+    expanded = am.with_lod_copies(entry, names)
+    assert expanded["nodes"] == ["wheel_ANIM", "gear_ANIM", "wheel_LOD1_ANIM", "wheel_LOD2_ANIM", "gear_LOD1_ANIM"]
+    assert entry["nodes"] == ["wheel_ANIM", "gear_ANIM"]
+    assert am.entry_errors(expanded) == []
+
+
+def test_with_lod_copies_leaves_skinned_entries_alone():
+    entry = am.manifest_entry("idle", "wave", "skinned", 1.5, 24, ["bone_LOD1_ANIM"])
+    assert am.with_lod_copies(entry, ["bone_LOD1_LOD1_ANIM"]) == entry

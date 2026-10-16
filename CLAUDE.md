@@ -282,7 +282,13 @@ validator too.
   per part, pushed to NLA) at the scene fps and return the `animations[]` entry.
   `export_asset(..., animations=[...])` keeps the hierarchy: top-level objects go under a root node
   named after the asset that carries the base-centre shift (measured in rest pose), one material
-  per LOD, and the glb's clips must match the entries before asset.json is written. Export with
+  per LOD, and the glb's clips must match the entries before asset.json is written.
+  LODs of an animated asset: `game_ready_pass` leaves `_ANIM` transforms unapplied and never culls
+  their faces as hidden; `lod.generate_lods(body, moving=[...])` reduces each `<part>_ANIM` into a
+  `<part>_LOD<n>_ANIM` copy under that LOD's body (same pivot, same clips through the shared action
+  slot, one material per LOD), and export appends the copies to each entry's `nodes`. `write_clip`
+  records every entry on the scene (`motion.recorded_clips()`), so `game_ready_build.py` exports
+  `<name>_*_ANIM` parts with their clips from the saved .blend. Export with
   `export_animation_mode="ACTIONS"`, `export_force_sampling` and `export_anim_slide_to_zero`
   (clips start at t=0); `export_apply` keeps the armature skin. `validate_asset` checks the schema and
   (`assets/animation_checks.py`) that every entry matches a glb clip and vice versa, rigid

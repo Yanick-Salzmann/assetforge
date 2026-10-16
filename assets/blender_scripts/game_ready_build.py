@@ -7,8 +7,11 @@ saves its scene to a .blend and hands that file to this script; the agent launch
 background shell job and is notified when it exits. Invoked as:
     blender --background <blend_path> --factory-startup --python game_ready_build.py -- <repo_root> <name> <kind> <result_json>
 
-Every mesh object named `<name>_*` in the .blend is one part of the asset. Export is refused
-unless the asset's approval gate is open. Progress goes to stdout as `[game_ready] <stage>` lines;
+Every mesh object named `<name>_*` in the .blend is one part of the asset. Parts named
+`<name>_*_ANIM` (motion.pivot_part) are its moving parts: they keep their pivot and stay separate
+nodes through the bake and every LOD, and the clips motion recorded on the scene
+(motion.recorded_clips) are exported with them. Export is refused unless the asset's approval
+gate is open. Progress goes to stdout as `[game_ready] <stage>` lines;
 the outcome goes to result_json as {"ok": true, ...} or {"ok": false, "error": <traceback>}.
 """
 
@@ -46,7 +49,7 @@ def main() -> None:
 
     payload: dict = {"ok": False}
     try:
-        from assets import atlas_bake, export, game_ready, gate, lod
+        from assets import atlas_bake, export, game_ready, gate, lod, motion
         from assets import hardsurface as hs
 
         gate.open_gate(name).require_approved()
@@ -58,21 +61,26 @@ def main() -> None:
             raise ValueError(f"no mesh objects named {name}_* in {bpy.data.filepath}")
         _stage(f"{len(objects)} parts", started)
 
+        moving = [obj for obj in objects if game_ready.is_moving_part(obj)]
+        static = [obj for obj in objects if not game_ready.is_moving_part(obj)]
+        if not static:
+            raise ValueError(f"{name} has no static parts to carry the moving ones")
         for obj in objects:
-            hs.apply_transforms(obj)
+            if obj in static:
+                hs.apply_transforms(obj)
             hs.recalc_normals(obj)
         layout = game_ready.uv_unwrap_and_pack(objects)
         _stage(f"uv unwrap and pack {layout.as_dict()}", started)
 
         bpy.ops.object.select_all(action="DESELECT")
-        for obj in objects:
+        for obj in static:
             obj.select_set(True)
-        bpy.context.view_layer.objects.active = objects[0]
+        bpy.context.view_layer.objects.active = static[0]
         bpy.ops.object.join()
         lod0_object = bpy.context.view_layer.objects.active
         lod0_object.name = name
-        objects = [lod0_object]
-        _stage("joined", started)
+        objects = [lod0_object, *moving]
+        _stage(f"joined, {len(moving)} moving part(s)", started)
 
         atlas_bake.prepare_bake()
         atlas_bake.bake_albedo(objects, atlas_size=game_ready.ATLAS_SIZE, layout=layout)
@@ -88,10 +96,11 @@ def main() -> None:
         game_ready.enforce_power_of_two_textures(material, game_ready.ATLAS_SIZE)
         _stage("atlas material", started)
 
-        lod_set = lod.generate_lods(lod0_object)
+        lod_set = lod.generate_lods(lod0_object, moving=moving)
         _stage("lods", started)
 
-        result = export.export_asset(lod_set.objects, name=name, kind=kind)
+        animations = motion.recorded_clips() if moving else []
+        result = export.export_asset(lod_set.objects, name=name, kind=kind, animations=animations)
         _stage("exported", started)
         payload = {"ok": True, "seconds": round(time.monotonic() - started), "atlas": layout.as_dict(), **result.as_dict()}
     except Exception:

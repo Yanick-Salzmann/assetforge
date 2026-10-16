@@ -17,20 +17,24 @@ atlas space, which shows as black patches once the walls survive decimation (af-
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Sequence
 
 import bmesh
 import bpy
+from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
+from assets import animation_manifest
 from assets.atlas_bake import dilate_gutters
-from assets.game_ready import triangulate, uv_unwrap_and_pack
+from assets.game_ready import is_moving_part, triangulate, uv_unwrap_and_pack
 
 LOD_RATIOS: tuple[float, float, float] = (1.0, 0.5, 0.15)
 DEFAULT_TEXTURE_SIZE = 1024
 DEFAULT_CAGE_EXTRUSION_RATIO = 0.02
 DEFAULT_BAKE_SAMPLES = 4
 DEFAULT_BAKE_DEVICE = "OPTIX"
+BAKE_MARGIN_PX = 4
 MIN_CLOSED_SHAPE_TRIANGLES = 12
 LOD_DEVIATION_RATIOS: tuple[float, float, float] = (0.0, 0.008, 0.02)
 PART_DEVIATION_RATIOS: tuple[float, float, float] = (0.0, 0.04, 0.1)
@@ -50,15 +54,20 @@ class LodTextures:
 
 @dataclass
 class LodSet:
+    """objects holds every object of every LOD, LOD0 first; levels groups them per LOD (the static
+    body first, then its animated parts), and triangle_counts and textures are per LOD."""
+
     objects: list[bpy.types.Object]
     triangle_counts: list[int]
     textures: list[LodTextures | None]
+    levels: list[list[bpy.types.Object]] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
             "object_names": [obj.name for obj in self.objects],
             "triangle_counts": self.triangle_counts,
             "textures": [entry.as_dict() if entry is not None else None for entry in self.textures],
+            "levels": [[obj.name for obj in level] for level in self.levels],
         }
 
 
@@ -277,6 +286,15 @@ def _bound_box_diagonal(obj: bpy.types.Object) -> float:
     return ((max(xs) - min(xs)) ** 2 + (max(ys) - min(ys)) ** 2 + (max(zs) - min(zs)) ** 2) ** 0.5
 
 
+def _group_diagonal(objects: Sequence[bpy.types.Object]) -> float:
+    if len(objects) == 1:
+        return _bound_box_diagonal(objects[0])
+    corners = [obj.matrix_world @ Vector(corner) for obj in objects for corner in obj.bound_box]
+    low = Vector((min(c.x for c in corners), min(c.y for c in corners), min(c.z for c in corners)))
+    high = Vector((max(c.x for c in corners), max(c.y for c in corners), max(c.z for c in corners)))
+    return (high - low).length
+
+
 def _principled_bsdf(material: bpy.types.Material) -> bpy.types.ShaderNode:
     for node in material.node_tree.nodes:
         if node.type == "BSDF_PRINCIPLED":
@@ -346,34 +364,45 @@ def _emit_from(material: bpy.types.Material, source: bpy.types.NodeSocket | None
     return restore
 
 
-def _transfer_bake(lod0: bpy.types.Object, lod_target: bpy.types.Object, image: bpy.types.Image, bake_type: str) -> None:
-    material = lod_target.data.materials[0]
+def _transfer_bake(
+    sources: Sequence[bpy.types.Object],
+    targets: Sequence[bpy.types.Object],
+    image: bpy.types.Image,
+    bake_type: str,
+) -> None:
+    """Bake from every source onto each target in turn into one shared image. Every target after
+    the first keeps what is already in the image, so the targets' islands accumulate."""
+    material = targets[0].data.materials[0]
     target_node = _active_bake_target(material, image)
+    bake = bpy.context.scene.render.bake
     try:
-        _select_only([lod0, lod_target])
-        outcome = bpy.ops.object.bake(type=bake_type)
-        if outcome != {"FINISHED"}:
-            raise RuntimeError(f"LOD {bake_type} bake onto {lod_target.name!r} returned {sorted(outcome)}")
+        for index, target in enumerate(targets):
+            bake.use_clear = index == 0
+            _select_only([*sources, target])
+            outcome = bpy.ops.object.bake(type=bake_type)
+            if outcome != {"FINISHED"}:
+                raise RuntimeError(f"LOD {bake_type} bake onto {target.name!r} returned {sorted(outcome)}")
     finally:
+        bake.use_clear = True
         material.node_tree.nodes.remove(target_node)
 
 
 def _transfer_emission(
-    lod0: bpy.types.Object,
-    lod_target: bpy.types.Object,
+    sources: Sequence[bpy.types.Object],
+    targets: Sequence[bpy.types.Object],
     image: bpy.types.Image,
     source: bpy.types.NodeSocket | None,
     fallback: tuple[float, float, float, float],
 ) -> None:
-    restore = _emit_from(lod0.data.materials[0], source, fallback)
+    restore = _emit_from(sources[0].data.materials[0], source, fallback)
     try:
-        _transfer_bake(lod0, lod_target, image, "EMIT")
+        _transfer_bake(sources, targets, image, "EMIT")
     finally:
         restore()
 
 
-def _lod_material(lod_target: bpy.types.Object, albedo: bpy.types.Image, orm: bpy.types.Image, normal: bpy.types.Image) -> bpy.types.Material:
-    material = bpy.data.materials.new(f"{lod_target.name}_material")
+def _lod_material(targets: Sequence[bpy.types.Object], albedo: bpy.types.Image, orm: bpy.types.Image, normal: bpy.types.Image) -> bpy.types.Material:
+    material = bpy.data.materials.new(f"{targets[0].name}_material")
     material.use_nodes = True
     tree = material.node_tree
     bsdf = _principled_bsdf(material)
@@ -395,16 +424,17 @@ def _lod_material(lod_target: bpy.types.Object, albedo: bpy.types.Image, orm: bp
     tree.links.new(normal_node.outputs["Color"], normal_map.inputs["Color"])
     tree.links.new(normal_map.outputs["Normal"], bsdf.inputs["Normal"])
 
-    lod_target.data.materials.clear()
-    lod_target.data.materials.append(material)
-    for polygon in lod_target.data.polygons:
-        polygon.material_index = 0
+    for target in targets:
+        target.data.materials.clear()
+        target.data.materials.append(material)
+        for polygon in target.data.polygons:
+            polygon.material_index = 0
     return material
 
 
 def bake_lod_textures(
-    lod0: bpy.types.Object,
-    lod_target: bpy.types.Object,
+    lod0: bpy.types.Object | Sequence[bpy.types.Object],
+    lod_target: bpy.types.Object | Sequence[bpy.types.Object],
     image_size: int = DEFAULT_TEXTURE_SIZE,
     samples: int = DEFAULT_BAKE_SAMPLES,
     device: str = DEFAULT_BAKE_DEVICE,
@@ -417,33 +447,45 @@ def bake_lod_textures(
     another face, a window hole or empty atlas space - black patches on the walls (af-4ir.9).
     Baking from LOD0 onto the LOD's own packed UVs samples whatever LOD0 surface lies under every
     texel, so a texel can only ever hold colour that exists on the asset. Albedo and ORM are EMIT
-    bakes of LOD0's raw texture values, so no lighting or AO darkening lands in them."""
-    triangulate(lod_target)
-    layout = uv_unwrap_and_pack([lod_target], atlas_size=image_size)
-    lod0_material = lod0.data.materials[0]
+    bakes of LOD0's raw texture values, so no lighting or AO darkening lands in them.
+
+    Either side may be a group: an animated asset's LOD is its static body plus a copy of every
+    moving part. The targets are packed into one layout and share one material and texture set,
+    each baked from every LOD0 object in turn; the Cycles margin is off then, since it would paint
+    over islands already baked for another target, and dilate_gutters fills the gutters instead."""
+    sources = [lod0] if isinstance(lod0, bpy.types.Object) else list(lod0)
+    targets = [lod_target] if isinstance(lod_target, bpy.types.Object) else list(lod_target)
+    lod0_material = sources[0].data.materials[0]
+    foreign = [obj.name for obj in sources if obj.data.materials[0] != lod0_material]
+    if foreign:
+        raise ValueError(f"LOD0 objects {foreign} do not share {lod0_material.name!r}; run game_ready_pass on them together")
+    for target in targets:
+        triangulate(target)
+    layout = uv_unwrap_and_pack(targets, atlas_size=image_size)
     lod0_bsdf = _principled_bsdf(lod0_material)
 
-    albedo = bpy.data.images.new(f"{lod_target.name}_albedo", width=image_size, height=image_size, alpha=False)
-    orm = bpy.data.images.new(f"{lod_target.name}_orm", width=image_size, height=image_size, alpha=False)
+    stem = targets[0].name
+    albedo = bpy.data.images.new(f"{stem}_albedo", width=image_size, height=image_size, alpha=False)
+    orm = bpy.data.images.new(f"{stem}_orm", width=image_size, height=image_size, alpha=False)
     orm.colorspace_settings.name = "Non-Color"
-    normal = bpy.data.images.new(f"{lod_target.name}_normal", width=image_size, height=image_size, alpha=False)
+    normal = bpy.data.images.new(f"{stem}_normal", width=image_size, height=image_size, alpha=False)
     normal.colorspace_settings.name = "Non-Color"
-    _lod_material(lod_target, albedo, orm, normal)
+    _lod_material(targets, albedo, orm, normal)
 
     _configure_cycles_device(device)
     scene = bpy.context.scene
     scene.cycles.samples = samples
     scene.render.bake.use_selected_to_active = True
-    scene.render.bake.cage_extrusion = _bound_box_diagonal(lod0) * DEFAULT_CAGE_EXTRUSION_RATIO
-    scene.render.bake.margin = 4
+    scene.render.bake.cage_extrusion = _group_diagonal(sources) * DEFAULT_CAGE_EXTRUSION_RATIO
+    scene.render.bake.margin = BAKE_MARGIN_PX if len(targets) == 1 else 0
     scene.render.bake.margin_type = "EXTEND"
     try:
         base_color = tuple(lod0_bsdf.inputs["Base Color"].default_value)
-        _transfer_emission(lod0, lod_target, albedo, _socket_feeding(lod0_bsdf.inputs["Base Color"]), base_color)
+        _transfer_emission(sources, targets, albedo, _socket_feeding(lod0_bsdf.inputs["Base Color"]), base_color)
         roughness = lod0_bsdf.inputs["Roughness"].default_value
         metallic = lod0_bsdf.inputs["Metallic"].default_value
-        _transfer_emission(lod0, lod_target, orm, _orm_source(lod0_material), (1.0, roughness, metallic, 1.0))
-        _transfer_bake(lod0, lod_target, normal, "NORMAL")
+        _transfer_emission(sources, targets, orm, _orm_source(lod0_material), (1.0, roughness, metallic, 1.0))
+        _transfer_bake(sources, targets, normal, "NORMAL")
     finally:
         scene.render.bake.use_selected_to_active = False
     for image in (albedo, orm, normal):
@@ -451,11 +493,87 @@ def bake_lod_textures(
     return LodTextures(albedo=albedo.name, orm=orm.name, normal=normal.name)
 
 
+@dataclass
+class _PartReduction:
+    """One LOD0 object split into loose parts and reduced level by level; meshes[level] holds the
+    parts kept at that level (level 0 is the originals)."""
+
+    meshes: list[list[bpy.types.Mesh]]
+    scratch: list[bpy.types.Mesh]
+
+
+def _reduce_object(
+    obj: bpy.types.Object,
+    ratios: tuple[float, float, float],
+    overall_diagonal: float,
+    deviation_ratios: tuple[float, float, float],
+) -> _PartReduction:
+    originals = _part_meshes(obj)
+    diagonals = [_mesh_diagonal(mesh) for mesh in originals]
+    areas = [_mesh_area(mesh) for mesh in originals]
+    levels = [list(originals)]
+    scratch = list(originals)
+    previous: list[bpy.types.Mesh | None] = list(originals)
+    for index, ratio in enumerate(ratios[1:], start=1):
+        tolerance = overall_diagonal * deviation_ratios[index]
+        culled = _culled_parts(diagonals, areas, tolerance)
+        reduced = [
+            None
+            if prior is None or part_index in culled
+            else _reduce_part(original, prior, ratio, tolerance, PART_DEVIATION_RATIOS[index])
+            for part_index, (original, prior) in enumerate(zip(originals, previous))
+        ]
+        kept = [mesh for mesh in reduced if mesh is not None]
+        scratch.extend(kept)
+        levels.append(kept)
+        previous = reduced
+    return _PartReduction(meshes=levels, scratch=scratch)
+
+
+def _share_animation(part: bpy.types.Object, copy: bpy.types.Object) -> None:
+    """Drive copy with part's own clips: the same actions and slots, on NLA tracks of the same
+    names, so the glTF exporter writes both nodes' channels into each clip."""
+    source = part.animation_data
+    if source is None:
+        return
+    data = copy.animation_data_create()
+    if source.action is not None:
+        data.action = source.action
+        data.action_slot = source.action_slot
+    for track in source.nla_tracks:
+        mirrored = data.nla_tracks.new()
+        mirrored.name = track.name
+        mirrored.mute = track.mute
+        for strip in track.strips:
+            added = mirrored.strips.new(strip.name, int(strip.frame_start), strip.action)
+            added.name = strip.name
+            added.action_slot = strip.action_slot
+
+
+def _mirror_part(part: bpy.types.Object, copy: bpy.types.Object, counterparts: dict) -> None:
+    """Give copy part's parent (or that parent's own copy at this LOD), rest transform, custom
+    properties and clips. A copy must not hang under a LOD0 node, which the viewer hides
+    together with its children when it shows another LOD."""
+    if part.parent is not None:
+        copy.parent = counterparts.get(part.parent, part.parent)
+        copy.parent_type = part.parent_type
+        copy.matrix_parent_inverse = part.matrix_parent_inverse.copy()
+    copy.rotation_mode = part.rotation_mode
+    copy.location = part.location.copy()
+    copy.rotation_euler = part.rotation_euler.copy()
+    copy.rotation_quaternion = part.rotation_quaternion.copy()
+    copy.scale = part.scale.copy()
+    for key in part.keys():
+        copy[key] = part[key]
+    _share_animation(part, copy)
+
+
 def generate_lods(
     lod0: bpy.types.Object,
     ratios: tuple[float, float, float] = LOD_RATIOS,
     texture_size: int = DEFAULT_TEXTURE_SIZE,
     deviation_ratios: tuple[float, float, float] = LOD_DEVIATION_RATIOS,
+    moving: Sequence[bpy.types.Object] = (),
 ) -> LodSet:
     """Build LOD1 and LOD2 from lod0 one loose part at a time, then bake an albedo/ORM/normal set
     from lod0 onto each one's own fresh UVs (texture_size for LOD1, half that for LOD2). lod0
@@ -467,45 +585,51 @@ def generate_lods(
     wall is visible at any distance (church tower at LOD2). Each part's LOD2 is reduced from its
     LOD1, never above it, so counts can only fall (af-k4g); deviation and textures are always
     measured and baked against LOD0 so error is not compounded. Parts no bigger than a LOD's
-    deviation cap are dropped from it entirely (_culled_parts)."""
+    deviation cap are dropped from it entirely (_culled_parts).
+
+    moving lists an animated asset's rigid <part>_ANIM objects, sharing lod0's atlas material.
+    Each is reduced on its own, in its own pivot frame and against the whole asset's diagonal,
+    into a <part>_LOD<n>_ANIM copy with the same parent (or its copy), rest transform and clips,
+    so every LOD plays the same animation. Each LOD's static body and copies share one material
+    and texture set, baked from every LOD0 object."""
     if len(ratios) != 3 or ratios[0] != 1.0:
         raise ValueError("ratios must be a 3-tuple with ratios[0] == 1.0 (LOD0 is full resolution)")
     if not lod0.data.materials:
         raise ValueError("lod0 must already have a material assigned (run game_ready_pass first)")
+    moving = list(moving)
+    unnamed = [part.name for part in moving if not is_moving_part(part)]
+    if unnamed:
+        raise ValueError(f"moving parts must be named <part>{animation_manifest.ANIM_SUFFIX}: {unnamed}")
 
     base_name = lod0.name
     lod0.name = f"{base_name}_LOD0"
-    overall_diagonal = _bound_box_diagonal(lod0)
-    originals = _part_meshes(lod0)
-    diagonals = [_mesh_diagonal(mesh) for mesh in originals]
-    areas = [_mesh_area(mesh) for mesh in originals]
+    sources = [lod0, *moving]
+    overall_diagonal = _group_diagonal(sources)
+    reductions = [_reduce_object(obj, ratios, overall_diagonal, deviation_ratios) for obj in sources]
 
-    objects = [lod0]
+    levels = [sources]
     textures: list[LodTextures | None] = [None]
-    scratch_meshes = list(originals)
-    previous = originals
-    for index, ratio in enumerate(ratios[1:], start=1):
-        tolerance = overall_diagonal * deviation_ratios[index]
-        culled = _culled_parts(diagonals, areas, tolerance)
-        reduced = [
-            None
-            if prior is None or part_index in culled
-            else _reduce_part(original, prior, ratio, tolerance, PART_DEVIATION_RATIOS[index])
-            for part_index, (original, prior) in enumerate(zip(originals, previous))
-        ]
-        kept = [mesh for mesh in reduced if mesh is not None]
-        scratch_meshes.extend(kept)
-        lod = _joined_object(f"{base_name}_LOD{index}", kept, lod0.data.materials[0])
-        lod.matrix_world = lod0.matrix_world.copy()
-        textures.append(bake_lod_textures(lod0, lod, image_size=max(texture_size >> (index - 1), 64)))
-        objects.append(lod)
-        previous = reduced
+    for index in range(1, len(ratios)):
+        body = _joined_object(f"{base_name}_LOD{index}", reductions[0].meshes[index], lod0.data.materials[0])
+        body.matrix_world = lod0.matrix_world.copy()
+        counterparts = {lod0: body}
+        for part, reduction in zip(moving, reductions[1:]):
+            name = animation_manifest.lod_copy_name(part.name, index)
+            counterparts[part] = _joined_object(name, reduction.meshes[index], lod0.data.materials[0])
+        for part in moving:
+            _mirror_part(part, counterparts[part], counterparts)
+        bpy.context.view_layer.update()
+        level = [body, *(counterparts[part] for part in moving)]
+        textures.append(bake_lod_textures(sources, level, image_size=max(texture_size >> (index - 1), 64)))
+        levels.append(level)
 
-    for mesh in scratch_meshes:
-        bpy.data.meshes.remove(mesh)
+    for reduction in reductions:
+        for mesh in reduction.scratch:
+            bpy.data.meshes.remove(mesh)
 
     return LodSet(
-        objects=objects,
-        triangle_counts=[_triangle_count(obj) for obj in objects],
+        objects=[obj for level in levels for obj in level],
+        triangle_counts=[sum(_triangle_count(obj) for obj in level) for level in levels],
         textures=textures,
+        levels=levels,
     )

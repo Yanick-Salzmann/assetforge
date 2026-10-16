@@ -9,7 +9,7 @@ import { ClipPlayer, STATES, describeClips, phaseOf } from "./animation.js";
 const EYE_HEIGHT_M = 1.7;
 const HUMAN_HEIGHT_M = 1.8;
 const HUMAN_RADIUS_M = 0.22;
-const LOD_PATTERN = /_LOD(\d+)$/;
+const LOD_PATTERN = /_LOD(\d+)(?:_ANIM)?$/;
 const MODES = ["textured", "splat", "backfaces", "normals", "wireframe"];
 const BACKGROUND = 0xb9bcc2;
 const BUILDING_KIND = /building/;
