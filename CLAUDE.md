@@ -284,7 +284,13 @@ validator too.
   named after the asset that carries the base-centre shift (measured in rest pose), one material
   per LOD, and the glb's clips must match the entries before asset.json is written. Export with
   `export_animation_mode="ACTIONS"`, `export_force_sampling` and `export_anim_slide_to_zero`
-  (clips start at t=0); `export_apply` keeps the armature skin. `validate_asset` checks the schema.
+  (clips start at t=0); `export_apply` keeps the armature skin. `validate_asset` checks the schema and
+  (`assets/animation_checks.py`) that every entry matches a glb clip and vice versa, rigid
+  `_ANIM` nodes rest at their pivot with identity rotation/scale, looping clips close in value and
+  velocity, bones/clip length/keyframes stay within `MAX_BONES`/`CLIP_MAX_S`/`CLIP_MAX_KEYFRAMES`,
+  and a swept-collision pass over each rigid clip finds no moving part sinking more than
+  `CONTACT_TOLERANCE_M` into another LOD0 part beyond what already overlaps at rest. Skinned mesh
+  nodes are measured at their bind pose.
 - No baked lighting and no AO darkening in the albedo. The engine lights it.
 - Power-of-two textures, 2048 atlas, one material per asset.
 - Atlas layout (`game_ready.uv_unwrap_and_pack`, af-alp): islands are packed in atlas pixels at

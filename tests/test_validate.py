@@ -598,7 +598,7 @@ def _write_animated_manifest(name: str, animations: object) -> None:
 
 def test_static_asset_passes_animation_manifest_check():
     _write_team_manifest("crate", None)
-    assert validate._check_animation_manifest("crate").passed
+    assert validate._check_animation_manifest("crate")[0].passed
 
 
 def test_valid_animations_pass():
@@ -612,10 +612,10 @@ def test_valid_animations_pass():
         "nodes": ["Wheel_ANIM"],
     }
     _write_animated_manifest("mill", [clip])
-    result = validate._check_animation_manifest("mill")
+    result, entries = validate._check_animation_manifest("mill")
     assert result.passed, result.detail
 
 
 def test_malformed_animations_fail():
     _write_animated_manifest("mill", [{"name": "spin"}])
-    assert not validate._check_animation_manifest("mill").passed
+    assert not validate._check_animation_manifest("mill")[0].passed

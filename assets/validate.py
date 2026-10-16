@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from assets import animation_manifest, atlas_raster, team_colour
+from assets import animation_checks, animation_manifest, atlas_raster, team_colour
 from library import gltf
 from terrain import config
 
@@ -109,15 +109,26 @@ def validate_asset(name: str, kind: str) -> ValidationReport:
     missing_uvs = 0
     world_bbox_min = np.full(3, np.inf)
     world_bbox_max = np.full(3, -np.inf)
+    rigid_parts: dict[int, tuple[np.ndarray, np.ndarray]] = {}
 
     for node_index, mesh_index, matrix in instances:
+        node = document["nodes"][node_index]
+        if "skin" in node:
+            matrix = _as_gltf_matrix(animation_checks.skin_bind_matrix(document, buffers, node["skin"]))
         checks.extend(_check_node_transform(node_index, matrix))
-        lod = _lod_index(document["nodes"][node_index].get("name", ""))
+        node_name = node.get("name", "")
+        lod = _lod_index(node_name)
         mesh = document["meshes"][mesh_index]
+        part_positions = []
+        part_indices = []
+        part_vertices = 0
         for primitive_index, primitive in enumerate(mesh["primitives"]):
-            label = f"mesh {mesh_index} primitive {primitive_index}"
+            label = f"{node_name or f'node {node_index}'} mesh {mesh_index} primitive {primitive_index}"
             positions, indices, normals, uvs = _load_primitive(document, buffers, primitive)
             lod_tris[lod] = lod_tris.get(lod, 0) + len(indices)
+            part_positions.append(positions)
+            part_indices.append(indices + part_vertices)
+            part_vertices += len(positions)
             if uvs is None:
                 missing_uvs += 1
             checks.extend(_check_material(label, primitive))
@@ -135,6 +146,8 @@ def validate_asset(name: str, kind: str) -> ValidationReport:
             world_positions = _transform_positions(matrix, positions)
             world_bbox_min = np.minimum(world_bbox_min, world_positions.min(axis=0))
             world_bbox_max = np.maximum(world_bbox_max, world_positions.max(axis=0))
+        if lod == 0 and "skin" not in node and kind not in OPEN_SURFACE_KINDS:
+            rigid_parts[node_index] = (np.vstack(part_positions), np.vstack(part_indices))
 
     lod0_tris = lod_tris.get(0, 0)
     checks.append(_check_triangle_budget(lod0_tris, kind))
@@ -143,7 +156,10 @@ def validate_asset(name: str, kind: str) -> ValidationReport:
         checks.append(_check_lod_chain(lod_tris))
     if kind in team_colour.KINDS:
         checks.append(_check_team_mask(name, kind, missing_uvs))
-    checks.append(_check_animation_manifest(name))
+    manifest_check, animations = _check_animation_manifest(name)
+    checks.append(manifest_check)
+    if manifest_check.passed:
+        checks.extend(_check_animations(document, buffers, animations, kind, rigid_parts))
 
     return ValidationReport(
         name=name,
@@ -580,19 +596,42 @@ def _check_team_mask(name: str, kind: str, missing_uvs: int) -> CheckResult:
     return CheckResult(label, True, f"{width}x{height} mask covers {coverage:.1%} of the atlas")
 
 
-def _check_animation_manifest(name: str) -> CheckResult:
+def _check_animation_manifest(name: str) -> tuple[CheckResult, list[dict]]:
     label = "animations manifest"
     manifest_path = config.ASSET_OUT_DIR / name / "asset.json"
     if not manifest_path.is_file():
-        return CheckResult(label, True, "no asset.json, static")
+        return CheckResult(label, True, "no asset.json, static"), []
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if animation_manifest.MANIFEST_KEY not in manifest:
-        return CheckResult(label, True, "static, no clips")
-    errors = animation_manifest.manifest_errors(manifest[animation_manifest.MANIFEST_KEY])
+        return CheckResult(label, True, "static, no clips"), []
+    animations = manifest[animation_manifest.MANIFEST_KEY]
+    errors = animation_manifest.manifest_errors(animations)
     if errors:
-        return CheckResult(label, False, "; ".join(errors))
-    clips = ", ".join(entry["name"] for entry in manifest[animation_manifest.MANIFEST_KEY])
-    return CheckResult(label, True, f"clips {clips or '(none)'}")
+        return CheckResult(label, False, "; ".join(errors)), []
+    clips = ", ".join(entry["name"] for entry in animations)
+    return CheckResult(label, True, f"clips {clips or '(none)'}"), animations
+
+
+def _check_animations(
+    document: dict,
+    buffers: list[bytes],
+    animations: list[dict],
+    kind: str,
+    rigid_parts: dict[int, tuple[np.ndarray, np.ndarray]],
+) -> list[CheckResult]:
+    if not animations and not document.get("animations"):
+        return []
+    clips = animation_checks.read_clips(document, buffers)
+    findings = animation_checks.clip_checks(document, animations, clips)
+    findings += animation_checks.rest_checks(document, animations)
+    findings += animation_checks.seam_checks(document, animations, clips)
+    findings += animation_checks.budget_checks(document, animations, clips, kind)
+    findings += animation_checks.sweep_checks(document, animations, clips, rigid_parts)
+    return [CheckResult(*finding) for finding in findings]
+
+
+def _as_gltf_matrix(matrix: np.ndarray) -> gltf.Matrix:
+    return tuple(tuple(float(value) for value in column) for column in matrix.T)
 
 
 def _is_power_of_two(value: int) -> bool:
