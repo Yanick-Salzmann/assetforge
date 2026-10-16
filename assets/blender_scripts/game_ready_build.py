@@ -9,9 +9,9 @@ background shell job and is notified when it exits. Invoked as:
 
 Every mesh object named `<name>_*` in the .blend is one part of the asset. Parts named
 `<name>_*_ANIM` (motion.pivot_part) are its moving parts: they keep their pivot and stay separate
-nodes through the bake and every LOD, and the clips motion recorded on the scene
-(motion.recorded_clips) are exported with them. Export is refused unless the asset's approval
-gate is open. Progress goes to stdout as `[game_ready] <stage>` lines;
+nodes through the bake and every LOD, and the clips and mechanisms motion recorded on the scene
+(motion.recorded_clips, motion.recorded_mechanisms) are exported with them. Export is refused
+unless the asset's approval gate is open and the approval names every one of those clips. Progress goes to stdout as `[game_ready] <stage>` lines;
 the outcome goes to result_json as {"ok": true, ...} or {"ok": false, "error": <traceback>}.
 """
 
@@ -52,16 +52,20 @@ def main() -> None:
         from assets import atlas_bake, export, game_ready, gate, lod, motion
         from assets import hardsurface as hs
 
-        gate.open_gate(name).require_approved()
         if kind not in export.VALID_KINDS:
             raise ValueError(f"kind {kind!r} must be one of {export.VALID_KINDS}")
 
         objects = _parts(name)
         if not objects:
             raise ValueError(f"no mesh objects named {name}_* in {bpy.data.filepath}")
-        _stage(f"{len(objects)} parts", started)
-
         moving = [obj for obj in objects if game_ready.is_moving_part(obj)]
+        moving_names = {obj.name for obj in moving}
+        animations = [entry for entry in motion.recorded_clips() if set(entry["nodes"]) <= moving_names]
+        clip_names = {entry["name"] for entry in animations}
+        mechanisms = [entry for entry in motion.recorded_mechanisms() if entry["clip"] in clip_names]
+        gate.open_gate(name).require_approved(clips=[entry["name"] for entry in animations])
+        _stage(f"{len(objects)} parts, clips {[entry['name'] for entry in animations]}", started)
+
         static = [obj for obj in objects if not game_ready.is_moving_part(obj)]
         if not static:
             raise ValueError(f"{name} has no static parts to carry the moving ones")
@@ -99,8 +103,7 @@ def main() -> None:
         lod_set = lod.generate_lods(lod0_object, moving=moving)
         _stage("lods", started)
 
-        animations = motion.recorded_clips() if moving else []
-        result = export.export_asset(lod_set.objects, name=name, kind=kind, animations=animations)
+        result = export.export_asset(lod_set.objects, name=name, kind=kind, animations=animations, mechanisms=mechanisms)
         _stage("exported", started)
         payload = {"ok": True, "seconds": round(time.monotonic() - started), "atlas": layout.as_dict(), **result.as_dict()}
     except Exception:

@@ -30,6 +30,9 @@ Before touching Blender, pin down:
 - **silhouette and mechanism** - body shape, wheel/track/leg count and placement, articulated
   parts (turret, boom, bucket, doors) if any, panel seams and vents, primary material read
   (painted metal panels, raw steel, rubber, glass).
+- **moving parts** - the same table as `asset-building` step 1 (part, motion, state, rate), or
+  `none`: spinning wheels and rotors, a swinging boom, a cranking arm. Articulated parts that
+  only pose (a turret aimed once) stay static.
 
 State the brief back in one line before generating anything.
 
@@ -72,11 +75,17 @@ in is the same failure mode a building's one-angle-only detail is.
 
 See `asset-building` step 3, **What the contact sheet can and can't tell you**: pre-bake sheets are clay, add Workbench close-ups for mechanism detail, and check visibility.
 
+Model moving parts as in `asset-building` step 2, **Moving parts** (`motion.pivot_part`, the
+`animate_*` helpers, `gear_mesh`/`crank_linkage` for coupled parts, the preview export with
+`motion.recorded_clips()`), and render `render_animation_sheet(name, clip)` for every clip.
+
 ## 4. Written critique
 
 One paragraph against the brief: silhouette and proportions against the 1.8 m human reference,
 wheel/track contact with the ground plane, no missing back or underside faces, mechanism reads
-from every angle. State pass or fail plainly.
+from every angle. With clips, judge every filmstrip as in `asset-building` step 4: parts turn
+about their own pivots and stay attached, no interpenetration, no seam pop, coupled parts stay
+coupled, rate matches the brief. State pass or fail plainly.
 
 ## 5. Validate
 
@@ -86,7 +95,7 @@ validate_asset(name, "vehicle")
 
 Same checks as a building at the vehicle tri budget: triangle count, per-primitive material
 assignment, watertight/manifold, outward normals, UV overlap, applied transforms at base-centre
-origin.
+origin, and with clips the animation and mechanism checks.
 
 ## 6. Patch loop - capped at 4 iterations, 8 for `hero_vehicle`
 
@@ -101,7 +110,9 @@ approve_asset(name, note)
 ```
 
 Ask the user to look at the contact sheet and confirm; pass their note through verbatim.
-`asset_gate_status(name)` should show `approved: true` before continuing.
+`asset_gate_status(name)` should show `approved: true` before continuing. For an animated asset
+the user also watches every filmstrip and the approval names those clips -
+`approve_asset(name, note, clips=[...])`; step 8 refuses any recorded clip it does not name.
 
 ## 8. game_ready + LODs + export - a background job, never a live MCP call
 

@@ -27,6 +27,11 @@ Before touching Blender or `library.kits`, pin down:
   its own - each prop gets its own `out/assets/<prop-name>/`.
 - **6-12 props** - name, category (crate, barrel, debris, foliage, signage, ...), rough
   footprint in metres, and what it's dressing (which building or terrain biome).
+- **moving parts** - per prop, the same table as `asset-building` step 1 (part, motion, state,
+  rate), or `none`. The shared-atlas set job does not carry clips, so a prop with moving parts
+  leaves the set: it is modelled and shipped on its own through `asset-building`'s moving-parts
+  flow with kind `prop` (pivot and animate in step 2, filmstrip per clip, clip approval,
+  `game_ready_build.py` in step 8).
 
 State the brief back in one line before checking the kit library.
 

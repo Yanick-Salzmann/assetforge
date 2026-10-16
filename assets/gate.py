@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Sequence
 
 from assets.recipe import validate_name
 from terrain import config
@@ -33,6 +34,7 @@ class AssetGate:
     patch_count: int = 0
     approved: bool = False
     approval_note: str = ""
+    approved_clips: list[str] = field(default_factory=list)
 
     def out_dir(self) -> Path:
         return config.ASSET_OUT_DIR / self.name
@@ -54,16 +56,25 @@ class AssetGate:
         self.write()
         return self
 
-    def approve(self, note: str = "") -> AssetGate:
+    def approve(self, note: str = "", clips: Sequence[str] = ()) -> AssetGate:
+        """Record human sign-off. clips names every animation clip the reviewer watched in its
+        filmstrip; approval covers the motion only for those."""
         self.approved = True
         self.approval_note = note
+        self.approved_clips = sorted(set(clips))
         self.write()
         return self
 
-    def require_approved(self) -> None:
+    def require_approved(self, clips: Sequence[str] = ()) -> None:
         if not self.approved:
             raise GateError(
                 f"asset {self.name!r} has not been approved by a human reviewer; export is blocked"
+            )
+        unreviewed = sorted(set(clips) - set(self.approved_clips))
+        if unreviewed:
+            raise GateError(
+                f"asset {self.name!r} was approved without clip(s) {', '.join(unreviewed)}; "
+                "approve again with every clip the reviewer watched"
             )
 
     def as_dict(self) -> dict:
@@ -75,6 +86,7 @@ class AssetGate:
             "patches_remaining": max(0, self.patch_cap() - self.patch_count),
             "approved": self.approved,
             "approval_note": self.approval_note,
+            "approved_clips": self.approved_clips,
         }
 
     def write(self) -> None:
@@ -108,6 +120,7 @@ def _load_gate(name: str) -> AssetGate:
         patch_count=int(data.get("patch_count", 0)),
         approved=bool(data.get("approved", False)),
         approval_note=str(data.get("approval_note", "")),
+        approved_clips=[str(clip) for clip in data.get("approved_clips", [])],
     )
 
 

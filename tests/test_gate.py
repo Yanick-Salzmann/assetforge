@@ -76,3 +76,23 @@ def test_gate_reloads_from_disk_after_forget():
 def test_invalid_names_are_rejected(name):
     with pytest.raises(Exception):
         gate.open_gate(name)
+
+
+def test_clips_need_their_own_approval():
+    asset = gate.open_gate("wheel-shed")
+    asset.approve("form ok")
+    asset.require_approved()
+    with pytest.raises(gate.GateError, match="idle_wheel_coast"):
+        asset.require_approved(clips=["idle_wheel_coast"])
+    asset.approve("form and motion ok", clips=["working_wheel_spin", "idle_wheel_coast"])
+    asset.require_approved(clips=["idle_wheel_coast", "working_wheel_spin"])
+    with pytest.raises(gate.GateError, match="working_kick"):
+        asset.require_approved(clips=["working_kick"])
+
+
+def test_approved_clips_survive_reload():
+    gate.open_gate("wheel-shed").approve("ok", clips=["idle_wheel_coast"])
+    gate.forget("wheel-shed")
+    reloaded = gate.open_gate("wheel-shed")
+    assert reloaded.approved_clips == ["idle_wheel_coast"]
+    assert reloaded.as_dict()["approved_clips"] == ["idle_wheel_coast"]

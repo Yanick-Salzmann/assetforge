@@ -42,6 +42,7 @@ PLANE_AXES = {
 }
 CHANNELS = {"location": "location", "rotation": "rotation_euler"}
 CLIPS_PROPERTY = "assetforge_animations"
+MECHANISMS_PROPERTY = "assetforge_mechanisms"
 
 
 class MotionRigError(ValueError):
@@ -108,6 +109,22 @@ def _record_clip(entry: dict) -> None:
 def _forget_clip(name: str) -> None:
     clips = {clip["name"]: clip for clip in recorded_clips() if clip["name"] != name}
     _store_clips(clips)
+
+
+def recorded_mechanisms() -> list[dict]:
+    """The mechanisms[] entries crank_linkage and gear_mesh returned in this scene whose clips are
+    still recorded, in the order made."""
+    raw = bpy.context.scene.get(MECHANISMS_PROPERTY)
+    clips = {clip["name"] for clip in recorded_clips()}
+    return [entry for entry in json.loads(raw) if entry["clip"] in clips] if raw else []
+
+
+def _record_mechanism(entry: dict) -> dict:
+    raw = bpy.context.scene.get(MECHANISMS_PROPERTY)
+    entries = [other for other in json.loads(raw) if other != entry] if raw else []
+    entries.append(entry)
+    bpy.context.scene[MECHANISMS_PROPERTY] = json.dumps(entries)
+    return entry
 
 
 def _remove_clip(name: str) -> None:
@@ -347,8 +364,8 @@ def animate_wind(
 
 def crank_linkage(crank: bpy.types.Object, rod: bpy.types.Object, slider: bpy.types.Object, entry: dict) -> dict:
     """The rod's crank-pin end rides the crank and the slider's wrist pin rides the rod."""
-    return mechanism_manifest.linkage_entry(entry["name"], [(rod.name, crank.name), (slider.name, rod.name)])
+    return _record_mechanism(mechanism_manifest.linkage_entry(entry["name"], [(rod.name, crank.name), (slider.name, rod.name)]))
 
 
 def gear_mesh(gears: Sequence[bpy.types.Object], teeth: Sequence[int], entry: dict) -> dict:
-    return mechanism_manifest.gears_entry(entry["name"], [gear.name for gear in gears], list(teeth))
+    return _record_mechanism(mechanism_manifest.gears_entry(entry["name"], [gear.name for gear in gears], list(teeth)))

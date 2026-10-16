@@ -66,11 +66,12 @@ def record_patch(name: str, kind: str = "") -> dict:
 
 
 @mcp.tool
-def approve_asset(name: str, note: str = "") -> dict:
-    """Record human approval for an asset, unblocking export."""
+def approve_asset(name: str, note: str = "", clips: list[str] | None = None) -> dict:
+    """Record human approval for an asset, unblocking export. For an animated asset pass clips:
+    every clip name whose filmstrip the reviewer watched - export refuses any clip not listed."""
     from assets import gate
 
-    return gate.open_gate(name).approve(note).as_dict()
+    return gate.open_gate(name).approve(note, clips or ()).as_dict()
 
 
 @mcp.tool

@@ -27,6 +27,17 @@ Before touching Blender, pin down:
   sheet includes.
 - **key features** - roofline, window/door placement, wall material (brick, concrete, plaster),
   roofing, metal trim.
+- **moving parts** - one row per part, or `none`:
+
+  | part | motion | state | rate |
+  |---|---|---|---|
+  | `wheel` | spin about Z | `working` | 1 rev / 1.5 s |
+  | `wheel` | slow oscillation (coasting) | `idle` | +-0.3 rad, 4 s period |
+
+  `motion` is one of the `assets/motion.py` primitives (spin, oscillate, hinge, crank, gear train,
+  wind on a bone chain). `state` is `idle` (ambient, always plays, must loop) or `working` (only
+  while the building is occupied). `rate` is the period, rpm or amplitude the filmstrip is judged
+  against. Fire, smoke and sparks are FX sockets (`assets/fx.py`), not moving parts.
 
 State the brief back in one line before generating anything.
 
@@ -99,6 +110,32 @@ Learned the hard way across the windmill, tavern, church, tavern props and tract
 - **New materials go into `assets/materials.py`'s `MATERIAL_BUILDERS`,** never inline in a
   snippet; `importlib.reload(materials)` in the live session after editing it.
 
+### Moving parts
+
+Only when the brief lists any. Each moving part is its own closed object, never joined into the
+body, with clearance from everything it sweeps past (`validate_asset` sweeps every clip and fails
+a part that sinks into another).
+
+```python
+from assets import motion
+wheel = bpy.data.objects["<name>_wheel"]
+motion.pivot_part(wheel, pivot=(x, y, z), axis="Z")
+spin = motion.animate_spin(wheel, period_s=1.5, state="working", clip="wheel_spin")
+coast = motion.animate_oscillate(wheel, 0.3, 4.0, state="idle", clip="wheel_coast", channel="rotation")
+```
+
+- `pivot_part` moves the origin onto the pivot without moving the geometry and renames the part
+  `<name>_wheel_ANIM` - build the part at rest (identity rotation and scale) and keep its
+  `<name>_` prefix so step 8 collects it. Parent it to the body (or another moving part) when it
+  rides on it.
+- Every `animate_*` writes one `<state>_<clip>` action and records its `animations[]` entry on the
+  scene (`motion.recorded_clips()`), so the saved .blend carries it to step 8. `crank_linkage` and
+  `gear_mesh` record their `mechanisms[]` entries the same way. Re-running a helper with the same
+  clip name replaces the clip.
+- The contact sheet and filmstrip read the exported glb, so the live preview export passes the
+  clips: `export.export_asset(parts, name, kind, animations=motion.recorded_clips(),
+  mechanisms=motion.recorded_mechanisms())`.
+
 ## 3. Contact sheet
 
 ```
@@ -123,12 +160,24 @@ read the returned image, don't just check that the call succeeded.
 - **Check what is actually visible.** Detail modelled behind something else is wasted triangles;
   render from where a player will stand, not only from where the part was designed.
 
+### Filmstrips - every clip of an animated asset
+
+```
+render_animation_sheet(name, clip)
+```
+
+One per `animations[]` clip: 8 frames across the loop from one 3/4 camera plus a motion-trail
+tile. The contact sheet shows the rest pose only; motion is judged here.
+
 ## 4. Written critique
 
 Before moving on, write one paragraph judging the contact sheet against the brief: silhouette
 and proportions read correctly next to the human reference, no missing back faces, no
-one-angle-only detail, nothing that only looks right from the view it was designed in. State
-pass or fail plainly. A fail here is the cheapest point to fix - cheaper than finding the same
+one-angle-only detail, nothing that only looks right from the view it was designed in. For an
+animated asset, judge every filmstrip against the brief's moving-parts table too: each part turns
+about its own pivot and stays attached, nothing passes through anything else, the loop has no pop
+at the seam (last frame flows into the first), the rate matches the brief, and idle motion is
+calm enough to loop forever. State pass or fail plainly. A fail here is the cheapest point to fix - cheaper than finding the same
 problem after `validate_asset` or, worse, after export.
 
 ## 5. Validate
@@ -138,7 +187,10 @@ validate_asset(name, "hero_building")
 ```
 
 Checks the triangle budget, per-primitive material assignment, watertight/manifold geometry,
-outward-facing normals, UV overlap, and applied transforms at the base-centre origin. Read
+outward-facing normals, UV overlap, and applied transforms at the base-centre origin. With clips it
+also checks that they match `animations[]`, every `_ANIM` node rests at its pivot with identity
+rotation and scale, loops close in value and velocity, clip budgets, a swept collision over every
+rigid clip, and every `mechanisms[]` coupling. Read
 `ok` and every failing check's `detail` in the `checks` array - it names the exact failure
 (e.g. "N triangle(s) wind opposite their vertex normals"), not just a pass/fail flag.
 
@@ -166,6 +218,15 @@ approve_asset(name, note)
 
 This records that a human reviewer signed off - never call it as a stand-in for that review.
 Ask the user to look at the contact sheet and confirm, and pass their note through verbatim.
+
+For an animated asset the user also watches every filmstrip, and the approval names those clips:
+
+```
+approve_asset(name, note, clips=["working_wheel_spin", "idle_wheel_coast"])
+```
+
+Step 8 refuses to export any recorded clip the approval does not name, so a clip added or
+renamed after approval needs a fresh review and a fresh `approve_asset`.
 `asset_gate_status(name)` should show `approved: true` before continuing to export.
 
 ## 8. game_ready + LODs + export - a background job, never a live MCP call
@@ -196,9 +257,13 @@ rest, with no timeout, and the harness notifies you when it exits.
    whole sequence on every `<name>_*` mesh: `apply_transforms`/`recalc_normals`,
    `uv_unwrap_and_pack` while the parts still carry their own materials, the three atlas bake
    passes, `consolidate_material(objects, bake_result=...)`, `enforce_power_of_two_textures`,
-   `join` (`generate_lods` needs one object), `generate_lods`, `export_asset(kind=<kind>)`. Do not
-   use `game_ready.game_ready_pass(objects)` - it bakes no textures and leaves a blank
-   `atlas_material`.
+   `join` of the static parts (`generate_lods` needs one body), `generate_lods`,
+   `export_asset(kind=<kind>)`. Do not use `game_ready.game_ready_pass(objects)` - it bakes no
+   textures and leaves a blank `atlas_material`.
+
+   Moving parts (`<name>_*_ANIM`) keep their pivot, stay separate nodes and are never culled as
+   hidden; `generate_lods(body, moving=...)` gives each LOD its own reduced `<part>_LOD<n>_ANIM`
+   copy driven by the same clips, and the export carries the recorded clips and mechanisms.
 
 3. Don't poll, and don't start a second job for the same asset while one runs. When the
    notification arrives, read `game_ready.json`: `{"ok": true, ...}` carries the export result
@@ -210,6 +275,7 @@ rest, with no timeout, and the harness notifies you when it exits.
 
 Run `validate_asset(name, "hero_building")` once more against the final exported glb - the LOD
 swap and atlas consolidation can move triangle counts or surface a failure export didn't have
-before. Report the `out/assets/<name>/` file list, the gate status
+before. For an animated asset, re-render one filmstrip per clip from the final glb and check the
+textured parts still turn about their pivots. Report the `out/assets/<name>/` file list, the gate status
 (`asset_gate_status(name)`), and the one-line brief from step 1 so the user can confirm the
 result matches what they asked for.
