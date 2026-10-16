@@ -134,7 +134,13 @@ coast = motion.animate_oscillate(wheel, 0.3, 4.0, state="idle", clip="wheel_coas
   clip name replaces the clip.
 - The contact sheet and filmstrip read the exported glb, so the live preview export passes the
   clips: `export.export_asset(parts, name, kind, animations=motion.recorded_clips(),
-  mechanisms=motion.recorded_mechanisms())`.
+  mechanisms=motion.recorded_mechanisms())`. An animated export needs one material per LOD, so
+  save the .blend first, then swap every part onto one temporary clay material for the preview -
+  the pre-bake sheet is clay anyway. FX sockets from `fx.add_fx_socket` go in with
+  `fx=fx.recorded_fx()` and their empties among the parts; step 8 picks them up from the scene.
+- The 3/4 filmstrip camera is fixed: a part hidden under a roof or awning shows `moving_fraction`
+  0.0. Then add a review close-up (hide the occluders, put a temporary marker on the rotor) and
+  show it to the reviewer alongside the filmstrips.
 
 ## 3. Contact sheet
 

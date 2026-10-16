@@ -10,7 +10,9 @@ background shell job and is notified when it exits. Invoked as:
 Every mesh object named `<name>_*` in the .blend is one part of the asset. Parts named
 `<name>_*_ANIM` (motion.pivot_part) are its moving parts: they keep their pivot and stay separate
 nodes through the bake and every LOD, and the clips and mechanisms motion recorded on the scene
-(motion.recorded_clips, motion.recorded_mechanisms) are exported with them. Export is refused
+(motion.recorded_clips, motion.recorded_mechanisms) are exported with them, as are the FX_<type>
+sockets fx.add_fx_socket recorded (fx.recorded_fx); a socket parented to a static part is
+unparented in place before the static parts are joined. Export is refused
 unless the asset's approval gate is open and the approval names every one of those clips. Progress goes to stdout as `[game_ready] <stage>` lines;
 the outcome goes to result_json as {"ok": true, ...} or {"ok": false, "error": <traceback>}.
 """
@@ -49,7 +51,7 @@ def main() -> None:
 
     payload: dict = {"ok": False}
     try:
-        from assets import atlas_bake, export, game_ready, gate, lod, motion
+        from assets import atlas_bake, export, fx, game_ready, gate, lod, motion
         from assets import hardsurface as hs
 
         if kind not in export.VALID_KINDS:
@@ -64,11 +66,18 @@ def main() -> None:
         clip_names = {entry["name"] for entry in animations}
         mechanisms = [entry for entry in motion.recorded_mechanisms() if entry["clip"] in clip_names]
         gate.open_gate(name).require_approved(clips=[entry["name"] for entry in animations])
-        _stage(f"{len(objects)} parts, clips {[entry['name'] for entry in animations]}", started)
+        fx_entries = fx.recorded_fx()
+        sockets = [bpy.data.objects[entry["node"]] for entry in fx_entries]
+        _stage(f"{len(objects)} parts, clips {[entry['name'] for entry in animations]}, fx {[entry['node'] for entry in fx_entries]}", started)
 
         static = [obj for obj in objects if not game_ready.is_moving_part(obj)]
         if not static:
             raise ValueError(f"{name} has no static parts to carry the moving ones")
+        for socket in sockets:
+            if socket.parent is not None and socket.parent.name not in moving_names:
+                world = socket.matrix_world.copy()
+                socket.parent = None
+                socket.matrix_world = world
         for obj in objects:
             if obj in static:
                 hs.apply_transforms(obj)
@@ -103,7 +112,9 @@ def main() -> None:
         lod_set = lod.generate_lods(lod0_object, moving=moving)
         _stage("lods", started)
 
-        result = export.export_asset(lod_set.objects, name=name, kind=kind, animations=animations, mechanisms=mechanisms)
+        result = export.export_asset(
+            [*lod_set.objects, *sockets], name=name, kind=kind, animations=animations, mechanisms=mechanisms, fx=fx_entries
+        )
         _stage("exported", started)
         payload = {"ok": True, "seconds": round(time.monotonic() - started), "atlas": layout.as_dict(), **result.as_dict()}
     except Exception:

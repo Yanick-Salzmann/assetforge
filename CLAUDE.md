@@ -310,7 +310,8 @@ validator too.
   with `node`, `type` (fire, smoke, sparks, steam, flicker_light), `state` (idle/working), `rate`
   (per second), `size` (m) and `colour` (linear RGB). `node` is an empty named `FX_<type>[_<label>]`
   at the emitter transform (local +Z in Blender = emit direction), made by `fx.add_fx_socket` and
-  passed to `export_asset(..., fx=[...])` among the objects. `validate_asset` fails an entry without
+  passed to `export_asset(..., fx=[...])` among the objects; `add_fx_socket` also records the entry on
+  the scene (`fx.recorded_fx()`), so `game_ready_build.py` exports the sockets from the saved .blend. `validate_asset` fails an entry without
   its node, a socket node without an entry, a socket carrying a mesh, or one outside the bbox.
   The viewer (`viewer/static/fx.js`) draws them: pooled billboard particles in the socket's frame per
   type, plus a flickering point light for `fire` and `flicker_light`; `idle` entries always run,

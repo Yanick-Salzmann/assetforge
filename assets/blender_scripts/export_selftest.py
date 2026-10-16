@@ -226,6 +226,7 @@ def _fx_socket_export(export_module, out_dir) -> dict:
         "fire_shifted_once": _close(fire_world, _gltf_vector((0.2, 0.0, 0.2))),
         "sockets_not_moved": (tuple(smoke.matrix_world.translation), tuple(fire.matrix_world.translation)) == sockets_before,
         "orphan_rejected": orphan_rejected,
+        "recorded_on_scene": [entry for entry in fx.recorded_fx() if entry["node"] in (smoke.name, fire.name)] == [smoke_entry, fire_entry],
     }
     return {"checks": checks, "nodes": names, "ok": all(checks.values())}
 
