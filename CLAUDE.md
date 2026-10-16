@@ -291,6 +291,12 @@ validator too.
   and a swept-collision pass over each rigid clip finds no moving part sinking more than
   `CONTACT_TOLERANCE_M` into another LOD0 part beyond what already overlaps at rest. Skinned mesh
   nodes are measured at their bind pose.
+- FX sockets (`assets/fx_manifest.py`, `assets/fx.py`): `asset.json` `fx[]`, one entry per emitter
+  with `node`, `type` (fire, smoke, sparks, steam, flicker_light), `state` (idle/working), `rate`
+  (per second), `size` (m) and `colour` (linear RGB). `node` is an empty named `FX_<type>[_<label>]`
+  at the emitter transform (local +Z in Blender = emit direction), made by `fx.add_fx_socket` and
+  passed to `export_asset(..., fx=[...])` among the objects. `validate_asset` fails an entry without
+  its node, a socket node without an entry, a socket carrying a mesh, or one outside the bbox.
 - No baked lighting and no AO darkening in the albedo. The engine lights it.
 - Power-of-two textures, 2048 atlas, one material per asset.
 - Atlas layout (`game_ready.uv_unwrap_and_pack`, af-alp): islands are packed in atlas pixels at

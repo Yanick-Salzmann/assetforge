@@ -184,6 +184,52 @@ def _clear_animation_scene() -> None:
     scene.frame_end = 1 + max(SPIN_FRAMES, WAVE_FRAMES)
 
 
+def _fx_socket_export(export_module, out_dir) -> dict:
+    """A static block with a chimney smoke socket on top and a fire socket parented to the block:
+    both must ship as FX_ nodes at their base-centred transforms with asset.json fx[] beside them,
+    the parented socket must not be shifted twice, and a socket without an entry is refused."""
+    from assets import fx
+
+    _clear_animation_scene()
+    material = bpy.data.materials.new("fx_atlas")
+    material.use_nodes = True
+    block = _block("Kiln", (1.0, 1.0, 0.4), (0.0, 0.0, 0.2), material)
+    block.location = (3.0, -2.0, 0.0)
+    bpy.context.view_layer.update()
+    smoke, smoke_entry = fx.add_fx_socket("smoke", (3.0, -2.0, 0.4), "idle", 8.0, 0.6, (0.4, 0.4, 0.4), label="chimney")
+    fire, fire_entry = fx.add_fx_socket("fire", (3.2, -2.0, 0.2), "working", 30.0, 0.3, (1.0, 0.5, 0.1), parent=block)
+    sockets_before = (tuple(smoke.matrix_world.translation), tuple(fire.matrix_world.translation))
+
+    name = "export-selftest-fx"
+    result = export_module.export_asset([block, smoke, fire], name=name, kind="prop", fx=[smoke_entry, fire_entry])
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    document = export_module.glb_document(result.glb_path)
+    nodes = {node.get("name"): node for node in document.get("nodes", [])}
+    names = [node.get("name") for node in document.get("nodes", [])]
+    block_node = nodes.get("Kiln", {})
+    block_children = [names[index] for index in block_node.get("children", [])]
+    fire_world = [
+        a + b for a, b in zip(block_node.get("translation", [0.0, 0.0, 0.0]), nodes.get("FX_fire", {}).get("translation", [0.0, 0.0, 0.0]))
+    ]
+
+    orphan_rejected = False
+    try:
+        export_module.export_asset([block, smoke, fire], name=name, kind="prop", fx=[smoke_entry])
+    except export_module.ExportError:
+        orphan_rejected = True
+
+    checks = {
+        "manifest_fx": manifest.get("fx") == [smoke_entry, fire_entry],
+        "smoke_socket": _close(nodes.get("FX_smoke_chimney", {}).get("translation"), _gltf_vector((0.0, 0.0, 0.4))),
+        "smoke_is_empty": "mesh" not in nodes.get("FX_smoke_chimney", {"mesh": 0}),
+        "fire_under_block": block_children == ["FX_fire"],
+        "fire_shifted_once": _close(fire_world, _gltf_vector((0.2, 0.0, 0.2))),
+        "sockets_not_moved": (tuple(smoke.matrix_world.translation), tuple(fire.matrix_world.translation)) == sockets_before,
+        "orphan_rejected": orphan_rejected,
+    }
+    return {"checks": checks, "nodes": names, "ok": all(checks.values())}
+
+
 def _rigid_export(export_module, out_dir) -> dict:
     """A base offset from the origin with a spinning <part>_ANIM child: the root must carry the
     base-centre shift so the base and rotor keep their own design-space transforms in the glb."""
@@ -379,7 +425,8 @@ def main() -> None:
 
         rigid_check = _rigid_export(export, out_dir)
         skinned_check = _skinned_export(export, out_dir)
-        ok = ok and rigid_check["ok"] and skinned_check["ok"]
+        fx_check = _fx_socket_export(export, out_dir)
+        ok = ok and rigid_check["ok"] and skinned_check["ok"] and fx_check["ok"]
 
         payload = {
             "ok": ok,
@@ -390,6 +437,7 @@ def main() -> None:
             "static_check": static_check,
             "rigid_check": rigid_check,
             "skinned_check": skinned_check,
+            "fx_check": fx_check,
         }
     except Exception:
         payload = {"ok": False, "error": traceback.format_exc()}

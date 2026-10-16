@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from assets import team_colour, validate
+from assets import fx_manifest, team_colour, validate
 from library import gltf
 from terrain import config
 
@@ -275,7 +275,7 @@ def _pad4(data: bytes, fill: bytes = b"\x00") -> bytes:
     return data + fill * ((-len(data)) % 4)
 
 
-def _write_tetrahedron_glb(path, node_names: tuple[str, ...] = ("",)) -> None:
+def _write_tetrahedron_glb(path, node_names: tuple[str, ...] = ("",), extra_nodes: tuple[dict, ...] = ()) -> None:
     positions, indices, centroid = _tetrahedron()
     normals = positions - centroid
     normals /= np.linalg.norm(normals, axis=1, keepdims=True)
@@ -291,8 +291,8 @@ def _write_tetrahedron_glb(path, node_names: tuple[str, ...] = ("",)) -> None:
 
     document = {
         "scene": 0,
-        "scenes": [{"nodes": list(range(len(node_names)))}],
-        "nodes": [{"mesh": 0, "name": node_name} for node_name in node_names],
+        "scenes": [{"nodes": list(range(len(node_names) + len(extra_nodes)))}],
+        "nodes": [{"mesh": 0, "name": node_name} for node_name in node_names] + list(extra_nodes),
         "meshes": [
             {
                 "primitives": [
@@ -619,3 +619,55 @@ def test_valid_animations_pass():
 def test_malformed_animations_fail():
     _write_animated_manifest("mill", [{"name": "spin"}])
     assert not validate._check_animation_manifest("mill")[0].passed
+
+
+def _write_fx_asset(sockets: tuple[dict, ...], fx: list) -> None:
+    _write_tetrahedron_glb(config.ASSET_OUT_DIR / "kiln" / "kiln.glb", extra_nodes=sockets)
+    manifest = {"name": "kiln", "fx": fx}
+    (config.ASSET_OUT_DIR / "kiln" / "asset.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def _fx_check(sockets: tuple[dict, ...], fx: list) -> validate.CheckResult:
+    _write_fx_asset(sockets, fx)
+    return next(check for check in validate.validate_asset("kiln", "prop").checks if check.name == "fx sockets")
+
+
+SMOKE = fx_manifest.fx_entry("FX_smoke_chimney", "smoke", "idle", 8.0, 0.6, [0.4, 0.4, 0.4])
+
+
+def test_static_asset_without_fx_passes_the_socket_check():
+    result = _fx_check((), [])
+    assert result.passed, result.detail
+
+
+def test_socket_on_the_bbox_top_passes():
+    result = _fx_check(({"name": "FX_smoke_chimney", "translation": [0.0, 1.0, 0.0]},), [SMOKE])
+    assert result.passed, result.detail
+
+
+def test_fx_entry_without_its_node_fails():
+    result = _fx_check((), [SMOKE])
+    assert not result.passed
+    assert "no such node" in result.detail
+
+
+def test_socket_outside_the_bbox_fails():
+    result = _fx_check(({"name": "FX_smoke_chimney", "translation": [0.0, 3.0, 0.0]},), [SMOKE])
+    assert not result.passed
+    assert "outside" in result.detail
+
+
+def test_socket_node_without_an_entry_fails():
+    result = _fx_check(({"name": "FX_fire", "translation": [0.0, 0.5, 0.0]},), [])
+    assert not result.passed
+    assert "FX_fire" in result.detail
+
+
+def test_socket_carrying_a_mesh_fails():
+    result = _fx_check(({"name": "FX_smoke_chimney", "mesh": 0},), [SMOKE])
+    assert not result.passed
+
+
+def test_malformed_fx_entry_fails():
+    result = _fx_check(({"name": "FX_smoke_chimney"},), [{"node": "FX_smoke_chimney"}])
+    assert not result.passed

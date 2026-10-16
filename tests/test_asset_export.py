@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 from assets import blender as blender_discovery
+from assets import validate
+from terrain import config
 
 SCRIPT_PATH = Path(__file__).resolve().parent.parent / "assets" / "blender_scripts" / "export_selftest.py"
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -16,7 +18,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 @pytest.mark.slow
 @pytest.mark.gpu
 @pytest.mark.skipif(blender_discovery.find_blender() is None, reason="Blender executable not found")
-def test_export_asset_writes_glb_textures_and_manifest(tmp_path):
+def test_export_asset_writes_glb_textures_and_manifest(tmp_path, monkeypatch):
     result_path = tmp_path / "result.json"
     out_dir = tmp_path / "out"
     completed = subprocess.run(
@@ -38,3 +40,6 @@ def test_export_asset_writes_glb_textures_and_manifest(tmp_path):
     assert result_path.is_file(), completed.stdout + completed.stderr
     payload = json.loads(result_path.read_text(encoding="utf-8"))
     assert payload.get("ok"), payload
+    monkeypatch.setattr(config, "ASSET_OUT_DIR", out_dir)
+    checks = {check.name: check for check in validate.validate_asset("export-selftest-fx", "prop").checks}
+    assert checks["fx sockets"].passed, checks["fx sockets"]

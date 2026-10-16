@@ -15,6 +15,10 @@ every top-level object is parented under a temporary root empty named after the 
 base-centre shift goes on that root so parent-space keyframes stay valid, every action is exported
 as a glTF clip, and the clips the glb actually carries are checked against the entries before they
 are written to asset.json's animations[]. Without animations the export is unchanged.
+
+Passing fx (assets.fx_manifest entries) ships each entry's FX_<type> socket empty (made by
+assets.fx.add_fx_socket and included in objects) as a glb node and records the entries in
+asset.json's fx[].
 """
 
 from __future__ import annotations
@@ -31,7 +35,7 @@ from typing import Iterator, Sequence
 import bpy
 from mathutils import Vector
 
-from assets import animation_manifest, team_colour
+from assets import animation_manifest, fx_manifest, team_colour
 from assets.recipe import validate_name
 from terrain import config
 
@@ -66,6 +70,7 @@ class ExportResult:
     bbox_min: tuple[float, float, float]
     bbox_max: tuple[float, float, float]
     animations: list[dict] = field(default_factory=list)
+    fx: list[dict] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         result = {
@@ -79,6 +84,8 @@ class ExportResult:
         }
         if self.animations:
             result["animations"] = self.animations
+        if self.fx:
+            result["fx"] = self.fx
         return result
 
 
@@ -252,6 +259,22 @@ def _check_exported_clips(glb_path: Path, animations: Sequence[dict]) -> None:
             raise ExportError(f"{entry['name']}: glb clip runs {clip['end_s']:.4f} s, manifest says {entry['duration_s']} s")
 
 
+def _check_fx_inputs(objects: Sequence[bpy.types.Object], fx: Sequence[dict]) -> None:
+    errors = fx_manifest.manifest_errors(list(fx))
+    if errors:
+        raise ExportError("; ".join(errors))
+    sockets = {obj.name: obj for obj in objects if fx_manifest.is_fx_node(obj.name)}
+    for entry in fx:
+        socket = sockets.get(entry["node"])
+        if socket is None:
+            raise ExportError(f"fx socket {entry['node']} is not in the export")
+        if socket.type != "EMPTY":
+            raise ExportError(f"fx socket {entry['node']} must be an empty, not {socket.type}")
+    orphans = sorted(set(sockets) - {entry["node"] for entry in fx})
+    if orphans:
+        raise ExportError(f"fx socket(s) {', '.join(orphans)} have no fx entry")
+
+
 def _top_level(objects: Sequence[bpy.types.Object]) -> list[bpy.types.Object]:
     members = set(objects)
     return [obj for obj in objects if obj.parent not in members]
@@ -304,6 +327,7 @@ def export_asset(
     kind: str,
     team_mask: bpy.types.Image | None = None,
     animations: Sequence[dict] | None = None,
+    fx: Sequence[dict] | None = None,
 ) -> ExportResult:
     """Export objects to out/assets/<name>/<name>.glb, write their textures to textures/, and
     record tri counts per LOD, world bbox, materials and texture list in asset.json.
@@ -322,7 +346,10 @@ def export_asset(
 
     animations, a list of assets.animation_manifest entries, exports the hierarchy instead: rigid
     <part>_ANIM nodes and armatures stay child nodes under a root named after the asset that
-    carries the base-centre shift, and the root is removed again afterwards."""
+    carries the base-centre shift, and the root is removed again afterwards.
+
+    fx, a list of assets.fx_manifest entries, names FX_<type> socket empties among objects; every
+    socket needs an entry and every entry its socket."""
     objects = list(objects)
     if not objects:
         raise ExportError("export requires at least one object")
@@ -332,20 +359,23 @@ def export_asset(
         raise ExportError(f"kind {kind!r} takes no team mask; only {team_colour.KINDS} do")
     validate_name(name)
     animations = [dict(entry) for entry in animations or ()]
+    fx = [dict(entry) for entry in fx or ()]
+    _check_fx_inputs(objects, fx)
     if animations:
         _check_animation_inputs(objects, animations)
-        return _export_animated(objects, name, kind, team_mask, animations)
+        return _export_animated(objects, name, kind, team_mask, animations, fx)
 
     shift = _base_centre_shift(objects)
-    for obj in objects:
+    top_level = _top_level(objects)
+    for obj in top_level:
         obj.location = obj.location - shift
     bpy.context.view_layer.update()
     try:
         out_dir = config.ASSET_OUT_DIR / name
         glb_path = export_glb(objects, out_dir / f"{name}.glb")
-        result = _write_manifest(objects, name, kind, team_mask, glb_path, [])
+        result = _write_manifest(objects, name, kind, team_mask, glb_path, [], fx)
     finally:
-        for obj in objects:
+        for obj in top_level:
             obj.location = obj.location + shift
         bpy.context.view_layer.update()
     return result
@@ -357,6 +387,7 @@ def _export_animated(
     kind: str,
     team_mask: bpy.types.Image | None,
     animations: list[dict],
+    fx: list[dict],
 ) -> ExportResult:
     with _rest_pose(objects):
         shift = _base_centre_shift(objects)
@@ -366,7 +397,7 @@ def _export_animated(
         glb_path = export_animated_glb([root, *objects], out_dir / f"{name}.glb")
         _check_exported_clips(glb_path, animations)
         with _rest_pose(objects):
-            return _write_manifest(objects, name, kind, team_mask, glb_path, animations)
+            return _write_manifest(objects, name, kind, team_mask, glb_path, animations, fx)
     finally:
         _detach_root(root, saved)
 
@@ -393,6 +424,7 @@ def _write_manifest(
     team_mask: bpy.types.Image | None,
     glb_path: Path,
     animations: list[dict],
+    fx: list[dict],
 ) -> ExportResult:
     out_dir = glb_path.parent
     materials = _unique_materials(objects)
@@ -417,6 +449,8 @@ def _write_manifest(
         manifest[team_colour.MANIFEST_KEY] = team_colour.manifest_entry(TEXTURES_DIRNAME)
     if animations:
         manifest[animation_manifest.MANIFEST_KEY] = animations
+    if fx:
+        manifest[fx_manifest.MANIFEST_KEY] = fx
     manifest_path = out_dir / MANIFEST_NAME
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -429,4 +463,5 @@ def _write_manifest(
         bbox_min=bbox_min,
         bbox_max=bbox_max,
         animations=animations,
+        fx=fx,
     )

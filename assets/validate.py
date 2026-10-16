@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from assets import animation_checks, animation_manifest, atlas_raster, team_colour
+from assets import animation_checks, animation_manifest, atlas_raster, fx_manifest, team_colour
 from library import gltf
 from terrain import config
 
@@ -29,6 +29,7 @@ REQUIRED_LODS = 3
 LOD_STEP_MAX_RATIO = 0.75
 
 ORIGIN_TOLERANCE_M = 0.05
+FX_BBOX_TOLERANCE_M = 0.05
 SCALE_TOLERANCE = 1e-3
 ROTATION_TOLERANCE = 1e-3
 DEGENERATE_AREA_EPS = 1e-10
@@ -160,6 +161,7 @@ def validate_asset(name: str, kind: str) -> ValidationReport:
     checks.append(manifest_check)
     if manifest_check.passed:
         checks.extend(_check_animations(document, buffers, animations, kind, rigid_parts))
+    checks.append(_check_fx(name, document, world_bbox_min, world_bbox_max))
 
     return ValidationReport(
         name=name,
@@ -628,6 +630,40 @@ def _check_animations(
     findings += animation_checks.budget_checks(document, animations, clips, kind)
     findings += animation_checks.sweep_checks(document, animations, clips, rigid_parts)
     return [CheckResult(*finding) for finding in findings]
+
+
+def _check_fx(name: str, document: dict, bbox_min: np.ndarray, bbox_max: np.ndarray) -> CheckResult:
+    label = "fx sockets"
+    manifest_path = config.ASSET_OUT_DIR / name / "asset.json"
+    fx = []
+    if manifest_path.is_file():
+        fx = json.loads(manifest_path.read_text(encoding="utf-8")).get(fx_manifest.MANIFEST_KEY, [])
+    errors = fx_manifest.manifest_errors(fx)
+    if errors:
+        return CheckResult(label, False, "; ".join(errors))
+    nodes = document.get("nodes", [])
+    worlds = animation_checks.world_matrices(document)
+    sockets = {nodes[index].get("name", ""): index for index in worlds if fx_manifest.is_fx_node(nodes[index].get("name", ""))}
+    low = bbox_min - FX_BBOX_TOLERANCE_M
+    high = bbox_max + FX_BBOX_TOLERANCE_M
+    for entry in fx:
+        index = sockets.get(entry["node"])
+        if index is None:
+            errors.append(f"{entry['node']}: no such node in the glb")
+            continue
+        if "mesh" in nodes[index]:
+            errors.append(f"{entry['node']}: socket carries a mesh; it must be an empty")
+        position = worlds[index][:3, 3]
+        if np.any(position < low) or np.any(position > high):
+            errors.append(f"{entry['node']}: socket at {np.round(position, 3).tolist()} is outside the asset bbox")
+    orphans = sorted(set(sockets) - {entry["node"] for entry in fx})
+    if orphans:
+        errors.append(f"socket node(s) {', '.join(orphans)} have no fx entry")
+    if errors:
+        return CheckResult(label, False, "; ".join(errors))
+    if not fx:
+        return CheckResult(label, True, "no fx")
+    return CheckResult(label, True, f"{len(fx)} socket(s) inside the bbox: {', '.join(entry['node'] for entry in fx)}")
 
 
 def _as_gltf_matrix(matrix: np.ndarray) -> gltf.Matrix:
