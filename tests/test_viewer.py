@@ -31,6 +31,21 @@ def test_list_assets_reports_exported_assets_with_ordered_lods(tmp_path):
     assert tavern["glb"] == "/files/assets/tavern/tavern.glb"
 
 
+def test_list_assets_carries_animation_entries_for_the_state_picker(tmp_path):
+    directory = _write_asset(tmp_path, "mill")
+    manifest = json.loads((directory / "asset.json").read_text(encoding="utf-8"))
+    entries = [
+        {"name": "idle_sails", "state": "idle", "kind": "rigid", "duration_s": 4.0, "fps": 24, "loop": True, "nodes": ["sails_ANIM"]},
+        {"name": "working_stone", "state": "working", "kind": "rigid", "duration_s": 2.0, "fps": 24, "loop": True, "nodes": ["stone_ANIM"]},
+    ]
+    manifest["animations"] = entries
+    (directory / "asset.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _write_asset(tmp_path, "crate")
+    assets = {asset["name"]: asset for asset in viewer.list_assets(tmp_path)}
+    assert assets["mill"]["animations"] == entries
+    assert assets["crate"]["animations"] == []
+
+
 def test_list_assets_skips_directories_without_manifest_or_glb(tmp_path):
     (tmp_path / "empty").mkdir()
     _write_asset(tmp_path, "unexported", glb=False)

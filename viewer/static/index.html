@@ -21,6 +21,16 @@
   <label>Terrain <select id="terrain"><option value="">(none)</option></select></label>
   <label class="asset-only">Asset <select id="asset"></select></label>
   <label class="asset-only">LOD <select id="lod"></select></label>
+  <fieldset id="animation" class="asset-only" hidden>
+    <legend>Animation</legend>
+    <label>state <select id="anim-state"><option value="idle">idle</option><option value="working">working</option></select></label>
+    <label>clip <select id="anim-clip"></select></label>
+    <div class="row">
+      <button id="anim-play" type="button">Pause</button>
+      <output id="anim-time">0.00 s</output>
+    </div>
+    <input type="range" id="anim-scrub" min="0" max="1" step="0.001" value="0">
+  </fieldset>
   <fieldset id="terrain-options" class="terrain-only">
     <legend>Terrain</legend>
     <label><input type="checkbox" id="water" checked> water surface</label>

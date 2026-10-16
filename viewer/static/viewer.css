@@ -124,6 +124,16 @@ dd {
   }
 }
 
+[hidden] {
+  display: none !important;
+}
+
+#anim-time {
+  flex: 1;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 body:not(.terrain-view) .terrain-only,
 body.terrain-view .asset-only {
   display: none;

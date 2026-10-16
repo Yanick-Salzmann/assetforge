@@ -4,6 +4,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { loadTerrain } from "./terrain.js";
 import { Atmosphere, TONE_MAPPING, hazeDensity } from "./sky.js";
+import { ClipPlayer, STATES, describeClips, phaseOf } from "./animation.js";
 
 const EYE_HEIGHT_M = 1.7;
 const HUMAN_HEIGHT_M = 1.8;
@@ -39,6 +40,12 @@ const heightBlendBox = document.getElementById("height-blend");
 const scatterBox = document.getElementById("scatter");
 const buildingsBox = document.getElementById("buildings");
 const lodSelect = document.getElementById("lod");
+const animationPanel = document.getElementById("animation");
+const animStateSelect = document.getElementById("anim-state");
+const animClipSelect = document.getElementById("anim-clip");
+const animPlayButton = document.getElementById("anim-play");
+const animTimeLabel = document.getElementById("anim-time");
+const animScrub = document.getElementById("anim-scrub");
 const spinBox = document.getElementById("spin");
 const humanBox = document.getElementById("human");
 const atmosphereBox = document.getElementById("atmosphere");
@@ -110,7 +117,7 @@ const state = {
   asset: null,
   root: null,
   meshes: [],
-  mixer: null,
+  player: null,
   clips: [],
   lod: 0,
   mode: "textured",
@@ -137,6 +144,8 @@ function readHash() {
     mode: params.get("mode"),
     camera: params.get("cam"),
     time: params.get("time"),
+    anim: params.get("anim"),
+    clip: params.get("clip"),
   };
 }
 
@@ -155,6 +164,12 @@ function writeHash() {
     mode: state.mode,
     cam: state.camera,
   });
+  if (state.player) {
+    params.set("anim", state.player.state);
+    if (state.player.clip !== "all") {
+      params.set("clip", state.player.clip);
+    }
+  }
   history.replaceState(null, "", `#${params}`);
 }
 
@@ -173,12 +188,12 @@ function disposeRoot() {
     return;
   }
   scene.remove(state.root);
-  if (state.mixer) {
-    state.mixer.stopAllAction();
-    state.mixer.uncacheRoot(state.root);
+  if (state.player) {
+    state.player.dispose();
   }
-  state.mixer = null;
+  state.player = null;
   state.clips = [];
+  animationPanel.hidden = true;
   state.root.traverse((node) => {
     if (node.isMesh) {
       node.geometry.dispose();
@@ -698,15 +713,97 @@ function backfaceOverlay(node) {
   return overlay;
 }
 
-function playClips(clips) {
-  state.clips = clips.map((clip) => ({ name: clip.name, duration_s: clip.duration }));
-  if (clips.length === 0) {
+function animationSnapshot() {
+  const player = state.player;
+  if (!player) {
+    return null;
+  }
+  return {
+    state: player.state,
+    clip: player.clip,
+    playing: player.active.map((track) => track.name),
+    paused: player.paused,
+    time: player.time,
+    duration_s: player.duration,
+  };
+}
+
+function showAnimationTime() {
+  const player = state.player;
+  if (!player) {
     return;
   }
-  state.mixer = new THREE.AnimationMixer(state.root);
-  for (const clip of clips) {
-    state.mixer.clipAction(clip).play();
+  const time = player.time;
+  animTimeLabel.textContent = `${time.toFixed(2)} / ${player.duration.toFixed(2)} s`;
+  animScrub.value = time;
+  if (window.viewerState.animation) {
+    window.viewerState.animation.time = time;
   }
+}
+
+function populateClipOptions() {
+  const player = state.player;
+  const options = [["all", "all clips"], ...player.tracks.filter((track) => track.state === player.state).map((track) => [track.name, track.name])];
+  animClipSelect.replaceChildren(
+    ...options.map(([value, label]) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      return option;
+    }),
+  );
+  animClipSelect.value = player.clip;
+}
+
+function selectAnimation(animState, clip) {
+  const player = state.player;
+  if (!player) {
+    return;
+  }
+  const track = player.tracks.find((entry) => entry.name === clip);
+  const chosenState = track ? track.state : STATES.includes(animState) ? animState : "idle";
+  player.select(chosenState, track ? track.name : "all");
+  animStateSelect.value = player.state;
+  populateClipOptions();
+  animScrub.max = player.duration;
+  animScrub.step = 1 / 240;
+  showAnimationTime();
+  window.viewerState.animation = animationSnapshot();
+  writeHash();
+  invalidate();
+}
+
+function setPaused(paused) {
+  const player = state.player;
+  if (!player) {
+    return;
+  }
+  player.paused = paused;
+  animPlayButton.textContent = paused ? "Play" : "Pause";
+  window.viewerState.animation = animationSnapshot();
+}
+
+function seekAnimation(seconds) {
+  const player = state.player;
+  if (!player) {
+    return;
+  }
+  setPaused(true);
+  player.seek(seconds);
+  showAnimationTime();
+  invalidate();
+}
+
+function setupAnimation(clips, entries, wanted) {
+  const tracks = describeClips(clips, entries ?? []);
+  state.clips = tracks.map(({ name, state: clipState, duration_s, loop }) => ({ name, state: clipState, duration_s, loop }));
+  animationPanel.hidden = tracks.length === 0;
+  if (tracks.length === 0) {
+    return;
+  }
+  state.player = new ClipPlayer(state.root, tracks);
+  setPaused(false);
+  selectAnimation(wanted.anim, wanted.clip);
   animationClock.getDelta();
 }
 
@@ -751,7 +848,7 @@ async function loadAsset(name, wanted = {}) {
     state.meshes.push({ mesh: node, original: node.material, overlay, lod: lodIndexOf(node) });
   }
   scene.add(state.root);
-  playClips(gltf.animations);
+  setupAnimation(gltf.animations, asset.animations, wanted);
   const lods = [...new Set(state.meshes.map((entry) => entry.lod))].sort((a, b) => a - b);
   populateLods(lods.map((lod) => `LOD${lod}`));
   const wantedLod = wanted.lod ? Number(wanted.lod.replace("LOD", "")) : 0;
@@ -766,7 +863,16 @@ async function loadAsset(name, wanted = {}) {
     frameCamera();
   }
   setStatus("");
-  window.viewerState = { ready: true, asset: name, terrain: null, lod: state.lod, error: null, triangles: window.viewerState.triangles, clips: state.clips };
+  window.viewerState = {
+    ready: true,
+    asset: name,
+    terrain: null,
+    lod: state.lod,
+    error: null,
+    triangles: window.viewerState.triangles,
+    clips: state.clips,
+    animation: animationSnapshot(),
+  };
 }
 
 function footprintOf(asset) {
@@ -778,6 +884,9 @@ function footprintOf(asset) {
 }
 
 function disposeBuildings(buildings) {
+  for (const player of buildings.players) {
+    player.dispose();
+  }
   buildings.group.traverse((node) => {
     if (node.isMesh) {
       node.geometry.dispose();
@@ -797,6 +906,7 @@ async function loadBuildings(terrain) {
   group.name = "buildings";
   const placed = [];
   const failed = [];
+  const players = [];
   for (const [index, asset] of assets.entries()) {
     const site = sites[index];
     if (!site) {
@@ -822,10 +932,18 @@ async function loadBuildings(terrain) {
     root.position.set(site.x, site.base, site.z);
     root.rotation.y = site.yaw;
     group.add(root);
-    placed.push({ ...site, front: footprints[index].front });
+    let phase = null;
+    if (gltf.animations.length > 0) {
+      const player = new ClipPlayer(root, describeClips(gltf.animations, asset.animations ?? []));
+      player.select("idle");
+      phase = phaseOf(`${asset.name}:${index}`);
+      player.phase(phase);
+      players.push(player);
+    }
+    placed.push({ ...site, front: footprints[index].front, phase });
   }
   terrain.clearScatter([...placed, { x: terrain.ground.x, z: terrain.ground.z, radius: EYE_CLEARING_M }]);
-  return { group, sites: placed, failed };
+  return { group, sites: placed, failed, players };
 }
 
 function unloadTerrain() {
@@ -892,7 +1010,7 @@ async function showTerrain(name, wanted = {}) {
     error: null,
     scatter: terrain.scatterStats,
     missingMaps: terrain.missingMaps,
-    buildings: terrain.buildings.sites.map(({ name: building, x, z, base, relief, yaw }) => ({ name: building, x, z, base, relief, yaw })),
+    buildings: terrain.buildings.sites.map(({ name: building, x, z, base, relief, yaw, phase }) => ({ name: building, x, z, base, relief, yaw, phase })),
     unplaced: terrain.buildings.failed,
   };
 }
@@ -947,11 +1065,18 @@ function tick() {
   controls.update();
   advanceDay(performance.now());
   const animationDelta = animationClock.getDelta();
-  if (state.mixer) {
-    state.mixer.update(animationDelta);
-    view.dirty = true;
+  if (state.player) {
+    if (!state.player.paused) {
+      state.player.update(animationDelta);
+      showAnimationTime();
+      view.dirty = true;
+    }
   }
   if (state.terrain) {
+    for (const player of state.terrain.buildings.players) {
+      player.update(animationDelta);
+      view.dirty = true;
+    }
     fitTerrainClip();
     if (state.terrain.water.visible) {
       state.terrain.waterUniforms.uTime.value = performance.now() / 1000;
@@ -991,6 +1116,21 @@ for (const box of [waterBox, waterTintBox, colourMacroBox, heightBlendBox, scatt
     }
   });
 }
+
+animStateSelect.addEventListener("change", () => {
+  selectAnimation(animStateSelect.value, "all");
+});
+animClipSelect.addEventListener("change", () => {
+  selectAnimation(animStateSelect.value, animClipSelect.value);
+});
+animPlayButton.addEventListener("click", () => {
+  if (state.player) {
+    setPaused(!state.player.paused);
+  }
+});
+animScrub.addEventListener("input", () => {
+  seekAnimation(Number(animScrub.value));
+});
 
 lodSelect.addEventListener("change", () => {
   state.lod = Number(lodSelect.value.replace("LOD", ""));
@@ -1107,6 +1247,11 @@ window.addEventListener("hashchange", () => {
     wanted.camera === state.camera;
   if (!unchanged) {
     loadFromHash();
+    return;
+  }
+  const player = state.player;
+  if (player && wanted.anim && (wanted.anim !== player.state || (wanted.clip ?? "all") !== player.clip)) {
+    selectAnimation(wanted.anim, wanted.clip ?? "all");
   }
 });
 
@@ -1122,7 +1267,23 @@ function orbitTo(degrees) {
   controls.update();
 }
 
-window.viewerApi = { orbitTo, frameCamera, groundCamera, frameBuildings, setTime, camera, controls, scene, renderer, invalidate, atmosphere, terrain: () => state.terrain };
+window.viewerApi = {
+  orbitTo,
+  frameCamera,
+  groundCamera,
+  frameBuildings,
+  setTime,
+  selectAnimation,
+  setPaused,
+  seekAnimation,
+  camera,
+  controls,
+  scene,
+  renderer,
+  invalidate,
+  atmosphere,
+  terrain: () => state.terrain,
+};
 
 for (const type of ["change", "input", "click"]) {
   document.addEventListener(type, invalidate, true);

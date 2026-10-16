@@ -290,7 +290,10 @@ validator too.
   velocity, bones/clip length/keyframes stay within `MAX_BONES`/`CLIP_MAX_S`/`CLIP_MAX_KEYFRAMES`,
   and a swept-collision pass over each rigid clip finds no moving part sinking more than
   `CONTACT_TOLERANCE_M` into another LOD0 part beyond what already overlaps at rest. Skinned mesh
-  nodes are measured at their bind pose.
+  nodes are measured at their bind pose. The viewer (`viewer/static/animation.js`) plays clips by
+  state: `idle` plays the idle clips, `working` the working clips plus every idle clip whose nodes
+  no working clip touches; `#anim=<state>&clip=<name>` pins it, `window.viewerState.animation`
+  reports it. Buildings on a terrain play idle with a per-instance phase hashed from name and index.
 - FX sockets (`assets/fx_manifest.py`, `assets/fx.py`): `asset.json` `fx[]`, one entry per emitter
   with `node`, `type` (fire, smoke, sparks, steam, flicker_light), `state` (idle/working), `rate`
   (per second), `size` (m) and `colour` (linear RGB). `node` is an empty named `FX_<type>[_<label>]`
