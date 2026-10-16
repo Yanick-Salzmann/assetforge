@@ -585,6 +585,15 @@ def test_uv_islands_join_a_quad_and_ignore_collapsed_faces():
     assert islands[0] == islands[1] >= 0
 
 
+def test_uv_islands_join_triangles_meeting_at_a_vertex_and_split_a_seam():
+    positions = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [2.0, 1.0, 0.0], [1.0, 0.0, 0.0], [1.0, -1.0, 0.0], [2.0, -1.0, 0.0]])
+    indices = np.array([[0, 1, 2], [3, 4, 5], [6, 7, 8]])
+    uvs = np.array([[0.0, 0.0], [0.1, 0.0], [0.0, 0.1], [0.1, 0.0], [0.2, 0.0], [0.2, 0.1], [0.6, 0.5], [0.6, 0.4], [0.7, 0.4]])
+    islands = validate._uv_islands(positions, indices, uvs)
+    assert islands[0] == islands[1]
+    assert islands[2] != islands[0]
+
+
 def test_texel_density_passes_for_uniform_scale():
     positions, indices, uvs = _two_quads(gap_px=40.0)
     assert validate._check_texel_density("m", positions, indices, uvs)[0].passed

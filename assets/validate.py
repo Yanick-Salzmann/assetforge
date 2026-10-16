@@ -386,10 +386,12 @@ def _uv_triangle_areas(tri_uvs: np.ndarray) -> np.ndarray:
 
 def _uv_islands(positions: np.ndarray, indices: np.ndarray, uvs: np.ndarray) -> np.ndarray:
     """Island id per triangle, -1 for triangles collapsed to zero UV area (hidden faces). Two
-    triangles share an island when they share a welded 3D edge whose UVs match at both ends within
+    triangles share an island when they share a welded 3D vertex whose UVs match within
     UV_ISLAND_JOIN_TOLERANCE of the larger triangle's UV extent - glTF splits vertices at sharp
     normals and the packer shrinks every triangle toward its centroid, so neither shared indices
-    nor exact UV equality identify an island."""
+    nor exact UV equality identify an island. A shared vertex rather than a shared edge, because a
+    decimated LOD leaves triangles that meet their neighbours only at a vertex (a T-junction) yet
+    sit in the same packed island; a UV seam still splits, since its two sides differ in UV."""
     tri_uvs = uvs[indices]
     live = _uv_triangle_areas(tri_uvs) > COLLAPSED_UV_AREA_EPS
     extent = (tri_uvs.max(axis=1) - tri_uvs.min(axis=1)).max(axis=1)
@@ -402,21 +404,19 @@ def _uv_islands(positions: np.ndarray, indices: np.ndarray, uvs: np.ndarray) -> 
             item = parent[item]
         return item
 
-    edges: dict[tuple[int, int], list[tuple[int, np.ndarray, np.ndarray]]] = {}
+    corners: dict[int, list[tuple[int, np.ndarray]]] = {}
     for tri in np.flatnonzero(live):
         for corner in range(3):
-            a, b = int(welded[tri, corner]), int(welded[tri, (corner + 1) % 3])
-            uv_a, uv_b = tri_uvs[tri, corner], tri_uvs[tri, (corner + 1) % 3]
-            if a > b:
-                a, b, uv_a, uv_b = b, a, uv_b, uv_a
-            edges.setdefault((a, b), []).append((int(tri), uv_a, uv_b))
-    for sharing in edges.values():
+            corners.setdefault(int(welded[tri, corner]), []).append((int(tri), tri_uvs[tri, corner]))
+    for sharing in corners.values():
         for i in range(len(sharing)):
             for j in range(i + 1, len(sharing)):
-                tri_i, a_i, b_i = sharing[i]
-                tri_j, a_j, b_j = sharing[j]
+                tri_i, uv_i = sharing[i]
+                tri_j, uv_j = sharing[j]
+                if find(tri_i) == find(tri_j):
+                    continue
                 tolerance = UV_ISLAND_JOIN_TOLERANCE * max(extent[tri_i], extent[tri_j]) + 1e-7
-                if np.abs(a_i - a_j).max() <= tolerance and np.abs(b_i - b_j).max() <= tolerance:
+                if np.abs(uv_i - uv_j).max() <= tolerance:
                     parent[find(tri_i)] = find(tri_j)
 
     roots = np.array([find(t) if live[t] else -1 for t in range(len(indices))], dtype=np.int64)
