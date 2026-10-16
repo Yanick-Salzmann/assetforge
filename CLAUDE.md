@@ -312,6 +312,10 @@ validator too.
   at the emitter transform (local +Z in Blender = emit direction), made by `fx.add_fx_socket` and
   passed to `export_asset(..., fx=[...])` among the objects. `validate_asset` fails an entry without
   its node, a socket node without an entry, a socket carrying a mesh, or one outside the bbox.
+  The viewer (`viewer/static/fx.js`) draws them: pooled billboard particles in the socket's frame per
+  type, plus a flickering point light for `fire` and `flicker_light`; `idle` entries always run,
+  `working` ones follow the state picker (also shown for assets with fx but no clips), and
+  `window.viewerState.fx` reports each socket's live particle count. Terrain buildings run idle fx.
 - No baked lighting and no AO darkening in the albedo. The engine lights it.
 - Power-of-two textures, 2048 atlas, one material per asset.
 - Atlas layout (`game_ready.uv_unwrap_and_pack`, af-alp): islands are packed in atlas pixels at

@@ -247,3 +247,15 @@ def test_server_refuses_terrain_paths_outside_its_roots(running_terrain):
         with pytest.raises(urllib.error.HTTPError) as error:
             _get(f"{running_terrain}{path}")
         assert error.value.code == 404
+
+
+def test_list_assets_carries_fx_entries(tmp_path):
+    directory = _write_asset(tmp_path, "smithy")
+    manifest = json.loads((directory / "asset.json").read_text(encoding="utf-8"))
+    entries = [{"node": "FX_fire_forge", "type": "fire", "state": "working", "rate": 40.0, "size": 0.35, "colour": [1.0, 0.45, 0.12]}]
+    manifest["fx"] = entries
+    (directory / "asset.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _write_asset(tmp_path, "crate")
+    assets = {asset["name"]: asset for asset in viewer.list_assets(tmp_path)}
+    assert assets["smithy"]["fx"] == entries
+    assert assets["crate"]["fx"] == []

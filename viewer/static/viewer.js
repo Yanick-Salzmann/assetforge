@@ -5,6 +5,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { loadTerrain } from "./terrain.js";
 import { Atmosphere, TONE_MAPPING, hazeDensity } from "./sky.js";
 import { ClipPlayer, STATES, describeClips, phaseOf } from "./animation.js";
+import { FxSystem } from "./fx.js";
 
 const EYE_HEIGHT_M = 1.7;
 const HUMAN_HEIGHT_M = 1.8;
@@ -118,6 +119,7 @@ const state = {
   root: null,
   meshes: [],
   player: null,
+  fx: null,
   clips: [],
   lod: 0,
   mode: "textured",
@@ -169,6 +171,8 @@ function writeHash() {
     if (state.player.clip !== "all") {
       params.set("clip", state.player.clip);
     }
+  } else if (state.fx) {
+    params.set("anim", state.fx.state);
   }
   history.replaceState(null, "", `#${params}`);
 }
@@ -192,6 +196,10 @@ function disposeRoot() {
     state.player.dispose();
   }
   state.player = null;
+  if (state.fx) {
+    state.fx.dispose();
+  }
+  state.fx = null;
   state.clips = [];
   animationPanel.hidden = true;
   state.root.traverse((node) => {
@@ -755,14 +763,34 @@ function populateClipOptions() {
   animClipSelect.value = player.clip;
 }
 
+function fxSnapshot() {
+  return state.fx ? state.fx.snapshot() : [];
+}
+
+function selectFxState(animState) {
+  const chosenState = STATES.includes(animState) ? animState : "idle";
+  state.fx.setState(chosenState);
+  animStateSelect.value = chosenState;
+  window.viewerState.fx = fxSnapshot();
+  writeHash();
+  invalidate();
+}
+
 function selectAnimation(animState, clip) {
   const player = state.player;
   if (!player) {
+    if (state.fx) {
+      selectFxState(animState);
+    }
     return;
   }
   const track = player.tracks.find((entry) => entry.name === clip);
   const chosenState = track ? track.state : STATES.includes(animState) ? animState : "idle";
   player.select(chosenState, track ? track.name : "all");
+  if (state.fx) {
+    state.fx.setState(player.state);
+    window.viewerState.fx = fxSnapshot();
+  }
   animStateSelect.value = player.state;
   populateClipOptions();
   animScrub.max = player.duration;
@@ -792,6 +820,13 @@ function seekAnimation(seconds) {
   player.seek(seconds);
   showAnimationTime();
   invalidate();
+}
+
+function showAnimationControls() {
+  animationPanel.hidden = !state.player && !state.fx;
+  for (const element of [animClipSelect.closest("label"), animPlayButton.closest(".row"), animScrub]) {
+    element.hidden = !state.player;
+  }
 }
 
 function setupAnimation(clips, entries, wanted) {
@@ -848,7 +883,12 @@ async function loadAsset(name, wanted = {}) {
     state.meshes.push({ mesh: node, original: node.material, overlay, lod: lodIndexOf(node) });
   }
   scene.add(state.root);
+  state.fx = (asset.fx ?? []).length > 0 ? new FxSystem(state.root, asset.fx) : null;
   setupAnimation(gltf.animations, asset.animations, wanted);
+  showAnimationControls();
+  if (!state.player && state.fx) {
+    selectFxState(wanted.anim);
+  }
   const lods = [...new Set(state.meshes.map((entry) => entry.lod))].sort((a, b) => a - b);
   populateLods(lods.map((lod) => `LOD${lod}`));
   const wantedLod = wanted.lod ? Number(wanted.lod.replace("LOD", "")) : 0;
@@ -872,6 +912,7 @@ async function loadAsset(name, wanted = {}) {
     triangles: window.viewerState.triangles,
     clips: state.clips,
     animation: animationSnapshot(),
+    fx: fxSnapshot(),
   };
 }
 
@@ -886,6 +927,9 @@ function footprintOf(asset) {
 function disposeBuildings(buildings) {
   for (const player of buildings.players) {
     player.dispose();
+  }
+  for (const fx of buildings.fx) {
+    fx.dispose();
   }
   buildings.group.traverse((node) => {
     if (node.isMesh) {
@@ -907,6 +951,7 @@ async function loadBuildings(terrain) {
   const placed = [];
   const failed = [];
   const players = [];
+  const fx = [];
   for (const [index, asset] of assets.entries()) {
     const site = sites[index];
     if (!site) {
@@ -940,10 +985,13 @@ async function loadBuildings(terrain) {
       player.phase(phase);
       players.push(player);
     }
+    if ((asset.fx ?? []).length > 0) {
+      fx.push(new FxSystem(root, asset.fx));
+    }
     placed.push({ ...site, front: footprints[index].front, phase });
   }
   terrain.clearScatter([...placed, { x: terrain.ground.x, z: terrain.ground.z, radius: EYE_CLEARING_M }]);
-  return { group, sites: placed, failed, players };
+  return { group, sites: placed, failed, players, fx };
 }
 
 function unloadTerrain() {
@@ -1072,9 +1120,18 @@ function tick() {
       view.dirty = true;
     }
   }
+  if (state.fx) {
+    state.fx.update(animationDelta, camera, renderer.domElement.height, renderer.toneMappingExposure);
+    window.viewerState.fx = fxSnapshot();
+    view.dirty = true;
+  }
   if (state.terrain) {
     for (const player of state.terrain.buildings.players) {
       player.update(animationDelta);
+      view.dirty = true;
+    }
+    for (const fx of state.terrain.buildings.fx) {
+      fx.update(animationDelta, camera, renderer.domElement.height, renderer.toneMappingExposure);
       view.dirty = true;
     }
     fitTerrainClip();

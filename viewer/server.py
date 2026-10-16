@@ -59,6 +59,7 @@ def list_assets(asset_root: Path) -> list[dict]:
                 "bbox_min": manifest.get("bbox_min"),
                 "bbox_max": manifest.get("bbox_max"),
                 "animations": manifest.get("animations", []),
+                "fx": manifest.get("fx", []),
             }
         )
     return assets
