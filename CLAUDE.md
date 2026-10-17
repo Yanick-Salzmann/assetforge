@@ -190,6 +190,11 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   `blender --background --python assets/blender_scripts/organic_set_build.py` from the
   `assets/organic.py` builders (modelled into the ground and trimmed flat by `ground_cut`), then
   approved and pulled. Kit tris/bbox in `kits.lock.json` count LOD0 only (`library/gltf.py`).
+- Egyptian pottery dressing (jars, bowls, storage pot, amphora, water jar, log pile, sherds) is the
+  `egyptian_pottery` pack (slug `pottery`, kind `organic_prop`, LOD0/1/2), rebuilt by
+  `blender --background --python assets/blender_scripts/pottery_set_build.py` from the
+  `assets/pottery.py` builders (lathe vessels with lean, oval and wobble baked in), then approved and
+  pulled. `egypt_pottery_workshop` places it as `props[]`.
 - Vegetation (trees, shrubs, ferns, grass, flowers) is the `flora` pack, rebuilt by
   `blender --background --python assets/blender_scripts/flora_build.py`: bark tubes and
   alpha-cutout foliage cards from `assets/flora.py` (pure Python, `flora.MODELS` maps each model

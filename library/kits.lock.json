@@ -3026,6 +3026,174 @@
       "zip_sha256": "5869c35cf30b1c87bdb2d197b6d325eebadd2ef08ea27f04797e8e08d77a9a39",
       "zip_url": "https://kenney.nl/media/pages/assets/city-kit-suburban/2c871b7af2-1745479373/kenney_city-kit-suburban_20.zip"
     },
+    "egyptian_pottery": {
+      "category": "prop",
+      "license": "CC0",
+      "models": {
+        "amphora": {
+          "bbox_max_m": [
+            0.24393939971923828,
+            0.9606250524520874,
+            0.23936927318572998
+          ],
+          "bbox_min_m": [
+            -0.2538261413574219,
+            0.0,
+            -0.2356017827987671
+          ],
+          "path": "kits/egyptian_pottery/amphora.glb",
+          "recipe": "out/assets/pottery_amphora/recipe.py",
+          "sha256": "6a136e8b5e83fe54ceecb794a75cb1359a1afbc6789be292b03ae32f6bfae791",
+          "tris": 540
+        },
+        "bowl_fired": {
+          "bbox_max_m": [
+            0.20151758193969727,
+            0.17236349178710952,
+            0.19979865849018097
+          ],
+          "bbox_min_m": [
+            -0.20151758193969727,
+            0.0004885066882707179,
+            -0.19946669042110443
+          ],
+          "path": "kits/egyptian_pottery/bowl_fired.glb",
+          "recipe": "out/assets/pottery_bowl_fired/recipe.py",
+          "sha256": "adfb24dabd37da0a7efeda453243ce78da7a33bbe3c00a73117ac34aeb0ed7d2",
+          "tris": 336
+        },
+        "bowl_raw": {
+          "bbox_max_m": [
+            0.20719003677368164,
+            0.17328620445914567,
+            0.19223934412002563
+          ],
+          "bbox_min_m": [
+            -0.2077922821044922,
+            0.001411219360306859,
+            -0.19223934412002563
+          ],
+          "path": "kits/egyptian_pottery/bowl_raw.glb",
+          "recipe": "out/assets/pottery_bowl_raw/recipe.py",
+          "sha256": "6a68cca244762a5c40446ed74ad34c251f6365d1c40b27f983bfa2b67dc820c9",
+          "tris": 336
+        },
+        "jar_fired": {
+          "bbox_max_m": [
+            0.15703856945037842,
+            0.3669713448616676,
+            0.14566460996866226
+          ],
+          "bbox_min_m": [
+            -0.1549137830734253,
+            0.000721306714694947,
+            -0.14592429250478745
+          ],
+          "path": "kits/egyptian_pottery/jar_fired.glb",
+          "recipe": "out/assets/pottery_jar_fired/recipe.py",
+          "sha256": "a0a7035640cd25174d1c66868a2536ae6df64750940e03c2a7be6bcc4211cf8f",
+          "tris": 624
+        },
+        "jar_raw": {
+          "bbox_max_m": [
+            0.1466822773218155,
+            0.3668690289487131,
+            0.15560253709554672
+          ],
+          "bbox_min_m": [
+            -0.14419302344322205,
+            0.0006189908017404377,
+            -0.15780169516801834
+          ],
+          "path": "kits/egyptian_pottery/jar_raw.glb",
+          "recipe": "out/assets/pottery_jar_raw/recipe.py",
+          "sha256": "c06dc2aadb2dc8031365341d04c661e053de90fd4466b7c1ec1d99d3d95c7c6f",
+          "tris": 624
+        },
+        "log_pile": {
+          "bbox_max_m": [
+            0.24810409545898438,
+            0.3857293836772442,
+            0.5718661546707153
+          ],
+          "bbox_min_m": [
+            -0.2516517639160156,
+            0.0023786136880517006,
+            -0.5719206929206848
+          ],
+          "path": "kits/egyptian_pottery/log_pile.glb",
+          "recipe": "out/assets/pottery_log_pile/recipe.py",
+          "sha256": "8920379fa4f3d2222c5d54a998dcd9d9ffbf4c89cb92452339c96f3a5e62a318",
+          "tris": 552
+        },
+        "sherds": {
+          "bbox_max_m": [
+            0.37593841552734375,
+            0.038841948902700096,
+            0.3889561593532562
+          ],
+          "bbox_min_m": [
+            -0.37593841552734375,
+            0.00048378208884969354,
+            -0.3889561593532562
+          ],
+          "path": "kits/egyptian_pottery/sherds.glb",
+          "recipe": "out/assets/pottery_sherds/recipe.py",
+          "sha256": "271be07a7e7b687dd919ac91601487dc7de8db99145d84bf407e71340a4254e6",
+          "tris": 336
+        },
+        "storage_fired": {
+          "bbox_max_m": [
+            0.24026727676391602,
+            0.4274680231465027,
+            0.25866539776325226
+          ],
+          "bbox_min_m": [
+            -0.24180936813354492,
+            0.001218012417666614,
+            -0.2579706758260727
+          ],
+          "path": "kits/egyptian_pottery/storage_fired.glb",
+          "recipe": "out/assets/pottery_storage_fired/recipe.py",
+          "sha256": "f4af5545dc2011c418cfd70430d057e774721726b239cb0d50c6040f884e9340",
+          "tris": 624
+        },
+        "thrown_raw": {
+          "bbox_max_m": [
+            0.13107848167419434,
+            0.3084875135391485,
+            0.13158578425645828
+          ],
+          "bbox_min_m": [
+            -0.12897467613220215,
+            0.0003624944656621665,
+            -0.12917231768369675
+          ],
+          "path": "kits/egyptian_pottery/thrown_raw.glb",
+          "recipe": "out/assets/pottery_thrown_raw/recipe.py",
+          "sha256": "7af65e02f086a143a3e7801c48c6991757e7ca188bc691fa185aa1c532efaa15",
+          "tris": 432
+        },
+        "water_jar": {
+          "bbox_max_m": [
+            0.2787771224975586,
+            0.7659068051725626,
+            0.2784576565027237
+          ],
+          "bbox_min_m": [
+            -0.2792091369628906,
+            0.004031771793961525,
+            -0.2796362489461899
+          ],
+          "path": "kits/egyptian_pottery/water_jar.glb",
+          "recipe": "out/assets/pottery_water_jar/recipe.py",
+          "sha256": "95bbaac27d5d3c932413c4518f8a19486d236a4dc577f678a69c2bc85d637afb",
+          "tris": 468
+        }
+      },
+      "slug": "pottery",
+      "source": "assetforge"
+    },
     "flora": {
       "category": "vegetation",
       "license": "CC0",

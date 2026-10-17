@@ -45,3 +45,8 @@ category = "vegetation"
 source = "assetforge"
 slug = "organic"
 category = "prop"
+
+[pack.egyptian_pottery]
+source = "assetforge"
+slug = "pottery"
+category = "prop"
