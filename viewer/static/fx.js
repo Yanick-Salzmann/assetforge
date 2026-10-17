@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { windVelocity } from "./wind.js";
 
 export const FX_TYPES = ["fire", "smoke", "sparks", "steam", "flicker_light"];
 const MAX_PARTICLES = 400;
@@ -7,12 +8,13 @@ const GLOW = 1.6;
 const DAYLIGHT_GLOW = 0.25;
 const LIGHT_CANDELA_PER_M = 60;
 const LIGHT_REACH_PER_M = 12;
+const WIND_M_S_PER_STRENGTH = 1.5;
 
 const PROFILES = {
   fire: { life: [0.5, 0.9], speed: [1.4, 2.2], spread: 0.35, grow: [1.2, 0.2], fade: [0.4, 0], cool: 0.35, emissive: true, gravity: 0 },
-  smoke: { life: [4, 6], speed: [0.35, 0.7], spread: 0.25, grow: [0.6, 2.8], fade: [0.8, 0], cool: 1, emissive: false, gravity: 0, drift: 0.25 },
+  smoke: { life: [4, 6], speed: [0.35, 0.7], spread: 0.25, grow: [0.6, 2.8], fade: [0.8, 0], cool: 1, emissive: false, gravity: 0, drift: 0.25, carry: 0.6 },
   sparks: { life: [0.4, 0.9], speed: [1.5, 3], spread: 0.15, cone: 0.6, grow: [1, 0.6], fade: [1, 0], cool: 0.5, emissive: true, gravity: 1 },
-  steam: { life: [1.5, 2.5], speed: [0.5, 0.9], spread: 0.2, grow: [0.5, 2.2], fade: [0.6, 0], cool: 1, emissive: false, gravity: 0, drift: 0.15 },
+  steam: { life: [1.5, 2.5], speed: [0.5, 0.9], spread: 0.2, grow: [0.5, 2.2], fade: [0.6, 0], cool: 1, emissive: false, gravity: 0, drift: 0.15, carry: 0.8 },
 };
 
 const VERTEX = `
@@ -57,9 +59,13 @@ function random(range) {
 }
 
 class Emitter {
-  constructor(socket, entry) {
+  constructor(socket, entry, wind) {
     this.entry = entry;
+    this.socket = socket;
     this.profile = PROFILES[entry.type];
+    this.wind = wind && this.profile.carry ? windVelocity(wind, WIND_M_S_PER_STRENGTH) : null;
+    this.localWind = new THREE.Vector3();
+    this.toLocal = new THREE.Matrix3();
     this.colour = new THREE.Color().fromArray(entry.colour);
     this.capacity = Math.min(MAX_PARTICLES, Math.ceil(entry.rate * this.profile.life[1]) + 1);
     this.age = new Float32Array(this.capacity).fill(Infinity);
@@ -124,6 +130,11 @@ class Emitter {
     const sizes = attributes.size.array;
     const alphas = attributes.alpha.array;
     const tints = attributes.tint.array;
+    if (this.wind) {
+      this.toLocal.setFromMatrix4(this.socket.matrixWorld).invert();
+      this.localWind.copy(this.wind).applyMatrix3(this.toLocal);
+    }
+    const carry = this.wind ? Math.min(1, profile.carry * delta) : 0;
     let alive = 0;
     for (let index = 0; index < this.capacity; index += 1) {
       this.age[index] += delta;
@@ -136,7 +147,10 @@ class Emitter {
       alive += 1;
       const v = index * 3;
       this.velocity[v + 1] -= profile.gravity * GRAVITY_M_S2 * delta;
-      if (profile.drift) {
+      if (this.wind) {
+        this.velocity[v] += (this.localWind.x - this.velocity[v]) * carry;
+        this.velocity[v + 2] += (this.localWind.z - this.velocity[v + 2]) * carry;
+      } else if (profile.drift) {
         this.velocity[v] += profile.drift * delta;
       }
       positions[v] += this.velocity[v] * delta;
@@ -154,6 +168,22 @@ class Emitter {
     attributes.alpha.needsUpdate = true;
     attributes.tint.needsUpdate = true;
     return alive;
+  }
+
+  drift() {
+    const positions = this.points.geometry.attributes.position.array;
+    const world = new THREE.Vector3();
+    const origin = new THREE.Vector3().setFromMatrixPosition(this.socket.matrixWorld);
+    const sum = new THREE.Vector3();
+    let count = 0;
+    for (let index = 0; index < this.capacity; index += 1) {
+      if (this.age[index] < this.life[index]) {
+        world.fromArray(positions, index * 3).applyMatrix4(this.socket.matrixWorld).sub(origin);
+        sum.add(world);
+        count += 1;
+      }
+    }
+    return count > 0 ? [sum.x / count, sum.y / count, sum.z / count] : null;
   }
 
   dispose() {
@@ -188,8 +218,9 @@ class Flicker {
 }
 
 export class FxSystem {
-  constructor(root, entries = []) {
+  constructor(root, entries = [], wind = null) {
     this.state = "idle";
+    this.wind = wind;
     this.sockets = [];
     for (const entry of entries) {
       if (!FX_TYPES.includes(entry.type)) {
@@ -202,7 +233,7 @@ export class FxSystem {
       }
       const parts = [];
       if (entry.type !== "flicker_light") {
-        parts.push(new Emitter(socket, entry));
+        parts.push(new Emitter(socket, entry, wind));
       }
       if (entry.type === "fire" || entry.type === "flicker_light") {
         parts.push(new Flicker(socket, entry));
@@ -244,13 +275,14 @@ export class FxSystem {
   }
 
   snapshot() {
-    return this.sockets.map(({ entry, missing, alive }) => ({
+    return this.sockets.map(({ entry, missing, alive, parts }) => ({
       node: entry.node,
       type: entry.type,
       state: entry.state,
       missing,
       active: !missing && this.isActive(entry),
       particles: alive ?? 0,
+      drift: this.wind && !missing ? (parts.find((part) => part.wind)?.drift() ?? null) : null,
     }));
   }
 

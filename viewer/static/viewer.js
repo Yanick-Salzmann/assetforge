@@ -989,7 +989,7 @@ async function loadBuildings(terrain) {
       players.push(player);
     }
     if ((asset.fx ?? []).length > 0) {
-      fx.push(new FxSystem(root, asset.fx));
+      fx.push(new FxSystem(root, asset.fx, terrain.wind));
     }
     placed.push({ ...site, front: footprints[index].front, phase, cloth });
   }

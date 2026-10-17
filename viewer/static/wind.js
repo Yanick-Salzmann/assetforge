@@ -90,6 +90,25 @@ export function swayMaterial(material, kind, wind) {
   return material;
 }
 
+export function swayDepthMaterial(material, kind, wind) {
+  if (!SWAY_KINDS[kind] || !wind) {
+    return null;
+  }
+  const cutout = material.alphaTest > 0;
+  const depth = new THREE.MeshDepthMaterial({
+    depthPacking: THREE.RGBADepthPacking,
+    map: cutout ? material.map : null,
+    alphaMap: cutout ? material.alphaMap : null,
+    alphaTest: material.alphaTest,
+    side: material.side,
+  });
+  return swayMaterial(depth, kind, wind);
+}
+
+export function windVelocity(wind, speedPerStrength) {
+  return wind.downwind.clone().multiplyScalar(wind.strength * speedPerStrength);
+}
+
 function boneChains(root) {
   const chains = new Map();
   root.traverse((node) => {

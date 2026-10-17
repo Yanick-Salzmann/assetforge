@@ -243,7 +243,8 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   `<name>_bone<i>` chain whose bone Z, the cross axis, is vertical: flags and pennants, not banners or
   awnings) about its pole so its free edge points downwind, plays idle skinned clips at
   `max(0.25, strength)` speed, and leans vegetation kinds (conifer, broadleaf, shrub, grass, flower)
-  downwind in the vertex shader with gusts travelling across the map. `window.viewerState.wind`
+  downwind in the vertex shader (and in their shadow depth pass) with gusts travelling across the map; smoke and
+  steam fx on terrain buildings drift downwind at 1.5 m/s per unit `strength` (`fx.js` `WIND_M_S_PER_STRENGTH`). `window.viewerState.wind`
   reports it and `buildings[].cloth` the turned rigs.
 - Output path is `out/terrain/<name>/`. Previews are kept as the visual
   changelog, not deleted between iterations.

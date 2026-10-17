@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { Wind, swayMaterial } from "./wind.js";
+import { Wind, swayDepthMaterial, swayMaterial } from "./wind.js";
 
 const MAX_GRID_VERTICES = 1025;
 const CHUNK_CELLS = 64;
@@ -1161,6 +1161,10 @@ function tileScatter(group) {
       }
       for (const [geometry, material] of parts) {
         const mesh = new THREE.InstancedMesh(geometry, material, chosen.length);
+        const depth = (Array.isArray(material) ? material[0] : material).userData.swayDepth;
+        if (depth) {
+          mesh.customDepthMaterial = depth;
+        }
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         writePlacements(mesh, chosen);
@@ -1199,6 +1203,7 @@ function disposeScatter(scatter) {
     for (const [geometry, material] of group.userData.variants.flat()) {
       geometry.dispose();
       for (const item of Array.isArray(material) ? material : [material]) {
+        item.userData.swayDepth?.dispose();
         item.dispose();
       }
     }
@@ -1412,6 +1417,7 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
     const { variants, meshes } = await variantParts(entry, mask, meshLoads, meshTextures);
     for (const [, material] of variants.flat()) {
       for (const item of Array.isArray(material) ? material : [material]) {
+        item.userData.swayDepth = swayDepthMaterial(item, mask.kind, wind);
         swayMaterial(item, mask.kind, wind);
       }
     }
