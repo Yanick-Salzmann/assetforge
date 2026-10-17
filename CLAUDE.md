@@ -363,6 +363,15 @@ validator too.
   type, plus a flickering point light for `fire` and `flicker_light`; `idle` entries always run,
   `working` ones follow the state picker (also shown for assets with fx but no clips), and
   `window.viewerState.fx` reports each socket's live particle count. Terrain buildings run idle fx.
+- Model node (`assets/model_node.py`): the Mac serves concept images (an OpenAI-style
+  `/images/generations`, Draw Things) and a VLM/LLM (OpenAI-style `/chat/completions`, or Ollama's native
+  `/api/chat` with `ASSETFORGE_CHAT_API=ollama`). Hosts come only from `ASSETFORGE_IMAGE_URL` /
+  `ASSETFORGE_CHAT_URL` (base URLs including `/v1` for the OpenAI flavour), tokens from
+  `ASSETFORGE_IMAGE_TOKEN` (else `IMAGE_GEN_TOKEN`) / `ASSETFORGE_CHAT_TOKEN`, models from
+  `ASSETFORGE_IMAGE_MODEL` / `ASSETFORGE_VLM_MODEL` / `ASSETFORGE_LLM_MODEL` (default
+  `qwen3-vl:8b-instruct` for both). `:cloud` / `-cloud` models are refused. `ModelNode.generate_image`
+  takes an explicit seed; `score_image` returns 0-10 per criterion from a JSON-schema reply; `draft` is
+  the spec-drafting LLM call. The live test runs only when both URLs are set.
 - No baked lighting and no AO darkening in the albedo. The engine lights it.
 - Power-of-two textures, 2048 atlas, one material per asset.
 - Atlas layout (`game_ready.uv_unwrap_and_pack`, af-alp): islands are packed in atlas pixels at
