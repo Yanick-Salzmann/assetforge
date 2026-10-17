@@ -40,6 +40,7 @@ LOD_DEVIATION_RATIOS: tuple[float, float, float] = (0.0, 0.008, 0.02)
 PART_DEVIATION_RATIOS: tuple[float, float, float] = (0.0, 0.04, 0.1)
 DEVIATION_RELAXATION_STEPS: tuple[float, ...] = (0.0, 0.25, 0.5, 0.75)
 MAX_CULLED_AREA_FRACTION = 0.1
+WELD_PRECISION = 5
 
 
 @dataclass
@@ -227,7 +228,7 @@ def _reduce_part(
     """Reduce one loose part toward ratio * its LOD0 triangle count, starting from its previous
     LOD, accepting the first candidate whose deviation from the LOD0 part stays within both the
     asset-wide tolerance and part_deviation_ratio of the part's own diagonal, and that opens no
-    new boundary edges.
+    new boundary or non-manifold edges.
 
     The part-relative cap is what lets small parts (pots, finials, hinges) be reduced at all
     without losing their silhouette: the asset-wide tolerance alone is larger than a whole pot,
@@ -242,12 +243,12 @@ def _reduce_part(
     if relative >= 1.0:
         return previous.copy()
     part_tolerance = min(tolerance, _mesh_diagonal(original) * part_deviation_ratio)
-    previous_boundary = _boundary_edge_count(previous)
+    previous_open = _open_edge_count(previous)
     for step in DEVIATION_RELAXATION_STEPS:
         candidate = _collapsed(previous, relative + (1.0 - relative) * step)
         if (
             candidate.polygons
-            and _boundary_edge_count(candidate) <= previous_boundary
+            and _open_edge_count(candidate) <= previous_open
             and _deviation(original, candidate) <= part_tolerance
         ):
             return candidate
@@ -255,12 +256,60 @@ def _reduce_part(
     return previous.copy()
 
 
-def _boundary_edge_count(mesh: bpy.types.Mesh) -> int:
+def _open_edge_count(mesh: bpy.types.Mesh) -> int:
     bm = bmesh.new()
     bm.from_mesh(mesh)
-    count = sum(1 for edge in bm.edges if len(edge.link_faces) == 1)
+    count = sum(1 for edge in bm.edges if len(edge.link_faces) != 2)
     bm.free()
     return count
+
+
+def _welded_conflicts(meshes: Sequence[bpy.types.Mesh | None]) -> set[int]:
+    """Indices of the parts touching an edge that more than two triangles share once every part's
+    vertices are welded by rounded position, the way validate_asset reads the joined LOD. Two
+    coplanar, opposite-facing triangles on the edge are the tolerated face-to-face seam."""
+    keys: dict[tuple[float, float, float], int] = {}
+    edges: dict[tuple[int, int], list[tuple[int, Vector]]] = {}
+    for part_index, mesh in enumerate(meshes):
+        if mesh is None:
+            continue
+        welded = [
+            keys.setdefault(tuple(round(c, WELD_PRECISION) for c in vertex.co), len(keys)) for vertex in mesh.vertices
+        ]
+        mesh.calc_loop_triangles()
+        for triangle in mesh.loop_triangles:
+            corners = [welded[v] for v in triangle.vertices]
+            for a, b in ((corners[0], corners[1]), (corners[1], corners[2]), (corners[2], corners[0])):
+                edges.setdefault((min(a, b), max(a, b)), []).append((part_index, Vector(triangle.normal)))
+    conflicts: set[int] = set()
+    for faces in edges.values():
+        if len(faces) <= 2:
+            continue
+        seam = len(faces) == 4 and any(
+            faces[i][1].dot(faces[j][1]) < -0.999 for i in range(4) for j in range(i + 1, 4)
+        )
+        if not seam:
+            conflicts.update(part_index for part_index, _ in faces)
+    return conflicts
+
+
+def _restore_welded_conflicts(reduced: list[bpy.types.Mesh | None], previous: Sequence[bpy.types.Mesh | None]) -> None:
+    """Put back the previous LOD's mesh for every reduced part that welds into a non-manifold edge
+    with another part (a collapsed wall vertex landing on a door soffit's edge), until none does.
+    The previous level is conflict-free, so this always settles."""
+    while True:
+        restorable = [
+            index
+            for index in _welded_conflicts(reduced)
+            if reduced[index] is not None
+            and previous[index] is not None
+            and _mesh_triangle_count(reduced[index]) != _mesh_triangle_count(previous[index])
+        ]
+        if not restorable:
+            return
+        for index in restorable:
+            bpy.data.meshes.remove(reduced[index])
+            reduced[index] = previous[index].copy()
 
 
 def _joined_object(name: str, meshes: list[bpy.types.Mesh], material: bpy.types.Material) -> bpy.types.Object:
@@ -523,6 +572,7 @@ def _reduce_object(
             else _reduce_part(original, prior, ratio, tolerance, PART_DEVIATION_RATIOS[index])
             for part_index, (original, prior) in enumerate(zip(originals, previous))
         ]
+        _restore_welded_conflicts(reduced, previous)
         kept = [mesh for mesh in reduced if mesh is not None]
         scratch.extend(kept)
         levels.append(kept)
