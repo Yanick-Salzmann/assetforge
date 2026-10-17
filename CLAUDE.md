@@ -236,6 +236,15 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   night, and per-view metered exposure. It is dressed with the same instances export writes
   (`export.scatter_placements`), instanced per mesh variant by geometry nodes with the viewer's
   per-kind sink, slope alignment and reach (`beauty.KIND_SINK_M`, `beauty.KIND_REACH_M`).
+- Wind is per biome: an optional `[wind]` table in `biomes/*.toml` (`terrain/wind.py`: `from_deg`,
+  the compass bearing it blows from, clockwise from map +y north; `strength`, 1 = clips as authored;
+  `gust_period_s`) recorded as `terrain.json` `wind` (optional on read). The viewer
+  (`viewer/static/wind.js`) turns every free-flying cloth chain on a terrain building (a skinned
+  `<name>_bone<i>` chain whose bone Z, the cross axis, is vertical: flags and pennants, not banners or
+  awnings) about its pole so its free edge points downwind, plays idle skinned clips at
+  `max(0.25, strength)` speed, and leans vegetation kinds (conifer, broadleaf, shrub, grass, flower)
+  downwind in the vertex shader with gusts travelling across the map. `window.viewerState.wind`
+  reports it and `buildings[].cloth` the turned rigs.
 - Output path is `out/terrain/<name>/`. Previews are kept as the visual
   changelog, not deleted between iterations.
 

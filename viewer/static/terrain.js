@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { Wind, swayMaterial } from "./wind.js";
 
 const MAX_GRID_VERTICES = 1025;
 const CHUNK_CELLS = 64;
@@ -1397,6 +1398,7 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
   group.add(water);
 
   onProgress("scatter");
+  const wind = new Wind(manifest.wind);
   const scatter = new THREE.Group();
   scatter.name = "scatter";
   const scatterStats = {};
@@ -1408,6 +1410,11 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
     }
     const placements = await scatterPlacements(entry, mask, field);
     const { variants, meshes } = await variantParts(entry, mask, meshLoads, meshTextures);
+    for (const [, material] of variants.flat()) {
+      for (const item of Array.isArray(material) ? material : [material]) {
+        swayMaterial(item, mask.kind, wind);
+      }
+    }
     scatter.add(scatterGroup(mask.species, mask.kind, placements, manifest.world_size_m, variants));
     scatterStats[mask.species] = {
       kind: mask.kind,
@@ -1461,6 +1468,7 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
     water,
     waterUniforms,
     scatter,
+    wind,
     field,
     ground,
     peak,

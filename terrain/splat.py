@@ -14,6 +14,7 @@ from PIL import Image
 
 from library import materials as material_library
 from terrain import atmosphere as atmosphere_mod
+from terrain import wind as wind_mod
 from terrain import synth
 from terrain.config import (
     BIOMES_DIR,
@@ -298,7 +299,7 @@ def evaluate(
     return parse(source).evaluate(channels, like)
 
 
-BIOME_KEYS = ("biome", "layer", "species", "atmosphere")
+BIOME_KEYS = ("biome", "layer", "species", "atmosphere", "wind")
 BIOME_META_KEYS = ("name", "description", "sharpness", "blend_depth")
 LAYER_KEYS = (
     "material",
@@ -438,6 +439,7 @@ class Biome:
     blend_depth: float = DEFAULT_BLEND_DEPTH
     species: tuple[Species, ...] = ()
     atmosphere: atmosphere_mod.Atmosphere = atmosphere_mod.Atmosphere()
+    wind: wind_mod.Wind = wind_mod.Wind()
 
     def __len__(self) -> int:
         return len(self.layers)
@@ -475,6 +477,7 @@ class Biome:
             "layers": {layer.name: layer.as_dict() for layer in self.layers},
             "species": {entry.name: entry.as_dict() for entry in self.species},
             "atmosphere": self.atmosphere.as_dict(),
+            "wind": self.wind.as_dict(),
         }
 
 
@@ -716,6 +719,7 @@ def parse_biome(
         ),
         species=species,
         atmosphere=atmosphere_mod.parse(data.get("atmosphere", {}), f"{where} [atmosphere]"),
+        wind=wind_mod.parse(data.get("wind", {}), f"{where} [wind]"),
     )
 
 

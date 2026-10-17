@@ -13,6 +13,11 @@ visibility_km = 18.0
 haze_colour = "#d9c8aa"
 ground_albedo = "#b0956b"
 
+[wind]
+from_deg = 320.0
+strength = 1.3
+gust_period_s = 5.0
+
 [layer.dry_wash]
 material = "river_rock"
 blend_contrast = 0.5

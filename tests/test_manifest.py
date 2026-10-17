@@ -259,3 +259,32 @@ def test_validate_rejects_an_out_of_range_atmosphere(biome):
 def test_parse_biome_rejects_a_malformed_atmosphere(index):
     with pytest.raises(MapConfigError):
         splat.parse_biome(ONE_LAYER + "\n[atmosphere]\nlatitude_deg = 120.0\n", index)
+
+
+def test_build_records_the_biome_wind(index):
+    windy = splat.parse_biome(ONE_LAYER + "\n[wind]\nfrom_deg = 90.0\nstrength = 2.0\n", index)
+    c = cfg()
+    payload = manifest.build(c, water(), splat.render(windy, stack(c)))
+    assert payload["wind"]["from_deg"] == 90.0
+    assert payload["wind"]["strength"] == 2.0
+    assert payload["wind"]["gust_period_s"] == windy.wind.gust_period_s
+
+
+def test_validate_accepts_a_payload_written_before_wind(biome):
+    c = cfg()
+    payload = manifest.build(c, water(), splat.render(biome, stack(c)))
+    payload.pop("wind")
+    manifest.validate(payload)
+
+
+def test_validate_rejects_an_out_of_range_wind(biome):
+    c = cfg()
+    payload = manifest.build(c, water(), splat.render(biome, stack(c)))
+    payload["wind"]["strength"] = 5.0
+    with pytest.raises(manifest.ManifestError):
+        manifest.validate(payload)
+
+
+def test_parse_biome_rejects_a_malformed_wind(index):
+    with pytest.raises(MapConfigError):
+        splat.parse_biome(ONE_LAYER + "\n[wind]\nfrom_deg = 400.0\n", index)

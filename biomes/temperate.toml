@@ -13,6 +13,11 @@ visibility_km = 35.0
 haze_colour = "#c3cfdb"
 ground_albedo = "#5f6a44"
 
+[wind]
+from_deg = 250.0
+strength = 1.0
+gust_period_s = 7.0
+
 [layer.shore_pebbles]
 material = "pebble_beach"
 blend_contrast = 0.5

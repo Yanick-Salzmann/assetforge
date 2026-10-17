@@ -22,6 +22,7 @@ export function describeClips(clips, entries = []) {
       clip,
       name: clip.name,
       state: stateOf(clip.name, entry),
+      kind: entry?.kind ?? null,
       duration_s: entry?.duration_s ?? clip.duration,
       loop: entry?.loop ?? true,
       nodes: entry?.nodes ?? targetNodes(clip),
@@ -77,6 +78,14 @@ export class ClipPlayer {
       action.play();
     }
     this.mixer.setTime(0);
+  }
+
+  windSpeed(speed) {
+    for (const track of this.tracks) {
+      if (track.kind === "skinned" && track.state === "idle") {
+        this.actions.get(track.name).timeScale = speed;
+      }
+    }
   }
 
   get duration() {

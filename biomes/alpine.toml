@@ -13,6 +13,11 @@ visibility_km = 90.0
 haze_colour = "#d2deeb"
 ground_albedo = "#8a8e8c"
 
+[wind]
+from_deg = 280.0
+strength = 1.6
+gust_period_s = 4.0
+
 [layer.glacial_wash]
 material = "river_rock"
 blend_contrast = 0.5

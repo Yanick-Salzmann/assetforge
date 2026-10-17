@@ -8,6 +8,7 @@ from typing import Any, Mapping, Sequence
 from PIL import Image
 
 from terrain import atmosphere as atmosphere_mod
+from terrain import wind as wind_mod
 from terrain import config
 from terrain.channels import WaterLevel
 from terrain.config import MapConfig, MapConfigError
@@ -42,6 +43,7 @@ TOP_LEVEL_KEYS = (
     "normal_map",
     "colour_macro",
     "atmosphere",
+    "wind",
     "rule_path",
 )
 
@@ -166,6 +168,7 @@ def build(
         "normal_map": normal_map,
         "colour_macro": dict(colour_macro) if colour_macro is not None else None,
         "atmosphere": splat.biome.atmosphere.as_dict(),
+        "wind": splat.biome.wind.as_dict(),
         "rule_path": rule,
     }
     validate(payload)
@@ -285,6 +288,13 @@ def validate(payload: Mapping[str, Any]) -> None:
         try:
             atmosphere_mod.validate(atmosphere)
         except atmosphere_mod.AtmosphereError as error:
+            raise ManifestError(f"{label} {error}") from None
+
+    wind = payload.get("wind")
+    if wind is not None:
+        try:
+            wind_mod.validate(wind)
+        except wind_mod.WindError as error:
             raise ManifestError(f"{label} {error}") from None
 
 

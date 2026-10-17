@@ -6,6 +6,7 @@ import { loadTerrain } from "./terrain.js";
 import { Atmosphere, TONE_MAPPING, hazeDensity } from "./sky.js";
 import { ClipPlayer, STATES, describeClips, phaseOf } from "./animation.js";
 import { FxSystem } from "./fx.js";
+import { orientCloth } from "./wind.js";
 
 const EYE_HEIGHT_M = 1.7;
 const HUMAN_HEIGHT_M = 1.8;
@@ -977,9 +978,11 @@ async function loadBuildings(terrain) {
     root.position.set(site.x, site.base, site.z);
     root.rotation.y = site.yaw;
     group.add(root);
+    const cloth = orientCloth(root, terrain.wind);
     let phase = null;
     if (gltf.animations.length > 0) {
       const player = new ClipPlayer(root, describeClips(gltf.animations, asset.animations ?? []));
+      player.windSpeed(terrain.wind.clipSpeed);
       player.select("idle");
       phase = phaseOf(`${asset.name}:${index}`);
       player.phase(phase);
@@ -988,7 +991,7 @@ async function loadBuildings(terrain) {
     if ((asset.fx ?? []).length > 0) {
       fx.push(new FxSystem(root, asset.fx));
     }
-    placed.push({ ...site, front: footprints[index].front, phase });
+    placed.push({ ...site, front: footprints[index].front, phase, cloth });
   }
   terrain.clearScatter([...placed, { x: terrain.ground.x, z: terrain.ground.z, radius: EYE_CLEARING_M }]);
   return { group, sites: placed, failed, players, fx };
@@ -1058,7 +1061,8 @@ async function showTerrain(name, wanted = {}) {
     error: null,
     scatter: terrain.scatterStats,
     missingMaps: terrain.missingMaps,
-    buildings: terrain.buildings.sites.map(({ name: building, x, z, base, relief, yaw, phase }) => ({ name: building, x, z, base, relief, yaw, phase })),
+    wind: terrain.wind.snapshot(),
+    buildings: terrain.buildings.sites.map(({ name: building, x, z, base, relief, yaw, phase, cloth }) => ({ name: building, x, z, base, relief, yaw, phase, cloth })),
     unplaced: terrain.buildings.failed,
   };
 }
@@ -1135,6 +1139,10 @@ function tick() {
       view.dirty = true;
     }
     fitTerrainClip();
+    if (state.terrain.scatter.visible) {
+      state.terrain.wind.update(performance.now() / 1000);
+      view.dirty = true;
+    }
     if (state.terrain.water.visible) {
       state.terrain.waterUniforms.uTime.value = performance.now() / 1000;
       view.dirty = true;
