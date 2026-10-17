@@ -19,6 +19,7 @@ from urllib.parse import unquote, urlsplit
 import numpy as np
 from PIL import Image
 
+from library import kenney
 from library import kits as kit_library
 from terrain import config
 from terrain import manifest as terrain_manifest
@@ -101,6 +102,32 @@ def _mesh_urls(library_root: Path, scatter: list[dict]) -> dict[str, str]:
     return urls
 
 
+def _locked_models(library_root: Path) -> dict[str, dict]:
+    packs = kenney.load_lock(library_root / kenney.LOCK_FILE.name).get("packs", {})
+    return {meta["path"]: meta for entry in packs.values() for meta in entry.get("models", {}).values()}
+
+
+def _vegetation_lods(library_root: Path, scatter: list[dict], locked: Mapping[str, dict]) -> dict[str, dict]:
+    """Each scatter variant's locked LOD switch distances and impostor atlas, by glb path relative to
+    library/; an impostor whose atlases are not on disk is left out."""
+    lods: dict[str, dict] = {}
+    for entry in scatter:
+        for variant in entry.get("variants", []):
+            meta = locked.get(variant["glb"])
+            if meta is None or "lod_distances_m" not in meta:
+                continue
+            lod = {"distances_m": meta["lod_distances_m"], "tris": meta.get("lod_tris")}
+            impostor = meta.get("impostor")
+            if impostor and all(resolve_under(library_root, impostor[role]) is not None for role in ("albedo", "normal")):
+                lod["impostor"] = {
+                    **{key: impostor[key] for key in ("layout", "frames", "frame_px", "centre", "radius")},
+                    "albedo": f"{LIBRARY_FILE_PREFIX}{impostor['albedo']}",
+                    "normal": f"{LIBRARY_FILE_PREFIX}{impostor['normal']}",
+                }
+            lods[variant["glb"]] = lod
+    return lods
+
+
 def _material_index(library_root: Path) -> dict[str, dict]:
     path = library_root / MATERIAL_INDEX_NAME
     if not path.is_file():
@@ -112,6 +139,7 @@ def list_terrains(terrain_root: Path, library_root: Path) -> list[dict]:
     if not terrain_root.is_dir():
         return []
     index = _material_index(library_root)
+    locked = _locked_models(library_root)
     terrains: list[dict] = []
     for directory in sorted(path for path in terrain_root.iterdir() if path.is_dir()):
         try:
@@ -132,6 +160,7 @@ def list_terrains(terrain_root: Path, library_root: Path) -> list[dict]:
                     for layer in payload["splat"]["layers"]
                 },
                 "meshes": _mesh_urls(library_root, payload["scatter"]),
+                "lods": _vegetation_lods(library_root, payload["scatter"], locked),
             }
         )
     return terrains

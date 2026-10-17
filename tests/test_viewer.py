@@ -184,6 +184,7 @@ def test_list_terrains_reports_exported_terrains_with_resolved_materials(tmp_pat
         "unknown_sand": {},
     }
     assert vale["meshes"] == {}
+    assert vale["lods"] == {}
 
 
 def test_list_terrains_skips_a_manifest_whose_images_are_missing(tmp_path):
@@ -276,3 +277,38 @@ def test_list_assets_carries_kit_props_with_their_library_urls(tmp_path):
     kits = {"nature/pot_small": "kits/nature/pot_small.glb", "nature/pot_large": "kits/nature/pot_large.glb"}
     (workshop,) = viewer.list_assets(assets_root, library, kits)
     assert workshop["props"] == [pot | {"glb": "/files/library/kits/nature/pot_small.glb"}]
+
+
+def test_list_terrains_carries_locked_lod_distances_and_impostor_urls(tmp_path):
+    terrain_root = tmp_path / "terrain"
+    library_root = tmp_path / "library"
+    _write_terrain(terrain_root, "vale")
+    _write_library(library_root)
+    (library_root / "kits" / "nature").mkdir(parents=True)
+    for role in ("albedo", "normal"):
+        (library_root / "kits" / "nature" / f"rock_largeA_impostor_{role}.png").write_bytes(b"png")
+    impostor = {
+        "layout": "hemi_octahedral",
+        "frames": 8,
+        "frame_px": 128,
+        "centre": [0.0, 1.0, 0.0],
+        "radius": 1.5,
+        "albedo": "kits/nature/rock_largeA_impostor_albedo.png",
+        "albedo_sha256": "0",
+        "normal": "kits/nature/rock_largeA_impostor_normal.png",
+        "normal_sha256": "0",
+    }
+    model = {"path": "kits/nature/rock_largeA.glb", "tris": 80, "lod_tris": [80, 40, 20], "lod_distances_m": [5.0, 12.0, 30.0], "impostor": impostor}
+    lock = {"version": 1, "packs": {"nature": {"models": {"rock_largeA": model}}}}
+    (library_root / "kits.lock.json").write_text(json.dumps(lock), encoding="utf-8")
+    (vale,) = viewer.list_terrains(terrain_root, library_root)
+    lod = vale["lods"]["kits/nature/rock_largeA.glb"]
+    assert lod["distances_m"] == [5.0, 12.0, 30.0]
+    assert lod["tris"] == [80, 40, 20]
+    assert lod["impostor"]["albedo"] == "/files/library/kits/nature/rock_largeA_impostor_albedo.png"
+    assert lod["impostor"]["normal"] == "/files/library/kits/nature/rock_largeA_impostor_normal.png"
+    assert lod["impostor"]["radius"] == 1.5
+    assert "albedo_sha256" not in lod["impostor"]
+    (library_root / "kits" / "nature" / "rock_largeA_impostor_normal.png").unlink()
+    (vale,) = viewer.list_terrains(terrain_root, library_root)
+    assert "impostor" not in vale["lods"]["kits/nature/rock_largeA.glb"]

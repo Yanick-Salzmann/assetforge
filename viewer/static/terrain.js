@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { Wind, swayDepthMaterial, swayMaterial } from "./wind.js";
+import { LodView, bandVisible, depthMaterial, impostorPart, levelBands, lodMaterial, reachRange, switchDistances, tileRange } from "./lod.js";
 
 const MAX_GRID_VERTICES = 1025;
 const CHUNK_CELLS = 64;
@@ -38,15 +39,20 @@ const NEUTRAL_HEIGHT = 128;
 const LAYER_COLOURS = [0xd9a441, 0x4f9fd8, 0xe8dca0, 0x8c8478, 0x7fb24a, 0x6a4e42, 0x2e7d4f, 0xf2f2f2];
 
 const INSTANCE_FIELDS = 6;
+const IMPOSTOR_KINDS = new Set(["conifer", "broadleaf", "shrub"]);
+const FILL_CELL_M = 16;
+const FILL_LATTICE_ANGLE = 0.4636;
+const FILL_COS = Math.cos(FILL_LATTICE_ANGLE);
+const FILL_SIN = Math.sin(FILL_LATTICE_ANGLE);
 
 const SCATTER_KINDS = {
-  conifer: { cap: 50000, sink_m: 0.3, tile_m: 768, reach_m: Infinity, parts: coniferParts },
-  broadleaf: { cap: 40000, sink_m: 0.3, tile_m: 768, reach_m: Infinity, parts: broadleafParts },
+  conifer: { cap: 50000, sink_m: 0.3, tile_m: 512, reach_m: Infinity, parts: coniferParts },
+  broadleaf: { cap: 40000, sink_m: 0.3, tile_m: 512, reach_m: Infinity, parts: broadleafParts },
   cactus: { cap: 30000, sink_m: 0.1, tile_m: 384, reach_m: 1500, parts: cactusParts },
   shrub: { cap: 50000, sink_m: 0.1, tile_m: 256, reach_m: 600, parts: shrubParts },
   rock: { cap: 40000, sink_m: 0.35, tile_m: 384, reach_m: 1500, parts: rockParts },
-  grass: { cap: 80000, sink_m: 0.02, tile_m: 128, reach_m: 250, parts: grassParts },
-  flower: { cap: 60000, sink_m: 0.02, tile_m: 128, reach_m: 200, parts: flowerParts },
+  grass: { cap: 80000, sink_m: 0.02, tile_m: 128, reach_m: 250, fill: { spacing_m: 0.8, reach_m: 45 }, parts: grassParts },
+  flower: { cap: 60000, sink_m: 0.02, tile_m: 128, reach_m: 200, fill: { spacing_m: 1.6, reach_m: 35 }, parts: flowerParts },
   debris: { cap: 40000, sink_m: 0.08, tile_m: 192, reach_m: 400, parts: debrisParts },
 };
 
@@ -1023,18 +1029,21 @@ async function scatterPlacements(entry, mask, field) {
   return placements;
 }
 
-const REDUCED_LOD = /_LOD[1-9]\d*(?:_ANIM)?$/;
+const LOD_SUFFIX = /_LOD(\d+)(?:_ANIM)?$/;
 
-function meshParts(gltf, unitScale) {
-  const parts = [];
-  const normalise = new THREE.Matrix4().makeScale(unitScale, unitScale, unitScale);
-  const reduced = [];
-  gltf.scene.traverse((node) => {
-    if (REDUCED_LOD.test(node.name)) {
-      reduced.push(node);
+function nodeLevel(node) {
+  for (let item = node; item; item = item.parent) {
+    const match = item.name.match(LOD_SUFFIX);
+    if (match) {
+      return Number(match[1]);
     }
-  });
-  reduced.forEach((node) => node.removeFromParent());
+  }
+  return 0;
+}
+
+function meshLevels(gltf, unitScale) {
+  const levels = new Map();
+  const normalise = new THREE.Matrix4().makeScale(unitScale, unitScale, unitScale);
   gltf.scene.updateMatrixWorld(true);
   gltf.scene.traverse((node) => {
     if (!node.isMesh) {
@@ -1052,9 +1061,26 @@ function meshParts(gltf, unitScale) {
       }
       return material;
     });
-    parts.push([geometry, Array.isArray(node.material) ? materials : materials[0]]);
+    const level = nodeLevel(node);
+    if (!levels.has(level)) {
+      levels.set(level, []);
+    }
+    levels.get(level).push([geometry, Array.isArray(node.material) ? materials : materials[0]]);
   });
-  return parts;
+  return [...levels.keys()].sort((a, b) => a - b).map((level) => levels.get(level));
+}
+
+function partsDiameter(parts) {
+  const bounds = new THREE.Box3();
+  for (const [geometry] of parts) {
+    geometry.computeBoundingBox();
+    bounds.union(geometry.boundingBox);
+  }
+  return 2 * bounds.getBoundingSphere(new THREE.Sphere()).radius;
+}
+
+function partMaterials(parts) {
+  return parts.flatMap(([, material]) => (Array.isArray(material) ? material : [material]));
 }
 
 function hexDigest(buffer) {
@@ -1082,28 +1108,73 @@ function sharedTextures(textures) {
   });
 }
 
-async function variantParts(entry, mask, loads, textures) {
+async function variantLevels(entry, mask, loads, textures, view) {
   const variants = [];
   let meshes = 0;
   for (const variant of mask.variants ?? []) {
     const url = entry.meshes?.[variant.glb];
-    let parts = null;
+    let levels = null;
     if (url) {
       if (!loads.has(url)) {
         loads.set(url, new GLTFLoader().register(sharedTextures(textures)).loadAsync(url).catch(() => null));
       }
       const gltf = await loads.get(url);
-      parts = gltf ? meshParts(gltf, variant.unit_scale) : null;
+      levels = gltf ? meshLevels(gltf, variant.unit_scale) : null;
     }
-    if (parts && parts.length > 0) {
-      meshes += 1;
+    if (!levels || levels.length === 0) {
+      variants.push({ levels: [SCATTER_KINDS[mask.kind].parts()], distances: [], impostor: false });
+      continue;
     }
-    variants.push(parts && parts.length > 0 ? parts : SCATTER_KINDS[mask.kind].parts());
+    meshes += 1;
+    const lod = entry.lods?.[variant.glb];
+    const distances = lod ? lod.distances_m.map((distance) => distance * variant.unit_scale) : switchDistances(partsDiameter(levels[0]), levels.length - 1);
+    let impostor = false;
+    if (lod?.impostor && IMPOSTOR_KINDS.has(mask.kind) && distances.length >= levels.length) {
+      const part = await impostorPart(lod.impostor, variant.unit_scale, view).catch(() => null);
+      if (part) {
+        levels.push([part]);
+        impostor = true;
+      }
+    }
+    const kept = levels.slice(0, distances.length + 1);
+    for (const parts of levels.slice(kept.length)) {
+      disposeParts(parts);
+    }
+    variants.push({ levels: kept, distances: distances.slice(0, kept.length - 1), impostor });
   }
   if (variants.length === 0) {
-    variants.push(SCATTER_KINDS[mask.kind].parts());
+    variants.push({ levels: [SCATTER_KINDS[mask.kind].parts()], distances: [], impostor: false });
   }
   return { variants, meshes };
+}
+
+function prepareLevels(variants, kind, wind, view, reach = reachRange(SCATTER_KINDS[kind].reach_m)) {
+  for (const variant of variants) {
+    const bands = levelBands(variant.distances, variant.levels.length);
+    variant.levels.forEach((parts, level) => {
+      for (const material of partMaterials(parts)) {
+        if (!material.userData.depth) {
+          material.userData.depth = swayDepthMaterial(material, kind, wind) ?? depthMaterial(material);
+          swayMaterial(material, kind, wind);
+        }
+        lodMaterial(material, bands[level], reach, view);
+        lodMaterial(material.userData.depth, bands[level], reach, view);
+      }
+    });
+  }
+}
+
+function disposeParts(parts) {
+  for (const [geometry] of parts) {
+    geometry.dispose();
+  }
+  for (const material of partMaterials(parts)) {
+    material.userData.depth?.dispose();
+    for (const texture of material.userData.textures ?? []) {
+      texture.dispose();
+    }
+    material.dispose();
+  }
 }
 
 function writePlacements(mesh, placements) {
@@ -1154,22 +1225,28 @@ function tileScatter(group) {
     tile.name = `${group.name}_${ti}_${tj}`;
     tile.userData.centre = new THREE.Vector2((ti + 0.5) * tileSize - worldSize / 2, (tj + 0.5) * tileSize - worldSize / 2);
     tile.userData.radius = tileSize * Math.SQRT1_2;
-    variants.forEach((parts, variant) => {
+    tile.userData.minY = Math.min(...bucket.map((placement) => placement[1]));
+    tile.userData.maxY = Math.max(...bucket.map((placement) => placement[1]));
+    tile.userData.minSize = Math.max(1e-3, Math.min(...bucket.map((placement) => placement[4])));
+    tile.userData.maxSize = Math.max(1e-3, Math.max(...bucket.map((placement) => placement[4])));
+    variants.forEach(({ levels }, variant) => {
       const chosen = bucket.filter((placement) => Math.min(variants.length - 1, placement[8]) === variant);
       if (chosen.length === 0) {
         return;
       }
-      for (const [geometry, material] of parts) {
-        const mesh = new THREE.InstancedMesh(geometry, material, chosen.length);
-        const depth = (Array.isArray(material) ? material[0] : material).userData.swayDepth;
-        if (depth) {
-          mesh.customDepthMaterial = depth;
+      levels.forEach((parts, level) => {
+        for (const [geometry, material] of parts) {
+          const mesh = new THREE.InstancedMesh(geometry, material, chosen.length);
+          const first = Array.isArray(material) ? material[0] : material;
+          mesh.customDepthMaterial = first.userData.depth;
+          mesh.userData.band = first.userData.lodBand;
+          mesh.userData.level = level;
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          writePlacements(mesh, chosen);
+          tile.add(mesh);
         }
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        writePlacements(mesh, chosen);
-        tile.add(mesh);
-      }
+      });
     });
     group.add(tile);
   }
@@ -1178,33 +1255,189 @@ function tileScatter(group) {
 function scatterGroup(species, kind, placements, worldSize, variants) {
   const group = new THREE.Group();
   group.name = `scatter_${species}`;
-  group.userData = { species, kind, placements, worldSize, variants };
+  group.userData = { species, kind, placements, worldSize, variants, levels: Math.max(...variants.map((variant) => variant.levels.length)) };
   tileScatter(group);
   return group;
 }
 
-function cullScatter(scatter, eye) {
-  for (const group of scatter.children) {
-    const reach = SCATTER_KINDS[group.userData.kind].reach_m;
-    for (const tile of group.children) {
-      const { centre, radius } = tile.userData;
-      tile.visible = Math.hypot(eye.x - centre.x, eye.z - centre.y) - radius < reach;
+function fillHash(i, j, salt) {
+  let hash = Math.imul(i, 73856093) ^ Math.imul(j, 19349663) ^ Math.imul(salt, 83492791);
+  hash = Math.imul(hash ^ (hash >>> 13), 0x5bd1e995);
+  hash ^= hash >>> 15;
+  return (hash >>> 0) / 4294967296;
+}
+
+function nameSalt(name) {
+  let hash = 2166136261;
+  for (const character of name) {
+    hash = Math.imul(hash ^ character.codePointAt(0), 16777619);
+  }
+  return hash >>> 0;
+}
+
+class NearFill {
+  constructor({ species, kind, mask, field, scale, slopeAlign, variants }) {
+    const fill = SCATTER_KINDS[kind].fill;
+    this.species = species;
+    this.kind = kind;
+    this.mask = mask;
+    this.field = field;
+    this.scale = scale;
+    this.slopeAlign = slopeAlign;
+    this.variants = variants;
+    this.spacing = fill.spacing_m;
+    this.window = fill.reach_m + FILL_CELL_M;
+    this.salt = nameSalt(species);
+    this.sites = [];
+    this.key = null;
+    this.instances = 0;
+    const capacity = Math.ceil((Math.PI * (this.window + 2 * this.spacing) ** 2) / this.spacing ** 2);
+    this.group = new THREE.Group();
+    this.group.name = `fill_${species}`;
+    this.group.userData.fill = this;
+    this.meshes = variants.map(({ levels }) =>
+      levels.flatMap((parts, level) =>
+        parts.map(([geometry, material]) => {
+          const mesh = new THREE.InstancedMesh(geometry, material, capacity);
+          const first = Array.isArray(material) ? material[0] : material;
+          mesh.customDepthMaterial = first.userData.depth;
+          mesh.userData.band = first.userData.lodBand;
+          mesh.userData.level = level;
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          mesh.count = 0;
+          this.group.add(mesh);
+          return mesh;
+        }),
+      ),
+    );
+  }
+
+  density(x, z) {
+    const { width, data } = this.mask;
+    const px = Math.round(((x + this.field.worldSize / 2) / this.field.worldSize) * width - 0.5);
+    const pz = Math.round(((z + this.field.worldSize / 2) / this.field.worldSize) * width - 0.5);
+    if (px < 0 || pz < 0 || px >= width || pz >= width) {
+      return 0;
     }
+    return data[pz * width + px] / 255;
+  }
+
+  placements(cx, cz) {
+    const chosen = this.variants.map(() => []);
+    const sink = SCATTER_KINDS[this.kind].sink_m;
+    const half = this.field.worldSize / 2;
+    const cu = cx * FILL_COS + cz * FILL_SIN;
+    const cv = cz * FILL_COS - cx * FILL_SIN;
+    const first = Math.floor((cu - this.window) / this.spacing);
+    const last = Math.ceil((cu + this.window) / this.spacing);
+    const firstRow = Math.floor((cv - this.window) / this.spacing);
+    const lastRow = Math.ceil((cv + this.window) / this.spacing);
+    for (let j = firstRow; j <= lastRow; j += 1) {
+      for (let i = first; i <= last; i += 1) {
+        const u = (i + fillHash(i, j, this.salt)) * this.spacing;
+        const v = (j + fillHash(i, j, this.salt + 1)) * this.spacing;
+        const x = u * FILL_COS - v * FILL_SIN;
+        const z = u * FILL_SIN + v * FILL_COS;
+        if (Math.abs(x) >= half || Math.abs(z) >= half || Math.hypot(x - cx, z - cz) > this.window) {
+          continue;
+        }
+        if (fillHash(i, j, this.salt + 2) >= this.density(x, z)) {
+          continue;
+        }
+        if (this.sites.some((site) => Math.hypot(site.x - x, site.z - z) < site.radius + SITE_SCATTER_MARGIN_M)) {
+          continue;
+        }
+        const size = this.scale[0] + fillHash(i, j, this.salt + 3) * (this.scale[1] - this.scale[0]);
+        const variant = Math.min(this.variants.length - 1, Math.floor(fillHash(i, j, this.salt + 4) * this.variants.length));
+        const [nx, ny, nz] = alignedUp(this.field, x, z, this.slopeAlign);
+        chosen[variant].push([x, this.field.at(x, z) - sink * size, z, fillHash(i, j, this.salt + 5) * Math.PI * 2, size, nx, ny, nz, variant]);
+      }
+    }
+    return chosen;
+  }
+
+  update(view) {
+    const eye = view.eye;
+    const above = eye.y - this.field.at(THREE.MathUtils.clamp(eye.x, -this.field.worldSize / 2, this.field.worldSize / 2), THREE.MathUtils.clamp(eye.z, -this.field.worldSize / 2, this.field.worldSize / 2));
+    const ci = Math.floor(eye.x / FILL_CELL_M);
+    const cj = Math.floor(eye.z / FILL_CELL_M);
+    const key = above > this.window ? "off" : `${ci},${cj}`;
+    if (key === this.key) {
+      return;
+    }
+    this.key = key;
+    const chosen = key === "off" ? this.variants.map(() => []) : this.placements((ci + 0.5) * FILL_CELL_M, (cj + 0.5) * FILL_CELL_M);
+    this.instances = 0;
+    chosen.forEach((placements, variant) => {
+      this.instances += placements.length;
+      for (const mesh of this.meshes[variant]) {
+        writePlacements(mesh, placements);
+        mesh.visible = placements.length > 0;
+      }
+    });
+  }
+
+  clear(sites) {
+    this.sites = sites;
+    this.key = null;
+  }
+
+  dispose() {
+    for (const mesh of this.meshes.flat()) {
+      mesh.dispose();
+    }
+    for (const variant of this.variants) {
+      for (const parts of variant.levels) {
+        disposeParts(parts);
+      }
+    }
+  }
+}
+
+function cullScatter(scatter, view, stats) {
+  for (const group of scatter.children) {
+    if (group.userData.fill) {
+      const fill = group.userData.fill;
+      fill.update(view);
+      stats[fill.species].fill = fill.instances;
+      continue;
+    }
+    const { kind, species, levels } = group.userData;
+    const reach = SCATTER_KINDS[kind].reach_m;
+    const live = { tiles: 0, levels: new Array(levels).fill(0) };
+    for (const tile of group.children) {
+      const range = tileRange(tile, view.eye, view.scale);
+      tile.visible = range.near < reach;
+      if (!tile.visible) {
+        continue;
+      }
+      live.tiles += 1;
+      for (const mesh of tile.children) {
+        mesh.visible = bandVisible(mesh.userData.band, range);
+        if (mesh.visible) {
+          live.levels[mesh.userData.level] += 1;
+        }
+      }
+    }
+    stats[species] = { ...live, fill: stats[species]?.fill ?? 0 };
   }
 }
 
 function disposeScatter(scatter) {
   for (const group of scatter.children) {
+    if (group.userData.fill) {
+      group.userData.fill.dispose();
+      continue;
+    }
     for (const tile of group.children) {
       for (const mesh of tile.children) {
         mesh.dispose();
       }
     }
-    for (const [geometry, material] of group.userData.variants.flat()) {
-      geometry.dispose();
-      for (const item of Array.isArray(material) ? material : [material]) {
-        item.userData.swayDepth?.dispose();
-        item.dispose();
+    for (const variant of group.userData.variants) {
+      for (const parts of variant.levels) {
+        disposeParts(parts);
       }
     }
   }
@@ -1305,6 +1538,10 @@ function buildingSites(footprints, field, waterRaw, seaLevel, ground) {
 function clearScatter(scatter, scatterStats, sites) {
   let cleared = 0;
   for (const group of scatter.children) {
+    if (group.userData.fill) {
+      group.userData.fill.clear(sites);
+      continue;
+    }
     const placements = group.userData.placements;
     const kept = placements.filter(
       ([x, , z]) => !sites.some((site) => Math.hypot(site.x - x, site.z - z) < site.radius + SITE_SCATTER_MARGIN_M),
@@ -1404,6 +1641,8 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
 
   onProgress("scatter");
   const wind = new Wind(manifest.wind);
+  const lodView = new LodView();
+  const lodStats = {};
   const scatter = new THREE.Group();
   scatter.name = "scatter";
   const scatterStats = {};
@@ -1414,20 +1653,27 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
       continue;
     }
     const placements = await scatterPlacements(entry, mask, field);
-    const { variants, meshes } = await variantParts(entry, mask, meshLoads, meshTextures);
-    for (const [, material] of variants.flat()) {
-      for (const item of Array.isArray(material) ? material : [material]) {
-        item.userData.swayDepth = swayDepthMaterial(item, mask.kind, wind);
-        swayMaterial(item, mask.kind, wind);
-      }
-    }
+    const { variants, meshes } = await variantLevels(entry, mask, meshLoads, meshTextures, lodView);
+    prepareLevels(variants, mask.kind, wind, lodView);
     scatter.add(scatterGroup(mask.species, mask.kind, placements, manifest.world_size_m, variants));
+    const fill = SCATTER_KINDS[mask.kind].fill;
+    if (fill) {
+      const density = await fetchRaw(`${entry.raw}${mask.path}`);
+      const fillLevels = await variantLevels(entry, mask, meshLoads, meshTextures, lodView);
+      prepareLevels(fillLevels.variants, mask.kind, wind, lodView, reachRange(fill.reach_m));
+      const near = new NearFill({ species: mask.species, kind: mask.kind, mask: density, field, scale: mask.scale, slopeAlign: mask.slope_align, variants: fillLevels.variants });
+      scatter.add(near.group);
+    }
     scatterStats[mask.species] = {
       kind: mask.kind,
       count: placements.length,
       spacing_m: mask.placed_spacing_m,
       variants: variants.length,
       meshes,
+      lod_levels: variants.map((variant) => variant.levels.length),
+      lod_distances_m: variants.map((variant) => variant.distances.map((distance) => Number(distance.toFixed(2)))),
+      impostors: variants.filter((variant) => variant.impostor).length,
+      reach_m: SCATTER_KINDS[mask.kind].reach_m,
     };
   }
   group.add(scatter);
@@ -1479,6 +1725,7 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
     ground,
     peak,
     scatterStats,
+    lodStats,
     missingMaps: Object.fromEntries(
       LAYER_ROLES.map((role) => [role, layerArrays[role].missing.map((index) => manifest.splat.layers[index].layer)]),
     ),
@@ -1492,8 +1739,9 @@ export async function loadTerrain(entry, renderer, onProgress = () => {}) {
     clearScatter(sites) {
       return clearScatter(scatter, scatterStats, sites);
     },
-    cullScatter(eye) {
-      cullScatter(scatter, eye);
+    cullScatter(camera) {
+      lodView.update(camera);
+      cullScatter(scatter, lodView, lodStats);
     },
     dispose() {
       disposeScatter(scatter);

@@ -1067,6 +1067,7 @@ async function showTerrain(name, wanted = {}) {
     lod: null,
     error: null,
     scatter: terrain.scatterStats,
+    scatterLod: terrain.lodStats,
     missingMaps: terrain.missingMaps,
     wind: terrain.wind.snapshot(),
     buildings: terrain.buildings.sites.map(({ name: building, x, z, base, relief, yaw, phase, cloth, props }) => ({ name: building, x, z, base, relief, yaw, phase, cloth, props })),
@@ -1162,7 +1163,7 @@ function tick() {
   view.matrix.copy(camera.matrixWorld);
   view.projection.copy(camera.projectionMatrix);
   if (state.terrain) {
-    state.terrain.cullScatter(camera.position);
+    state.terrain.cullScatter(camera);
     atmosphere.follow(camera);
     placeShadow();
   }

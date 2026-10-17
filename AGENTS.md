@@ -287,6 +287,17 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   (always 0 without meshes). Slope alignment is applied at load time from the heightfield
   normal and `slope_align`. The viewer falls back to primitive geometry for any variant whose
   GLB is not on disk.
+- Viewer vegetation LOD (`viewer/static/lod.js`, af-8m0.10): instances are bucketed into tiles per
+  kind (`SCATTER_KINDS[kind].tile_m`); every LOD of a variant (`<model>_LOD<n>` nodes, plus the
+  impostor as the far LOD for `IMPOSTOR_KINDS`) is its own InstancedMesh per tile. Switch distances
+  come from `kits.lock.json` `lod_distances_m` (served as the terrain listing's `lods`), else from
+  the LOD0 bounding sphere with `vegetation.LOD_SCREEN_FRACTIONS`, scaled by instance scale and
+  camera fov. The shader picks each instance's LOD by distance with a screen-door dithered
+  cross-fade (complementary noise, so no seam or double draw) and thins density towards the kind's
+  `reach_m`; the CPU only hides tile meshes whose distance range misses a band. Grass and flowers
+  also get a camera-following near fill (`SCATTER_KINDS[kind].fill`) sampled from
+  `scatter_<species>.png` on a rotated jittered lattice. `window.viewerState.scatterLod` reports
+  visible tiles, meshes per LOD and fill instances per species.
 - `colour_macro.png` is an 8-bit RGB albedo multiplier (`byte / 128`, neutral 128) built
   from `patchiness_coarse`/`patchiness_mid`, `moisture` and `wetness` (`terrain/macro.py`).
   Low-frequency, no lighting or AO. `terrain.json` `colour_macro` records the path and the
