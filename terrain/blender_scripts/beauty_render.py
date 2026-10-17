@@ -8,6 +8,7 @@ Invoked as: blender --background --factory-startup --python beauty_render.py -- 
 import array
 import json
 import math
+import random
 import re
 import sys
 from pathlib import Path
@@ -20,6 +21,11 @@ REDUCED_LOD = re.compile(r"_LOD[1-9]\d*(\.\d+)?$")
 REDUCED_BUILDING_LOD = re.compile(r"_LOD[1-9]\d*(_ANIM)?(\.\d+)?$")
 CHANNEL_LABEL = {"r": "Red", "g": "Green", "b": "Blue"}
 RECORD_FIELDS = 7
+PLUME_RINGS = 24
+PLUME_SEGMENTS = 16
+PLUME_NOISE_SCALE = 1.2
+GRAVITY_M_S2 = 9.81
+SPARK_CONE_RAD = 0.6
 
 
 def _read_args() -> dict:
@@ -303,6 +309,193 @@ def _reduced(obj: bpy.types.Object) -> bool:
     return False
 
 
+def _socket(objects, node: str):
+    for obj in objects:
+        if obj.name == node or obj.name.startswith(f"{node}."):
+            return obj
+    return None
+
+
+def _plume_path(fx: dict, up: Vector) -> list:
+    """Where a particle born at the socket has got to at each step of its mean life: rising at the
+    profile's speed along the emit axis while its horizontal velocity relaxes toward the wind."""
+    life = float(fx["life_s"])
+    carry = float(fx["carry"])
+    downwind = Vector((fx["downwind"][0], fx["downwind"][1], 0.0))
+    start = float(fx["radius_start_m"])
+    end = float(fx["radius_end_m"])
+    path = []
+    for ring in range(PLUME_RINGS + 1):
+        fraction = ring / PLUME_RINGS
+        age = life * fraction
+        drift = 0.0
+        if carry > 0.0:
+            drift = float(fx["wind_m_s"]) * (age - (1.0 - math.exp(-carry * age)) / carry)
+        point = up * float(fx["rise_m_s"]) * age + downwind * drift
+        path.append((point, max(start + (end - start) * fraction, 0.01)))
+    return path
+
+
+def _tube(name: str, path: list) -> bpy.types.Mesh:
+    """A closed tube of rings around the path, capped at both ends, for a volume shader."""
+    vertices = []
+    faces = []
+    for index, (point, radius) in enumerate(path):
+        ahead = path[min(index + 1, len(path) - 1)][0] - path[max(index - 1, 0)][0]
+        tangent = ahead.normalized() if ahead.length > 1e-6 else Vector((0.0, 0.0, 1.0))
+        reference = Vector((1.0, 0.0, 0.0)) if abs(tangent.x) < 0.9 else Vector((0.0, 1.0, 0.0))
+        side = tangent.cross(reference).normalized()
+        other = tangent.cross(side)
+        for segment in range(PLUME_SEGMENTS):
+            angle = 2.0 * math.pi * segment / PLUME_SEGMENTS
+            vertices.append(tuple(point + (side * math.cos(angle) + other * math.sin(angle)) * radius))
+    for ring in range(len(path) - 1):
+        for segment in range(PLUME_SEGMENTS):
+            a = ring * PLUME_SEGMENTS + segment
+            b = ring * PLUME_SEGMENTS + (segment + 1) % PLUME_SEGMENTS
+            faces.append((a, b, b + PLUME_SEGMENTS, a + PLUME_SEGMENTS))
+    last = (len(path) - 1) * PLUME_SEGMENTS
+    faces.append(tuple(reversed(range(PLUME_SEGMENTS))))
+    faces.append(tuple(last + segment for segment in range(PLUME_SEGMENTS)))
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata(vertices, [], faces)
+    mesh.update()
+    return mesh
+
+
+def _plume_material(fx: dict, chord: Vector) -> bpy.types.Material:
+    """Principled Volume fading out along the plume and broken up by noise: smoke and steam carry
+    density in the emitter colour, fire carries emission only."""
+    material = bpy.data.materials.new(f"FX_{fx['node']}")
+    material.use_nodes = True
+    tree = material.node_tree
+    tree.nodes.clear()
+    links = tree.links
+    output = tree.nodes.new("ShaderNodeOutputMaterial")
+    coords = tree.nodes.new("ShaderNodeTexCoord")
+    along = tree.nodes.new("ShaderNodeVectorMath")
+    along.operation = "DOT_PRODUCT"
+    along.inputs[1].default_value = chord / max(chord.length_squared, 1e-6)
+    links.new(coords.outputs["Object"], along.inputs[0])
+    fade = tree.nodes.new("ShaderNodeMapRange")
+    fade.inputs["To Min"].default_value = 1.0
+    fade.inputs["To Max"].default_value = 0.0
+    links.new(along.outputs["Value"], fade.inputs["Value"])
+    noise = tree.nodes.new("ShaderNodeTexNoise")
+    reach = max(float(fx["radius_end_m"]), float(fx["radius_start_m"]), 0.05)
+    noise.inputs["Scale"].default_value = PLUME_NOISE_SCALE / reach
+    noise.inputs["Detail"].default_value = 4.0
+    links.new(coords.outputs["Object"], noise.inputs["Vector"])
+    puffs = tree.nodes.new("ShaderNodeMapRange")
+    puffs.inputs["From Min"].default_value = 0.35
+    puffs.inputs["From Max"].default_value = 0.7
+    links.new(noise.outputs["Fac"], puffs.inputs["Value"])
+    amount = tree.nodes.new("ShaderNodeMath")
+    amount.operation = "MULTIPLY"
+    links.new(fade.outputs["Result"], amount.inputs[0])
+    links.new(puffs.outputs["Result"], amount.inputs[1])
+    scaled = tree.nodes.new("ShaderNodeMath")
+    scaled.operation = "MULTIPLY"
+    links.new(amount.outputs["Value"], scaled.inputs[0])
+    volume = tree.nodes.new("ShaderNodeVolumePrincipled")
+    colour = tuple(fx["colour"]) + (1.0,)
+    if float(fx["emission"]) > 0.0:
+        scaled.inputs[1].default_value = float(fx["emission"])
+        volume.inputs["Density"].default_value = 0.0
+        volume.inputs["Emission Color"].default_value = colour
+        links.new(scaled.outputs["Value"], volume.inputs["Emission Strength"])
+    else:
+        scaled.inputs[1].default_value = float(fx["density"])
+        volume.inputs["Color"].default_value = colour
+        links.new(scaled.outputs["Value"], volume.inputs["Density"])
+    links.new(volume.outputs["Volume"], output.inputs["Volume"])
+    return material
+
+
+def _emissive(name: str, colour: list, strength: float) -> bpy.types.Material:
+    material = bpy.data.materials.new(name)
+    material.use_nodes = True
+    tree = material.node_tree
+    tree.nodes.clear()
+    output = tree.nodes.new("ShaderNodeOutputMaterial")
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.inputs["Color"].default_value = tuple(colour) + (1.0,)
+    emission.inputs["Strength"].default_value = strength
+    tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    return material
+
+
+def _sparks(fx: dict, origin: Vector, basis) -> bpy.types.Object:
+    """A frozen burst: octahedral specks at random ages along ballistic paths in the emit cone."""
+    rng = random.Random(fx["node"])
+    speck = float(fx["size_m"]) * 0.5
+    vertices = []
+    faces = []
+    for _ in range(int(fx["count"])):
+        tilt = rng.random() * SPARK_CONE_RAD
+        heading = rng.random() * 2.0 * math.pi
+        speed = float(fx["rise_m_s"]) * (0.7 + 0.6 * rng.random())
+        direction = Vector((math.sin(tilt) * math.cos(heading), math.sin(tilt) * math.sin(heading), math.cos(tilt)))
+        age = rng.random() * float(fx["life_s"])
+        centre = (basis @ direction) * speed * age + Vector((0.0, 0.0, -0.5 * GRAVITY_M_S2 * age * age))
+        base = len(vertices)
+        for axis in range(3):
+            for sign in (-1.0, 1.0):
+                offset = Vector((0.0, 0.0, 0.0))
+                offset[axis] = sign * speck
+                vertices.append(tuple(centre + offset))
+        faces.extend(
+            [
+                (base + 0, base + 2, base + 4),
+                (base + 2, base + 1, base + 4),
+                (base + 1, base + 3, base + 4),
+                (base + 3, base + 0, base + 4),
+                (base + 2, base + 0, base + 5),
+                (base + 1, base + 2, base + 5),
+                (base + 3, base + 1, base + 5),
+                (base + 0, base + 3, base + 5),
+            ]
+        )
+    mesh = bpy.data.meshes.new(f"FX_{fx['node']}_sparks")
+    mesh.from_pydata(vertices, [], faces)
+    mesh.update()
+    mesh.materials.append(_emissive(mesh.name, fx["colour"], float(fx["emission"])))
+    obj = bpy.data.objects.new(mesh.name, mesh)
+    obj.location = origin
+    return obj
+
+
+def _build_fx(entries: list, imported) -> list:
+    """Each running fx socket of one building as static geometry and lights in world space."""
+    built = []
+    for fx in entries:
+        socket = _socket(imported, fx["node"])
+        if socket is None:
+            continue
+        origin = socket.matrix_world.to_translation()
+        basis = socket.matrix_world.to_3x3().normalized()
+        up = (basis @ Vector((0.0, 0.0, 1.0))).normalized()
+        if "light_w" in fx:
+            light = bpy.data.lights.new(f"FX_{fx['node']}_light", type="POINT")
+            light.energy = float(fx["light_w"])
+            light.color = tuple(fx["colour"])
+            light.shadow_soft_size = float(fx["size_m"])
+            lamp = bpy.data.objects.new(light.name, light)
+            lamp.location = origin + up * float(fx["size_m"])
+            bpy.context.scene.collection.objects.link(lamp)
+        if fx["type"] == "sparks":
+            bpy.context.scene.collection.objects.link(_sparks(fx, origin, basis))
+        elif "life_s" in fx:
+            path = _plume_path(fx, up)
+            mesh = _tube(f"FX_{fx['node']}_plume", path)
+            mesh.materials.append(_plume_material(fx, path[-1][0]))
+            plume = bpy.data.objects.new(mesh.name, mesh)
+            plume.location = origin
+            bpy.context.scene.collection.objects.link(plume)
+        built.append(fx["node"])
+    return built
+
+
 def _build_buildings(entries: list) -> list:
     """Each building's LOD0 at its site: the glb's top-level nodes parented under a root empty at
     the site location turned by its yaw, as the viewer stands it."""
@@ -321,7 +514,9 @@ def _build_buildings(entries: list) -> list:
         for obj in imported:
             if obj.parent is None:
                 obj.parent = root
-        placed.append(entry["name"])
+        bpy.context.view_layer.update()
+        fx = _build_fx(entry.get("fx", []), imported)
+        placed.append({"name": entry["name"], "fx": fx})
     return placed
 
 

@@ -265,6 +265,7 @@ def preview_beauty(
         "lighting": result.lighting,
         "scatter": result.scatter,
         "buildings": list(result.buildings),
+        "fx": {name: list(nodes) for name, nodes in result.fx.items()},
     }
     return _result(summary, rendered)
 

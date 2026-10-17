@@ -239,7 +239,10 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   Exported buildings (`out/assets/*` of a building kind) stand on the viewer's own sites: `terrain/sites.py`
   is a numpy port of the viewer's site picker (`buildingSites`, `groundPoint`, `clearScatter`) and must
   stay in step with `viewer/static/terrain.js`; `beauty.place_buildings` feeds it and the render imports
-  each building's LOD0 at its site and yaw with scatter cleared around it.
+  each building's LOD0 at its site and yaw with scatter cleared around it. Its fx sockets run as stills
+  (`beauty.fx_args`, `fx_state` idle by default like the viewer): smoke/steam as a Principled Volume tube
+  along the viewer particle's mean path bent downwind by the biome `[wind]`, fire as an emissive volume
+  plus a point light, sparks as emissive specks, flicker_light as a point light.
 - Wind is per biome: an optional `[wind]` table in `biomes/*.toml` (`terrain/wind.py`: `from_deg`,
   the compass bearing it blows from, clockwise from map +y north; `strength`, 1 = clips as authored;
   `gust_period_s`) recorded as `terrain.json` `wind` (optional on read). The viewer

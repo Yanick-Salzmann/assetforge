@@ -13,7 +13,7 @@ Image = pytest.importorskip("PIL.Image")
 
 from assets import blender as blender_discovery
 from library import materials
-from terrain import atmosphere, beauty, placement, vegetation
+from terrain import atmosphere, beauty, placement, sites, vegetation, wind
 from terrain import channels as channel_module
 from terrain import splat
 from terrain.config import CHANNEL_NAMES, MapConfig
@@ -257,3 +257,54 @@ def test_variant_collection_keeps_only_lod0_of_a_lod_chained_glb(tmp_path):
     names = json.loads(result_path.read_text(encoding="utf-8"))
     assert len(names) == 2
     assert all("_LOD0" in name for name in names)
+
+
+FX_ENTRIES = (
+    {"node": "FX_smoke_a", "type": "smoke", "state": "idle", "rate": 4.0, "size": 0.6, "colour": [0.3, 0.3, 0.3]},
+    {"node": "FX_fire_a", "type": "fire", "state": "working", "rate": 18.0, "size": 0.2, "colour": [1.0, 0.4, 0.1]},
+    {"node": "FX_sparks_a", "type": "sparks", "state": "working", "rate": 30.0, "size": 0.04, "colour": [1.0, 0.7, 0.3]},
+    {"node": "FX_flicker_light_a", "type": "flicker_light", "state": "idle", "rate": 1.0, "size": 0.1, "colour": [1.0, 0.6, 0.2]},
+)
+
+
+def test_fx_args_run_idle_always_and_working_on_request():
+    still = wind.Wind(from_deg=90.0, strength=2.0)
+    idle = beauty.fx_args(FX_ENTRIES, still)
+    assert [entry["node"] for entry in idle] == ["FX_smoke_a", "FX_flicker_light_a"]
+    working = beauty.fx_args(FX_ENTRIES, still, "working")
+    assert [entry["node"] for entry in working] == [entry["node"] for entry in FX_ENTRIES]
+    with pytest.raises(beauty.BeautyRenderError):
+        beauty.fx_args(FX_ENTRIES, still, "busy")
+
+
+def test_fx_args_carry_smoke_downwind_and_light_fire():
+    blowing = wind.Wind(from_deg=90.0, strength=2.0)
+    smoke, fire, sparks, lamp = beauty.fx_args(FX_ENTRIES, blowing, "working")
+    assert smoke["downwind"] == pytest.approx([-1.0, 0.0], abs=1e-9)
+    assert smoke["wind_m_s"] == pytest.approx(2.0 * beauty.FX_WIND_M_S_PER_STRENGTH)
+    assert smoke["density"] > 0.0
+    assert smoke["emission"] == 0.0
+    assert smoke["radius_end_m"] > smoke["radius_start_m"]
+    assert "light_w" not in smoke
+    assert fire["wind_m_s"] == 0.0
+    assert fire["emission"] > 0.0
+    assert fire["light_w"] == pytest.approx(beauty.FX_LIGHT_W_PER_M * 0.2)
+    assert sparks["count"] == round(30.0 * beauty.FX_SPARKS_PER_RATE)
+    assert lamp == {
+        "node": "FX_flicker_light_a",
+        "type": "flicker_light",
+        "colour": [1.0, 0.6, 0.2],
+        "size_m": 0.1,
+        "light_w": pytest.approx(beauty.FX_LIGHT_W_PER_M * 0.1),
+    }
+
+
+def test_building_args_carry_the_asset_fx(tmp_path):
+    directory = tmp_path / "forge"
+    directory.mkdir()
+    glb = directory / "forge.glb"
+    glb.write_bytes(b"glTF")
+    (directory / "asset.json").write_text(json.dumps({"fx": list(FX_ENTRIES)}), encoding="utf-8")
+    site = sites.Site("forge", 0.0, 0.0, 1.0, 0.0, 4.0, 0.0, glb)
+    (entry,) = beauty.building_args(cfg(), (site,), wind.Wind(), "idle")
+    assert [fx["node"] for fx in entry["fx"]] == ["FX_smoke_a", "FX_flicker_light_a"]

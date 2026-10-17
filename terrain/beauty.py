@@ -4,7 +4,7 @@ import json
 import math
 import subprocess
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -18,6 +18,7 @@ from terrain import atmosphere as atmosphere_mod
 from terrain import placement as placement_mod
 from terrain import sites as sites_mod
 from terrain import vegetation as vegetation_mod
+from terrain import wind as wind_mod
 from terrain.budget import DEFAULT_BUDGET, Preview, PreviewBudget, deliver_file
 from terrain.config import HEIGHTMAP_MAX, LIBRARY_DIR, MapConfig, MapConfigError
 from terrain.splat import SplatResult
@@ -76,6 +77,19 @@ KIND_REACH_M: dict[str, float] = {
     "debris": 400.0,
 }
 SCATTER_RECORD = ("x", "y", "z", "rotation_x", "rotation_y", "rotation_z", "scale")
+FX_STATES = ("idle", "working")
+FX_WIND_M_S_PER_STRENGTH = 1.5
+FX_PROFILES: dict[str, dict[str, Any]] = {
+    "fire": {"life": (0.5, 0.9), "speed": (1.4, 2.2), "spread": 0.35, "grow": (1.2, 0.2), "carry": 0.0},
+    "smoke": {"life": (4.0, 6.0), "speed": (0.35, 0.7), "spread": 0.25, "grow": (0.6, 2.8), "carry": 0.6},
+    "sparks": {"life": (0.4, 0.9), "speed": (1.5, 3.0), "spread": 0.15, "grow": (1.0, 0.6), "carry": 0.0},
+    "steam": {"life": (1.5, 2.5), "speed": (0.5, 0.9), "spread": 0.2, "grow": (0.5, 2.2), "carry": 0.8},
+}
+FX_DENSITY_PER_M: dict[str, float] = {"smoke": 3.0, "steam": 1.5}
+FX_EMISSION_STRENGTH: dict[str, float] = {"fire": 60.0, "sparks": 200.0}
+FX_LIGHT_W_PER_M = 500.0
+FX_SPARKS_PER_RATE = 0.5
+FX_SPARKS_MAX = 24
 
 
 class BeautyRenderError(MapConfigError):
@@ -94,6 +108,7 @@ class BeautyRender:
     scatter: dict[str, int]
     log: str
     buildings: tuple[str, ...] = ()
+    fx: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -293,24 +308,74 @@ def place_buildings(
     if not chosen:
         return ()
     water_u8 = (water.detach().to(device="cpu", dtype=torch.float32).clamp(0.0, 1.0).numpy() * 255 + 0.5).astype(np.uint8)
-    field = sites_mod.HeightField(cfg, _height_u16(height), water_u8)
-    return tuple(site for site in sites_mod.building_sites(chosen, field, cfg.sea_level_m) if site is not None)
+    heights = sites_mod.HeightField(cfg, _height_u16(height), water_u8)
+    return tuple(site for site in sites_mod.building_sites(chosen, heights, cfg.sea_level_m) if site is not None)
 
 
-def building_args(cfg: MapConfig, buildings: Sequence[sites_mod.Site]) -> list[dict[str, Any]]:
-    """Each building's glb and its root transform in Blender's frame: metres from the map's
-    south-west corner, +y north, yaw about +z (the viewer's yaw about +y, Y-up to Z-up)."""
+def building_args(
+    cfg: MapConfig,
+    buildings: Sequence[sites_mod.Site],
+    wind: wind_mod.Wind | None = None,
+    fx_state: str = "idle",
+) -> list[dict[str, Any]]:
+    """Each building's glb, its root transform in Blender's frame (metres from the map's
+    south-west corner, +y north, yaw about +z: the viewer's yaw about +y, Y-up to Z-up) and the
+    fx its asset.json declares, as fx_args reduces them."""
     half = cfg.world_size_m / 2.0
-    return [
-        {
-            "name": site.name,
-            "glb": str(site.glb),
-            "location": [site.x + half, half - site.z, site.base],
-            "yaw_rad": site.yaw,
-        }
-        for site in buildings
-        if site.glb is not None and site.glb.is_file()
-    ]
+    placed = []
+    for site in buildings:
+        if site.glb is None or not site.glb.is_file():
+            continue
+        manifest_path = site.glb.parent / "asset.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}
+        placed.append(
+            {
+                "name": site.name,
+                "glb": str(site.glb),
+                "location": [site.x + half, half - site.z, site.base],
+                "yaw_rad": site.yaw,
+                "fx": fx_args(manifest.get("fx", []), wind or wind_mod.Wind(), fx_state),
+            }
+        )
+    return placed
+
+
+def fx_args(
+    entries: Sequence[Mapping[str, Any]], wind: wind_mod.Wind, state: str = "idle"
+) -> list[dict[str, Any]]:
+    """A still's worth of each running emitter: the viewer's particle profile reduced to a mean
+    lifetime, rise speed, start/end radius and the wind it relaxes toward, plus the light a fire
+    or flicker_light casts. Idle entries always run; working ones only when state is working."""
+    if state not in FX_STATES:
+        raise BeautyRenderError(f"fx state {state!r} must be one of {', '.join(FX_STATES)}")
+    downwind = list(wind.downwind())
+    wind_m_s = FX_WIND_M_S_PER_STRENGTH * wind.strength
+    running = []
+    for entry in entries:
+        if entry["state"] != "idle" and entry["state"] != state:
+            continue
+        kind = entry["type"]
+        size = float(entry["size"])
+        shown = {"node": entry["node"], "type": kind, "colour": list(entry["colour"]), "size_m": size}
+        if kind in ("fire", "flicker_light"):
+            shown["light_w"] = FX_LIGHT_W_PER_M * size
+        profile = FX_PROFILES.get(kind)
+        if profile is not None:
+            shown |= {
+                "life_s": sum(profile["life"]) / 2.0,
+                "rise_m_s": sum(profile["speed"]) / 2.0 * max(size, 0.2),
+                "radius_start_m": (profile["grow"][0] / 2.0 + profile["spread"]) * size,
+                "radius_end_m": profile["grow"][1] / 2.0 * size,
+                "carry": profile["carry"],
+                "wind_m_s": wind_m_s if profile["carry"] > 0.0 else 0.0,
+                "downwind": downwind,
+                "density": FX_DENSITY_PER_M.get(kind, 0.0),
+                "emission": FX_EMISSION_STRENGTH.get(kind, 0.0),
+            }
+        if kind == "sparks":
+            shown["count"] = min(FX_SPARKS_MAX, max(1, round(float(entry["rate"]) * FX_SPARKS_PER_RATE)))
+        running.append(shown)
+    return running
 
 
 def _texture_index(texture_name: str) -> int:
@@ -395,6 +460,7 @@ def render(
     placements: Sequence[placement_mod.Placement] = (),
     variants: Mapping[str, tuple[vegetation_mod.Variant, ...]] | None = None,
     buildings: Sequence[sites_mod.Site] = (),
+    fx_state: str = "idle",
     three_quarter_azimuth_deg: float = DEFAULT_THREE_QUARTER_AZIMUTH_DEG,
     three_quarter_altitude_deg: float = DEFAULT_THREE_QUARTER_ALTITUDE_DEG,
     ground_eye_height_m: float = DEFAULT_GROUND_EYE_HEIGHT_M,
@@ -408,7 +474,9 @@ def render(
     Lit by the biome's [atmosphere] unless one is handed in; time_of_day_h overrides its time.
     Dressed with the given scatter placements (export.scatter_placements), each instancing its
     species' kit meshes as the viewer does, and with the given building sites (place_buildings),
-    their scatter cleared as the viewer clears it.
+    their scatter cleared as the viewer clears it and their fx sockets running (idle ones always,
+    working ones when fx_state is working) as static volumetric smoke/steam bent downwind by the
+    biome's [wind], emissive fire and sparks, and point lights.
 
     Reads only what is handed in - no dependency on export.py's terrain.json, since this is the
     Phase 2 gate and must run before the export contract exists.
@@ -482,7 +550,7 @@ def render(
                 }
                 for index, batch in enumerate(batches)
             ],
-            "buildings": building_args(cfg, buildings),
+            "buildings": building_args(cfg, buildings, splat.biome.wind, fx_state),
             "camera": {
                 "centre_frac": [centre_x, centre_y],
                 "patch_size_m": patch_size_m,
@@ -513,6 +581,8 @@ def render(
                 executable,
                 "--background",
                 "--factory-startup",
+                "--python-exit-code",
+                "1",
                 "--python",
                 str(SCRIPT_PATH),
                 "--",
@@ -537,7 +607,8 @@ def render(
         lighting={**lighting["summary"], "exposure_stops": payload.get("exposure_stops", {})},
         scatter=_scatter_counts(batches),
         log=log,
-        buildings=tuple(payload.get("buildings", ())),
+        buildings=tuple(entry["name"] for entry in payload.get("buildings", ())),
+        fx={entry["name"]: tuple(entry["fx"]) for entry in payload.get("buildings", ()) if entry["fx"]},
     )
 
 
