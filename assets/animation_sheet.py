@@ -26,6 +26,7 @@ DEFAULT_SAMPLES = 32
 DEFAULT_MARGIN = 1.15
 DEFAULT_TIMEOUT_S = 300.0
 DEFAULT_DEVICE = "OPTIX"
+FOCUS_MODES = ("moving", "asset")
 
 TILE_PADDING = 12
 LABEL_HEIGHT = 26
@@ -117,6 +118,7 @@ def render(
     name: str,
     clip: str,
     trail: bool = True,
+    focus: str = "moving",
     resolution: tuple[int, int] = DEFAULT_RESOLUTION,
     samples: int = DEFAULT_SAMPLES,
     margin: float = DEFAULT_MARGIN,
@@ -126,8 +128,11 @@ def render(
 ) -> AnimationSheet:
     """Blender headless: play one clip of out/assets/<name>/<name>.glb and render one 3/4 view at
     FRAME_COUNT evenly spaced frames, composed with an optional motion-trail tile into
-    out/assets/<name>/animation_<clip>.png. The agent reads this before calling motion good."""
+    out/assets/<name>/animation_<clip>.png. focus "moving" frames the meshes the clip moves,
+    "asset" the whole asset. The agent reads this before calling motion good."""
     validate_name(name)
+    if focus not in FOCUS_MODES:
+        raise AnimationSheetError(f"focus {focus!r} must be one of {FOCUS_MODES}")
     entry = find_clip(name, clip)
     glb_path = config.ASSET_OUT_DIR / name / f"{name}.glb"
     if not glb_path.is_file():
@@ -148,6 +153,7 @@ def render(
             "resolution": list(resolution),
             "samples": samples,
             "margin": margin,
+            "focus": focus,
             "device": device,
             "outputs": outputs,
             "result_json": str(result_json),
@@ -176,7 +182,7 @@ def render(
         tiles.append((TRAIL_LABEL, motion_trail(images)))
     sheet_path = config.ASSET_OUT_DIR / name / sheet_name(clip)
     compose(tiles, max(resolution)).save(sheet_path, optimize=True)
-    return AnimationSheet(sheet=sheet_path, clip=entry | {"moving_fraction": moving_fraction(images)}, frames=frames, device=payload["device"], log=log)
+    return AnimationSheet(sheet=sheet_path, clip=entry | {"moving_fraction": moving_fraction(images), "focus": payload["focus"], "moving_meshes": payload["moving_meshes"]}, frames=frames, device=payload["device"], log=log)
 
 
 def animation_sheet_preview(

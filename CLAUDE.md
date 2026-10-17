@@ -392,7 +392,7 @@ validator too.
 
 An agent cannot judge what it cannot see. Never declare a generated result good
 without rendering it and reading the render back: hillshade and false-colour
-splat for terrain, the 6-view contact sheet for assets, and the `render_animation_sheet` filmstrip (8 frames of one clip from one 3/4 camera plus a motion-trail tile, `assets/animation_sheet.py`) for every clip of an animated asset. Asset iteration is
+splat for terrain, the 6-view contact sheet for assets, and the `render_animation_sheet` filmstrip (8 frames of one clip plus a motion-trail tile, `assets/animation_sheet.py`; by default framed on the parts that move, from the least occluded view with nearer geometry clipped away, `focus="asset"` for the whole asset) for every clip of an animated asset. Asset iteration is
 capped at 4 rounds (8 for the hero kinds, `hero_building` and `hero_vehicle`; `assets/gate.py`
 `PATCH_CAPS`) and export is blocked until human approval is recorded — both
 enforced server-side.

@@ -62,6 +62,11 @@ def test_render_rejects_a_missing_glb():
         animation_sheet.render("mill", "idle_spin")
 
 
+def test_render_rejects_an_unknown_focus():
+    with pytest.raises(animation_sheet.AnimationSheetError, match="focus"):
+        animation_sheet.render("mill", "idle_spin", focus="roof")
+
+
 def test_compose_lays_eight_frames_and_a_trail_on_a_three_by_three_grid():
     colours = [(index * 28, 255 - index * 28, 90) for index in range(9)]
     tiles = [(str(index), Image.new("RGB", (32, 32), colour)) for index, colour in enumerate(colours)]

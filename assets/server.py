@@ -129,15 +129,16 @@ def render_contact_sheet(name: str) -> list:
 
 
 @mcp.tool
-def render_animation_sheet(name: str, clip: str, trail: bool = True) -> list:
+def render_animation_sheet(name: str, clip: str, trail: bool = True, focus: str = "moving") -> list:
     """Render one clip of out/assets/<name>/<name>.glb as a filmstrip: one 3/4 camera at 8 evenly
     spaced frames across the loop, framed on every sampled pose, plus a motion-trail tile that
-    smears moving parts along their path. Read it before declaring motion good - it must expose
+    smears moving parts along their path. focus "moving" (default) frames only the parts that move,
+    cutting away anything between camera and them; "asset" frames the whole asset. Read it before declaring motion good - it must expose
     parts that detach from their pivot, pass through each other or pop at the loop seam.
     """
     from assets import animation_sheet
 
-    result, rendered = animation_sheet.animation_sheet_preview(name, clip, trail=trail)
+    result, rendered = animation_sheet.animation_sheet_preview(name, clip, trail=trail, focus=focus)
     summary = {
         "name": name,
         "clip": result.clip,

@@ -143,9 +143,10 @@ coast = motion.animate_oscillate(wheel, 0.3, 4.0, state="idle", clip="wheel_coas
   facing_deg=...)` then `cloth.animate_wind(rig, duration_s, seed)` records an idle skinned clip.
   The rods are static parts; the cloth stays skinned to its rig through the bake and every LOD.
   Pass the rig objects (`rig.objects`) to the preview export with the other parts.
-- The 3/4 filmstrip camera is fixed: a part hidden under a roof or awning shows `moving_fraction`
-  0.0. Then add a review close-up (hide the occluders, put a temporary marker on the rotor) and
-  show it to the reviewer alongside the filmstrips.
+- The filmstrip frames the parts that move (the first cluster of them within 1.5 m), picks the
+  least occluded view and clips away nearer geometry, so a part under a roof is still seen. If it
+  still shows `moving_fraction` 0.0, add a review close-up (hide the occluders, put a temporary
+  marker on the rotor) and show it to the reviewer alongside the filmstrips.
 
 ## 3. Contact sheet
 
