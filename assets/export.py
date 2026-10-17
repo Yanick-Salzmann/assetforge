@@ -23,6 +23,10 @@ asset.json's fx[].
 Passing mechanisms (assets.mechanism_manifest entries: gear chains and pinned linkages on rigid
 clips) records them in asset.json's mechanisms[] for validate_asset's coupling checks; they need
 the animations they name.
+
+Passing props (assets.props placements: kit prop, Blender-frame location, rotation and scale)
+records each in asset.json's props[] in the glb's frame, less the base-centre shift; the PROP_
+empties that preview them are never exported.
 """
 
 from __future__ import annotations
@@ -38,13 +42,14 @@ from typing import Iterator, Sequence
 import bpy
 from mathutils import Vector
 
-from assets import animation_manifest, fx_manifest, mechanism_manifest, team_colour
+from assets import animation_manifest, fx_manifest, mechanism_manifest, prop_manifest, team_colour
 from assets.recipe import validate_name
 from terrain import config
 
 MANIFEST_NAME = "asset.json"
 TEXTURES_DIRNAME = "textures"
 CONTACT_SHEET_NAME = "contact_sheet.png"
+PROP_NODE_PREFIX = "PROP_"
 VALID_KINDS = (
     "hero_building",
     "prop",
@@ -73,6 +78,7 @@ class ExportResult:
     animations: list[dict] = field(default_factory=list)
     fx: list[dict] = field(default_factory=list)
     mechanisms: list[dict] = field(default_factory=list)
+    props: list[dict] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         result = {
@@ -90,6 +96,8 @@ class ExportResult:
             result["fx"] = self.fx
         if self.mechanisms:
             result["mechanisms"] = self.mechanisms
+        if self.props:
+            result["props"] = self.props
         return result
 
 
@@ -332,6 +340,7 @@ def export_asset(
     animations: Sequence[dict] | None = None,
     fx: Sequence[dict] | None = None,
     mechanisms: Sequence[dict] | None = None,
+    props: Sequence[dict] | None = None,
 ) -> ExportResult:
     """Export objects to out/assets/<name>/<name>.glb, write their textures to textures/, and
     record tri counts per LOD, world bbox, materials and texture list in asset.json.
@@ -358,8 +367,11 @@ def export_asset(
     socket needs an entry and every entry its socket.
 
     mechanisms, a list of assets.mechanism_manifest entries, couples the parts of the rigid clips
-    in animations; they are recorded in asset.json for validate_asset."""
-    objects = list(objects)
+    in animations; they are recorded in asset.json for validate_asset.
+
+    props, a list of assets.props placements, records kit props in asset.json's props[]; any
+    PROP_ preview empty among objects is left out of the glb."""
+    objects = [obj for obj in objects if not obj.name.startswith(PROP_NODE_PREFIX)]
     if not objects:
         raise ExportError("export requires at least one object")
     if kind not in VALID_KINDS:
@@ -371,6 +383,7 @@ def export_asset(
     fx = [dict(entry) for entry in fx or ()]
     _check_fx_inputs(objects, fx)
     mechanisms = [dict(entry) for entry in mechanisms or ()]
+    props = [dict(placement) for placement in props or ()]
     if mechanisms:
         if not animations:
             raise ExportError("mechanisms couple animated parts; pass the animations they name")
@@ -381,9 +394,10 @@ def export_asset(
         names = [obj.name for obj in objects]
         animations = [animation_manifest.with_lod_copies(entry, names) for entry in animations]
         _check_animation_inputs(objects, animations)
-        return _export_animated(objects, name, kind, team_mask, animations, fx, mechanisms)
+        return _export_animated(objects, name, kind, team_mask, animations, fx, mechanisms, props)
 
     shift = _base_centre_shift(objects)
+    prop_entries = _prop_entries(props, shift)
     top_level = _top_level(objects)
     for obj in top_level:
         obj.location = obj.location - shift
@@ -391,7 +405,7 @@ def export_asset(
     try:
         out_dir = config.ASSET_OUT_DIR / name
         glb_path = export_glb(objects, out_dir / f"{name}.glb")
-        result = _write_manifest(objects, name, kind, team_mask, glb_path, [], fx, [])
+        result = _write_manifest(objects, name, kind, team_mask, glb_path, [], fx, [], prop_entries)
     finally:
         for obj in top_level:
             obj.location = obj.location + shift
@@ -407,18 +421,32 @@ def _export_animated(
     animations: list[dict],
     fx: list[dict],
     mechanisms: list[dict],
+    props: list[dict],
 ) -> ExportResult:
     with _rest_pose(objects):
         shift = _base_centre_shift(objects)
+    prop_entries = _prop_entries(props, shift)
     root, saved = _attach_root(objects, name, shift)
     try:
         out_dir = config.ASSET_OUT_DIR / name
         glb_path = export_animated_glb([root, *objects], out_dir / f"{name}.glb")
         _check_exported_clips(glb_path, animations)
         with _rest_pose(objects):
-            return _write_manifest(objects, name, kind, team_mask, glb_path, animations, fx, mechanisms)
+            return _write_manifest(objects, name, kind, team_mask, glb_path, animations, fx, mechanisms, prop_entries)
     finally:
         _detach_root(root, saved)
+
+
+def _prop_entries(props: list[dict], shift: Vector) -> list[dict]:
+    try:
+        return [
+            prop_manifest.prop_entry(
+                placement["mesh"], placement["location"], placement.get("rotation", (0.0, 0.0, 0.0)), placement.get("scale", 1.0), shift
+            )
+            for placement in props
+        ]
+    except (KeyError, prop_manifest.PropManifestError) as error:
+        raise ExportError(f"bad prop placement: {error}") from None
 
 
 @contextmanager
@@ -445,6 +473,7 @@ def _write_manifest(
     animations: list[dict],
     fx: list[dict],
     mechanisms: list[dict],
+    props: list[dict],
 ) -> ExportResult:
     out_dir = glb_path.parent
     materials = _unique_materials(objects)
@@ -473,6 +502,8 @@ def _write_manifest(
         manifest[fx_manifest.MANIFEST_KEY] = fx
     if mechanisms:
         manifest[mechanism_manifest.MANIFEST_KEY] = mechanisms
+    if props:
+        manifest[prop_manifest.MANIFEST_KEY] = props
     manifest_path = out_dir / MANIFEST_NAME
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -487,4 +518,5 @@ def _write_manifest(
         animations=animations,
         fx=fx,
         mechanisms=mechanisms,
+        props=props,
     )

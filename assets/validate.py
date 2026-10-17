@@ -8,7 +8,16 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from assets import animation_checks, animation_manifest, atlas_raster, fx_manifest, mechanism_checks, mechanism_manifest, team_colour
+from assets import (
+    animation_checks,
+    animation_manifest,
+    atlas_raster,
+    fx_manifest,
+    mechanism_checks,
+    mechanism_manifest,
+    prop_manifest,
+    team_colour,
+)
 from library import gltf
 from terrain import config
 
@@ -161,6 +170,7 @@ def validate_asset(name: str, kind: str) -> ValidationReport:
         checks.extend(_check_animations(document, buffers, animations, kind, rigid_parts))
         checks.extend(_check_mechanisms(name, document, buffers, animations))
     checks.append(_check_fx(name, document, world_bbox_min, world_bbox_max))
+    checks.append(_check_props(name, world_bbox_min, world_bbox_max))
 
     return ValidationReport(
         name=name,
@@ -680,6 +690,32 @@ def _check_fx(name: str, document: dict, bbox_min: np.ndarray, bbox_max: np.ndar
     if not fx:
         return CheckResult(label, True, "no fx")
     return CheckResult(label, True, f"{len(fx)} socket(s) inside the bbox: {', '.join(entry['node'] for entry in fx)}")
+
+
+def _known_kit_props() -> frozenset[str]:
+    from library import kits
+
+    try:
+        return frozenset(kits.build().names())
+    except (kits.KitError, OSError, ValueError):
+        return frozenset()
+
+
+def _check_props(name: str, bbox_min: np.ndarray, bbox_max: np.ndarray) -> CheckResult:
+    label = "kit props"
+    manifest_path = config.ASSET_OUT_DIR / name / "asset.json"
+    props = []
+    if manifest_path.is_file():
+        props = json.loads(manifest_path.read_text(encoding="utf-8")).get(prop_manifest.MANIFEST_KEY, [])
+    if not props:
+        return CheckResult(label, True, "no props")
+    errors = prop_manifest.manifest_errors(props, _known_kit_props())
+    if not errors:
+        errors = prop_manifest.outside_errors(props, bbox_min.tolist(), bbox_max.tolist())
+    if errors:
+        return CheckResult(label, False, "; ".join(errors))
+    meshes = sorted({entry["mesh"] for entry in props})
+    return CheckResult(label, True, f"{len(props)} placement(s) of {len(meshes)} kit prop(s): {', '.join(meshes)}")
 
 
 def _as_gltf_matrix(matrix: np.ndarray) -> gltf.Matrix:

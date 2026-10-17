@@ -14,12 +14,13 @@ import sys
 from pathlib import Path
 
 import bpy
-from mathutils import Matrix, Vector
+from mathutils import Matrix, Quaternion, Vector
 
 TRANSPARENT_BOUNCES = 64
 REDUCED_LOD = re.compile(r"_LOD[1-9]\d*(\.\d+)?$")
 REDUCED_BUILDING_LOD = re.compile(r"_LOD[1-9]\d*(_ANIM)?(\.\d+)?$")
 BONE_INDEX = re.compile(r"_bone(\d+)$")
+GLTF_TO_BLENDER = Matrix(((1.0, 0.0, 0.0, 0.0), (0.0, 0.0, -1.0, 0.0), (0.0, 1.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)))
 CHANNEL_LABEL = {"r": "Red", "g": "Green", "b": "Blue"}
 RECORD_FIELDS = 7
 PLUME_RINGS = 24
@@ -530,10 +531,32 @@ def _orient_cloth(imported, cloth: dict) -> list:
     return turned
 
 
+def _build_props(root: bpy.types.Object, props: list, kits: dict) -> int:
+    """Each kit prop placement as an instance of its kit glb's LOD0 under the building root, its
+    glTF-frame transform turned into Blender's Z-up frame as the glTF importer turns the building."""
+    for index, entry in enumerate(props):
+        collection = kits.get(entry["glb"])
+        if collection is None:
+            collection = _variant_collection({"name": f"Prop_{entry['mesh']}", "glb": entry["glb"]})
+            kits[entry["glb"]] = collection
+        qx, qy, qz, qw = entry["rotation"]
+        placement = Matrix.LocRotScale(
+            Vector(entry["translation"]), Quaternion((qw, qx, qy, qz)), Vector([float(entry["scale"])] * 3)
+        )
+        instance = bpy.data.objects.new(f"{root.name}_prop{index}", None)
+        instance.instance_type = "COLLECTION"
+        instance.instance_collection = collection
+        bpy.context.scene.collection.objects.link(instance)
+        instance.parent = root
+        instance.matrix_basis = GLTF_TO_BLENDER @ placement @ GLTF_TO_BLENDER.inverted()
+    return len(props)
+
+
 def _build_buildings(entries: list) -> list:
     """Each building's LOD0 at its site: the glb's top-level nodes parented under a root empty at
-    the site location turned by its yaw, as the viewer stands it."""
+    the site location turned by its yaw, as the viewer stands it, with its kit props."""
     placed = []
+    kits = {}
     for entry in entries:
         before = set(bpy.data.objects)
         bpy.ops.import_scene.gltf(filepath=entry["glb"])
@@ -550,8 +573,9 @@ def _build_buildings(entries: list) -> list:
                 obj.parent = root
         bpy.context.view_layer.update()
         cloth = _orient_cloth(imported, entry["cloth"]) if "cloth" in entry else []
+        props = _build_props(root, entry.get("props", []), kits)
         fx = _build_fx(entry.get("fx", []), imported)
-        placed.append({"name": entry["name"], "fx": fx, "cloth": cloth})
+        placed.append({"name": entry["name"], "fx": fx, "cloth": cloth, "props": props})
     return placed
 
 

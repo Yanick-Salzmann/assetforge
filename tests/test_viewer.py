@@ -259,3 +259,20 @@ def test_list_assets_carries_fx_entries(tmp_path):
     assets = {asset["name"]: asset for asset in viewer.list_assets(tmp_path)}
     assert assets["smithy"]["fx"] == entries
     assert assets["crate"]["fx"] == []
+
+
+def test_list_assets_carries_kit_props_with_their_library_urls(tmp_path):
+    assets_root = tmp_path / "assets"
+    assets_root.mkdir()
+    library = tmp_path / "library"
+    (library / "kits" / "nature").mkdir(parents=True)
+    (library / "kits" / "nature" / "pot_small.glb").write_bytes(b"glTF")
+    directory = _write_asset(assets_root, "workshop", kind="hero_building")
+    manifest = json.loads((directory / "asset.json").read_text(encoding="utf-8"))
+    pot = {"mesh": "nature/pot_small", "translation": [1.0, 0.0, 2.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": 1.0}
+    missing = pot | {"mesh": "nature/pot_large"}
+    manifest["props"] = [pot, missing]
+    (directory / "asset.json").write_text(json.dumps(manifest), encoding="utf-8")
+    kits = {"nature/pot_small": "kits/nature/pot_small.glb", "nature/pot_large": "kits/nature/pot_large.glb"}
+    (workshop,) = viewer.list_assets(assets_root, library, kits)
+    assert workshop["props"] == [pot | {"glb": "/files/library/kits/nature/pot_small.glb"}]

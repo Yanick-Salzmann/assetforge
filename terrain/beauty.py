@@ -13,6 +13,7 @@ import torch
 from PIL import Image
 
 from assets.blender import require_blender
+from library import kits as kit_library
 from library.materials import MaterialIndex
 from terrain import atmosphere as atmosphere_mod
 from terrain import placement as placement_mod
@@ -320,11 +321,15 @@ def building_args(
     buildings: Sequence[sites_mod.Site],
     wind: wind_mod.Wind | None = None,
     fx_state: str = "idle",
+    kits: Mapping[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Each building's glb, its root transform in Blender's frame (metres from the map's
     south-west corner, +y north, yaw about +z: the viewer's yaw about +y, Y-up to Z-up) and the
     fx its asset.json declares, as fx_args reduces them, plus the downwind direction its free-flying
-    cloth chains turn toward about their pole, as the viewer's orientCloth turns them."""
+    cloth chains turn toward about their pole, as the viewer's orientCloth turns them, and its kit
+    prop placements (asset.json props[]) with each kit glb resolved under library/ from kits, the
+    `<pack>/<model>` to library-relative path map (the kit lockfile by default); a placement whose
+    glb is not on disk is dropped."""
     half = cfg.world_size_m / 2.0
     blowing = wind or wind_mod.Wind()
     cloth = {
@@ -332,6 +337,7 @@ def building_args(
         "pole_cross_min": CLOTH_POLE_CROSS_MIN,
         "pole_offset_m": CLOTH_POLE_OFFSET_M,
     }
+    kit_glbs = kit_library.glb_paths() if kits is None else kits
     placed = []
     for site in buildings:
         if site.glb is None or not site.glb.is_file():
@@ -346,9 +352,22 @@ def building_args(
                 "yaw_rad": site.yaw,
                 "fx": fx_args(manifest.get("fx", []), blowing, fx_state),
                 "cloth": cloth,
+                "props": _prop_args(manifest.get("props", []), kit_glbs),
             }
         )
     return placed
+
+
+def _prop_args(props: Sequence[Mapping[str, Any]], kits: Mapping[str, str]) -> list[dict[str, Any]]:
+    resolved = []
+    for entry in props:
+        relative = kits.get(entry["mesh"])
+        if relative is None:
+            continue
+        path = LIBRARY_DIR / relative
+        if path.is_file():
+            resolved.append({**entry, "glb": str(path)})
+    return resolved
 
 
 def fx_args(

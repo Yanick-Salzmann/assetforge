@@ -11,7 +11,7 @@ Every mesh object named `<name>_*` in the .blend is one part of the asset. Parts
 `<name>_*_ANIM` (motion.pivot_part) are its moving parts: they keep their pivot and stay separate
 nodes through the bake and every LOD, and the clips and mechanisms motion recorded on the scene
 (motion.recorded_clips, motion.recorded_mechanisms) are exported with them, as are the FX_<type>
-sockets fx.add_fx_socket recorded (fx.recorded_fx); a socket parented to a static part is
+sockets fx.add_fx_socket recorded (fx.recorded_fx) and the kit props props.add_prop placed (props.recorded_props); a socket parented to a static part is
 unparented in place before the static parts are joined. Meshes deformed by an armature (assets.cloth
 panels) are skinned parts: they stay out of the join, keep their bind pose, get an unreduced copy
 per LOD, and their armatures and the skinned clips over those armatures' bones go out with them. Export is refused
@@ -62,7 +62,7 @@ def main() -> None:
 
     payload: dict = {"ok": False}
     try:
-        from assets import atlas_bake, export, fx, game_ready, gate, lod, motion
+        from assets import atlas_bake, export, fx, game_ready, gate, lod, motion, props
         from assets import hardsurface as hs
 
         if kind not in export.VALID_KINDS:
@@ -88,6 +88,7 @@ def main() -> None:
         gate.open_gate(name).require_approved(clips=[entry["name"] for entry in animations])
         fx_entries = fx.recorded_fx()
         sockets = [bpy.data.objects[entry["node"]] for entry in fx_entries]
+        placements = props.recorded_props()
         _stage(f"{len(objects)} parts, {len(skinned)} skinned, clips {[entry['name'] for entry in animations]}, fx {[entry['node'] for entry in fx_entries]}", started)
 
         static = [obj for obj in objects if not game_ready.is_animated_part(obj)]
@@ -135,7 +136,13 @@ def main() -> None:
         _stage("lods", started)
 
         result = export.export_asset(
-            [*lod_set.objects, *rigs, *sockets], name=name, kind=kind, animations=animations, mechanisms=mechanisms, fx=fx_entries
+            [*lod_set.objects, *rigs, *sockets],
+            name=name,
+            kind=kind,
+            animations=animations,
+            mechanisms=mechanisms,
+            fx=fx_entries,
+            props=placements,
         )
         _stage("exported", started)
         payload = {"ok": True, "seconds": round(time.monotonic() - started), "atlas": layout.as_dict(), **result.as_dict()}

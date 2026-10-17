@@ -19,6 +19,7 @@ from urllib.parse import unquote, urlsplit
 import numpy as np
 from PIL import Image
 
+from library import kits as kit_library
 from terrain import config
 from terrain import manifest as terrain_manifest
 
@@ -36,9 +37,21 @@ mimetypes.add_type("model/gltf-binary", ".glb")
 mimetypes.add_type("text/javascript", ".js")
 
 
-def list_assets(asset_root: Path) -> list[dict]:
+def _props(props: list[dict], library_root: Path, kits: Mapping[str, str]) -> list[dict]:
+    """Each kit prop placement with the URL of its glb; placements whose glb is not on disk are dropped."""
+    shown = []
+    for entry in props:
+        relative = kits.get(entry.get("mesh", ""))
+        if relative and resolve_under(library_root, relative) is not None:
+            shown.append({**entry, "glb": f"{LIBRARY_FILE_PREFIX}{relative}"})
+    return shown
+
+
+def list_assets(asset_root: Path, library_root: Path | None = None, kits: Mapping[str, str] | None = None) -> list[dict]:
     if not asset_root.is_dir():
         return []
+    library = library_root or config.LIBRARY_DIR
+    kit_glbs = kit_library.glb_paths() if kits is None else kits
     assets: list[dict] = []
     for directory in sorted(path for path in asset_root.iterdir() if path.is_dir()):
         manifest_path = directory / "asset.json"
@@ -60,6 +73,7 @@ def list_assets(asset_root: Path) -> list[dict]:
                 "bbox_max": manifest.get("bbox_max"),
                 "animations": manifest.get("animations", []),
                 "fx": manifest.get("fx", []),
+                "props": _props(manifest.get("props", []), library, kit_glbs),
             }
         )
     return assets
@@ -179,7 +193,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             self._send_file(self.static_root / "index.html")
         elif path == "/api/assets":
-            self._send_json(list_assets(self.asset_root))
+            self._send_json(list_assets(self.asset_root, self.library_root))
         elif path == "/api/terrains":
             self._send_json(list_terrains(self.terrain_root, self.library_root))
         elif path.startswith(RAW_IMAGE_PREFIX):

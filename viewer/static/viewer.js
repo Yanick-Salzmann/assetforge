@@ -7,6 +7,7 @@ import { Atmosphere, TONE_MAPPING, hazeDensity } from "./sky.js";
 import { ClipPlayer, STATES, describeClips, phaseOf } from "./animation.js";
 import { FxSystem } from "./fx.js";
 import { orientCloth } from "./wind.js";
+import { attachProps } from "./props.js";
 
 const EYE_HEIGHT_M = 1.7;
 const HUMAN_HEIGHT_M = 1.8;
@@ -883,6 +884,10 @@ async function loadAsset(name, wanted = {}) {
     node.add(overlay);
     state.meshes.push({ mesh: node, original: node.material, overlay, lod: lodIndexOf(node) });
   }
+  const props = await attachProps(loader, state.root, asset.props);
+  if (state.asset !== asset) {
+    return;
+  }
   scene.add(state.root);
   state.fx = (asset.fx ?? []).length > 0 ? new FxSystem(state.root, asset.fx) : null;
   setupAnimation(gltf.animations, asset.animations, wanted);
@@ -914,6 +919,7 @@ async function loadAsset(name, wanted = {}) {
     clips: state.clips,
     animation: animationSnapshot(),
     fx: fxSnapshot(),
+    props: { count: props.count, failed: props.failed },
   };
 }
 
@@ -979,6 +985,7 @@ async function loadBuildings(terrain) {
     root.rotation.y = site.yaw;
     group.add(root);
     const cloth = orientCloth(root, terrain.wind);
+    const props = await attachProps(loader, root, asset.props);
     let phase = null;
     if (gltf.animations.length > 0) {
       const player = new ClipPlayer(root, describeClips(gltf.animations, asset.animations ?? []));
@@ -991,7 +998,7 @@ async function loadBuildings(terrain) {
     if ((asset.fx ?? []).length > 0) {
       fx.push(new FxSystem(root, asset.fx, terrain.wind));
     }
-    placed.push({ ...site, front: footprints[index].front, phase, cloth });
+    placed.push({ ...site, front: footprints[index].front, phase, cloth, props: props.count });
   }
   terrain.clearScatter([...placed, { x: terrain.ground.x, z: terrain.ground.z, radius: EYE_CLEARING_M }]);
   return { group, sites: placed, failed, players, fx };
@@ -1062,7 +1069,7 @@ async function showTerrain(name, wanted = {}) {
     scatter: terrain.scatterStats,
     missingMaps: terrain.missingMaps,
     wind: terrain.wind.snapshot(),
-    buildings: terrain.buildings.sites.map(({ name: building, x, z, base, relief, yaw, phase, cloth }) => ({ name: building, x, z, base, relief, yaw, phase, cloth })),
+    buildings: terrain.buildings.sites.map(({ name: building, x, z, base, relief, yaw, phase, cloth, props }) => ({ name: building, x, z, base, relief, yaw, phase, cloth, props })),
     unplaced: terrain.buildings.failed,
   };
 }

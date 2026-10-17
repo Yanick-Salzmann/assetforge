@@ -11,6 +11,7 @@ Invoked as:
 """
 
 import json
+import math
 import sys
 import traceback
 from pathlib import Path
@@ -134,6 +135,7 @@ SPIN_FRAMES = 48
 WAVE_FRAMES = 36
 STRIP_BONES = 4
 STRIP_HEIGHT_M = 2.0
+PROP_MESH = "nature/pot_small"
 
 
 def _gltf_vector(blender_xyz) -> list[float]:
@@ -227,6 +229,38 @@ def _fx_socket_export(export_module, out_dir) -> dict:
         "sockets_not_moved": (tuple(smoke.matrix_world.translation), tuple(fire.matrix_world.translation)) == sockets_before,
         "orphan_rejected": orphan_rejected,
         "recorded_on_scene": [entry for entry in fx.recorded_fx() if entry["node"] in (smoke.name, fire.name)] == [smoke_entry, fire_entry],
+    }
+    return {"checks": checks, "nodes": names, "ok": all(checks.values())}
+
+
+def _prop_export(export_module, out_dir) -> dict:
+    """A block off the origin with a kit pot placed beside it: the PROP_ empty stays out of the glb
+    and asset.json props[] carries the pot in the glb's frame, less the base-centre shift."""
+    from assets import props
+    from library import kits
+    from terrain import config
+
+    relative = kits.glb_paths().get(PROP_MESH)
+    if relative is None or not (config.LIBRARY_DIR / relative).is_file():
+        return {"skipped": f"{PROP_MESH} not pulled", "ok": True}
+    _clear_animation_scene()
+    material = bpy.data.materials.new("prop_atlas")
+    material.use_nodes = True
+    block = _block("Shed", (2.0, 2.0, 1.0), (0.0, 0.0, 0.5), material)
+    block.location = (3.0, -2.0, 0.0)
+    bpy.context.view_layer.update()
+    pot, _ = props.add_prop(PROP_MESH, (4.2, -2.5, 0.0), (0.0, 0.0, 0.5), 1.2, label="pot")
+    name = "export-selftest-props"
+    result = export_module.export_asset([block, pot], name=name, kind="prop", props=props.recorded_props())
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    names = [node.get("name") for node in export_module.glb_document(result.glb_path).get("nodes", [])]
+    (entry,) = manifest.get("props", [{}])
+    checks = {
+        "prop_not_in_glb": not any(node.startswith("PROP_") for node in names),
+        "mesh": entry.get("mesh") == PROP_MESH,
+        "translation": _close(entry.get("translation"), _gltf_vector((1.2, -0.5, 0.0))),
+        "rotation": _close(entry.get("rotation"), [0.0, math.sin(0.25), 0.0, math.cos(0.25)]),
+        "scale": _close([entry.get("scale", 0.0)], [1.2]),
     }
     return {"checks": checks, "nodes": names, "ok": all(checks.values())}
 
@@ -543,7 +577,16 @@ def main() -> None:
         fx_check = _fx_socket_export(export, out_dir)
         animated_lod_check = _animated_lod_export(export, out_dir)
         cloth_lod_check = _cloth_lod_export(export, out_dir)
-        ok = ok and rigid_check["ok"] and skinned_check["ok"] and fx_check["ok"] and animated_lod_check["ok"] and cloth_lod_check["ok"]
+        prop_check = _prop_export(export, out_dir)
+        ok = (
+            ok
+            and rigid_check["ok"]
+            and skinned_check["ok"]
+            and fx_check["ok"]
+            and animated_lod_check["ok"]
+            and cloth_lod_check["ok"]
+            and prop_check["ok"]
+        )
 
         payload = {
             "ok": ok,
@@ -557,6 +600,7 @@ def main() -> None:
             "fx_check": fx_check,
             "animated_lod_check": animated_lod_check,
             "cloth_lod_check": cloth_lod_check,
+            "prop_check": prop_check,
         }
     except Exception:
         payload = {"ok": False, "error": traceback.format_exc()}

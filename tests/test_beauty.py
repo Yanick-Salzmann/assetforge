@@ -364,3 +364,19 @@ def test_beauty_turns_pennants_downwind_and_leaves_banners(tmp_path):
     result = json.loads(result_path.read_text(encoding="utf-8"))
     assert [entry["cloth"] for entry in result["placed"]] == [["cloth_pennant_rig"], []]
     assert result["direction"] == pytest.approx([0.0, -1.0], abs=1e-3)
+
+
+def test_building_args_resolve_kit_props_under_the_library(tmp_path, monkeypatch):
+    directory = tmp_path / "workshop"
+    directory.mkdir()
+    glb = directory / "workshop.glb"
+    glb.write_bytes(b"glTF")
+    pot = {"mesh": "nature/pot_small", "translation": [1.0, 0.0, 2.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": 1.0}
+    (directory / "asset.json").write_text(json.dumps({"props": [pot, pot | {"mesh": "nature/gone"}]}), encoding="utf-8")
+    library = tmp_path / "library"
+    (library / "kits").mkdir(parents=True)
+    (library / "kits" / "pot_small.glb").write_bytes(b"glTF")
+    monkeypatch.setattr(beauty, "LIBRARY_DIR", library)
+    site = sites.Site("workshop", 0.0, 0.0, 1.0, 0.0, 4.0, 0.0, glb)
+    (entry,) = beauty.building_args(cfg(), (site,), kits={"nature/pot_small": "kits/pot_small.glb"})
+    assert entry["props"] == [pot | {"glb": str(library / "kits" / "pot_small.glb")}]

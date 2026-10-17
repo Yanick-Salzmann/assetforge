@@ -109,6 +109,13 @@ class KitIndex:
         }
 
 
+def glb_paths(lock_path: Path = kenney.LOCK_FILE) -> dict[str, str]:
+    """Every locked kit prop's glb path relative to library/, by '<pack>/<model>', straight from
+    the lockfile, so a reader needs neither the pinned set nor the generated index."""
+    packs = kenney.load_lock(lock_path).get("packs", {})
+    return {f"{pack}/{model}": meta["path"] for pack, entry in packs.items() for model, meta in entry.get("models", {}).items()}
+
+
 def build(
     set_path: Path = kenney.SET_FILE,
     lock_path: Path = kenney.LOCK_FILE,

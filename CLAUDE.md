@@ -335,6 +335,18 @@ validator too.
   meshes (`game_ready.is_skinned_part`) stay out of the static join, keep their bind pose, are never
   culled as hidden, and `lod.generate_lods(skinned=[...])` gives each LOD an unreduced `<cloth>_LOD<n>`
   copy on the same rig; the rods join the body and the skinned clips export with the rigs.
+- Kit props (`assets/prop_manifest.py`, `assets/props.py`): small dressing props on a building ship as
+  `asset.json` `props[]` placements instanced from the kit library, not joined into the glb. Each entry is
+  `mesh` (`<pack>/<model>` in `library/kits.lock.json`), `translation`, `rotation` (unit quaternion
+  `[x, y, z, w]`) and uniform `scale` in the glb's frame (glTF Y-up, metres from the base-centre origin).
+  `props.add_prop(mesh, location, rotation, scale, label)` places a `PROP_<label>` empty instancing the kit's
+  LOD0 (so it shows in the viewport and contact sheets) and records it on the scene; `props.recorded_props()`
+  reads the empties' current transforms, `export_asset(..., props=...)` converts them less the base-centre
+  shift and never exports the empties, and `game_ready_build.py` passes the recorded props. `validate_asset`
+  fails a malformed entry, a mesh the kit library lacks, or a prop more than `prop_manifest.REACH_M` outside
+  the bbox across the ground. The viewer (`viewer/static/props.js`) and the beauty render
+  (`beauty_render._build_props`) instance them under the asset/building root; `library.kits.glb_paths()`
+  resolves the glbs. `window.viewerState.props` / `buildings[].props` report the count.
 - FX sockets (`assets/fx_manifest.py`, `assets/fx.py`): `asset.json` `fx[]`, one entry per emitter
   with `node`, `type` (fire, smoke, sparks, steam, flicker_light), `state` (idle/working), `rate`
   (per second), `size` (m) and `colour` (linear RGB). `node` is an empty named `FX_<type>[_<label>]`

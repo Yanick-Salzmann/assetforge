@@ -56,3 +56,7 @@ def test_export_asset_writes_glb_textures_and_manifest(tmp_path, monkeypatch):
     failed = [f"{check.name}: {check.detail}" for check in cloth_report.checks if not check.passed]
     assert not failed, failed
     assert list(cloth_report.lod_triangle_counts) == ["LOD0", "LOD1", "LOD2"], cloth_report.lod_triangle_counts
+    if not payload["prop_check"].get("skipped"):
+        prop_checks = {check.name: check for check in validate.validate_asset("export-selftest-props", "prop").checks}
+        assert prop_checks["kit props"].passed, prop_checks["kit props"]
+        assert "nature/pot_small" in prop_checks["kit props"].detail
