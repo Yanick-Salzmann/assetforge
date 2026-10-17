@@ -14,11 +14,12 @@ import sys
 from pathlib import Path
 
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 TRANSPARENT_BOUNCES = 64
 REDUCED_LOD = re.compile(r"_LOD[1-9]\d*(\.\d+)?$")
 REDUCED_BUILDING_LOD = re.compile(r"_LOD[1-9]\d*(_ANIM)?(\.\d+)?$")
+BONE_INDEX = re.compile(r"_bone(\d+)$")
 CHANNEL_LABEL = {"r": "Red", "g": "Green", "b": "Blue"}
 RECORD_FIELDS = 7
 PLUME_RINGS = 24
@@ -496,6 +497,39 @@ def _build_fx(entries: list, imported) -> list:
     return built
 
 
+def _orient_cloth(imported, cloth: dict) -> list:
+    """Turn every free-flying cloth chain (a `_bone<i>` chain whose bone Z, the cross axis, is
+    vertical: flags and pennants, not banners or awnings) about its pole so its free edge points
+    downwind, as the viewer's orientCloth turns it."""
+    downwind = Vector((cloth["downwind"][0], cloth["downwind"][1], 0.0))
+    turned = []
+    for rig in sorted((obj for obj in imported if obj.type == "ARMATURE"), key=lambda obj: obj.name):
+        bones = sorted(
+            (bone for bone in rig.data.bones if BONE_INDEX.search(bone.name)),
+            key=lambda bone: int(BONE_INDEX.search(bone.name).group(1)),
+        )
+        if len(bones) < 2:
+            continue
+        first = rig.matrix_world @ bones[0].matrix_local
+        if abs(first.col[2].xyz.normalized().z) < float(cloth["pole_cross_min"]):
+            continue
+        head = first.translation
+        tip = (rig.matrix_world @ bones[-1].matrix_local).translation
+        rest = Vector((tip.x - head.x, tip.y - head.y, 0.0))
+        if rest.length_squared < 1e-8:
+            continue
+        rest.normalize()
+        pivot = head - rest * float(cloth["pole_offset_m"])
+        angle = math.atan2(rest.cross(downwind).z, rest.dot(downwind))
+        about = (
+            Matrix.Translation(pivot) @ Matrix.Rotation(angle, 4, "Z") @ Matrix.Translation(-pivot)
+        )
+        rig.matrix_world = about @ rig.matrix_world
+        bpy.context.view_layer.update()
+        turned.append(rig.name)
+    return turned
+
+
 def _build_buildings(entries: list) -> list:
     """Each building's LOD0 at its site: the glb's top-level nodes parented under a root empty at
     the site location turned by its yaw, as the viewer stands it."""
@@ -515,8 +549,9 @@ def _build_buildings(entries: list) -> list:
             if obj.parent is None:
                 obj.parent = root
         bpy.context.view_layer.update()
+        cloth = _orient_cloth(imported, entry["cloth"]) if "cloth" in entry else []
         fx = _build_fx(entry.get("fx", []), imported)
-        placed.append({"name": entry["name"], "fx": fx})
+        placed.append({"name": entry["name"], "fx": fx, "cloth": cloth})
     return placed
 
 

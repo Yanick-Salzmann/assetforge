@@ -242,7 +242,8 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   each building's LOD0 at its site and yaw with scatter cleared around it. Its fx sockets run as stills
   (`beauty.fx_args`, `fx_state` idle by default like the viewer): smoke/steam as a Principled Volume tube
   along the viewer particle's mean path bent downwind by the biome `[wind]`, fire as an emissive volume
-  plus a point light, sparks as emissive specks, flicker_light as a point light.
+  plus a point light, sparks as emissive specks, flicker_light as a point light. Their flag and pennant chains
+  turn downwind about their pole like the viewer's `orientCloth` (`beauty_render._orient_cloth`, `beauty.CLOTH_POLE_*`).
 - Wind is per biome: an optional `[wind]` table in `biomes/*.toml` (`terrain/wind.py`: `from_deg`,
   the compass bearing it blows from, clockwise from map +y north; `strength`, 1 = clips as authored;
   `gust_period_s`) recorded as `terrain.json` `wind` (optional on read). The viewer

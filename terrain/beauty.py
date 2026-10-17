@@ -90,6 +90,8 @@ FX_EMISSION_STRENGTH: dict[str, float] = {"fire": 60.0, "sparks": 200.0}
 FX_LIGHT_W_PER_M = 500.0
 FX_SPARKS_PER_RATE = 0.5
 FX_SPARKS_MAX = 24
+CLOTH_POLE_CROSS_MIN = 0.9
+CLOTH_POLE_OFFSET_M = 0.032
 
 
 class BeautyRenderError(MapConfigError):
@@ -109,6 +111,7 @@ class BeautyRender:
     log: str
     buildings: tuple[str, ...] = ()
     fx: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    cloth: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -320,8 +323,15 @@ def building_args(
 ) -> list[dict[str, Any]]:
     """Each building's glb, its root transform in Blender's frame (metres from the map's
     south-west corner, +y north, yaw about +z: the viewer's yaw about +y, Y-up to Z-up) and the
-    fx its asset.json declares, as fx_args reduces them."""
+    fx its asset.json declares, as fx_args reduces them, plus the downwind direction its free-flying
+    cloth chains turn toward about their pole, as the viewer's orientCloth turns them."""
     half = cfg.world_size_m / 2.0
+    blowing = wind or wind_mod.Wind()
+    cloth = {
+        "downwind": list(blowing.downwind()),
+        "pole_cross_min": CLOTH_POLE_CROSS_MIN,
+        "pole_offset_m": CLOTH_POLE_OFFSET_M,
+    }
     placed = []
     for site in buildings:
         if site.glb is None or not site.glb.is_file():
@@ -334,7 +344,8 @@ def building_args(
                 "glb": str(site.glb),
                 "location": [site.x + half, half - site.z, site.base],
                 "yaw_rad": site.yaw,
-                "fx": fx_args(manifest.get("fx", []), wind or wind_mod.Wind(), fx_state),
+                "fx": fx_args(manifest.get("fx", []), blowing, fx_state),
+                "cloth": cloth,
             }
         )
     return placed
@@ -609,6 +620,9 @@ def render(
         log=log,
         buildings=tuple(entry["name"] for entry in payload.get("buildings", ())),
         fx={entry["name"]: tuple(entry["fx"]) for entry in payload.get("buildings", ()) if entry["fx"]},
+        cloth={
+            entry["name"]: tuple(entry["cloth"]) for entry in payload.get("buildings", ()) if entry.get("cloth")
+        },
     )
 
 
