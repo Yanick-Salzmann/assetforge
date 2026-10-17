@@ -3200,370 +3200,833 @@
       "models": {
         "fern_a": {
           "bbox_max_m": [
-            0.8501237630844116,
+            0.8529938459396362,
             0.63880455493927,
-            0.8849770426750183
+            0.9040201306343079
           ],
           "bbox_min_m": [
-            -0.8501237630844116,
+            -0.847253680229187,
             0.0,
-            -0.8849770426750183
+            -0.8659339547157288
+          ],
+          "impostor": {
+            "albedo": "kits/flora/fern_a_impostor_albedo.png",
+            "albedo_sha256": "801627bdfdafeaa6384530a2b44aa73c8d96ff7371c4931261b4fd2e2289f54e",
+            "centre": [
+              0.0029,
+              0.3194,
+              0.019
+            ],
+            "frame_px": 128,
+            "frames": 8,
+            "layout": "hemi_octahedral",
+            "normal": "kits/flora/fern_a_impostor_normal.png",
+            "normal_sha256": "b7b0ca54644f2624556d52656a87cda4626258b79548cc0f8f8517e018f2ded2",
+            "radius": 0.9415
+          },
+          "lod_distances_m": [
+            8.08,
+            20.19,
+            50.47
+          ],
+          "lod_tris": [
+            54,
+            36,
+            18
           ],
           "path": "kits/flora/fern_a.glb",
           "recipe": "out/assets/flora_fern_a/recipe.py",
-          "sha256": "75bcb3c8f73c01e0c08d6d5bade4f16bea0d3df1ebe446acfb45ede255ad59db",
+          "sha256": "40f4663a32108573d7b620582de290772a42f379b5de6f62a810c7acf9508a7f",
           "tris": 54
         },
         "fern_b": {
           "bbox_max_m": [
-            0.7043515741825104,
+            0.7039098739624023,
             0.5354943871498108,
-            0.7346448302268982
+            0.7204938530921936
           ],
           "bbox_min_m": [
-            -0.7043515741825104,
+            -0.7047932744026184,
             0.0,
-            -0.7346448302268982
+            -0.7487958073616028
+          ],
+          "impostor": {
+            "albedo": "kits/flora/fern_b_impostor_albedo.png",
+            "albedo_sha256": "60fc2067c94131659b9eda6f9156b59cb8ccf2c3269fcff8203e1045c7fdc0cd",
+            "centre": [
+              -0.0004,
+              0.2677,
+              -0.0142
+            ],
+            "frame_px": 128,
+            "frames": 8,
+            "layout": "hemi_octahedral",
+            "normal": "kits/flora/fern_b_impostor_normal.png",
+            "normal_sha256": "42ac20fcf07e4b2aad1862fdfcdd432247eedcfc0829da8da704ba0e00d91697",
+            "radius": 0.7566
+          },
+          "lod_distances_m": [
+            6.49,
+            16.23,
+            40.56
+          ],
+          "lod_tris": [
+            66,
+            44,
+            22
           ],
           "path": "kits/flora/fern_b.glb",
           "recipe": "out/assets/flora_fern_b/recipe.py",
-          "sha256": "e715d21e1bdcae07e6ac7eaca80a02f8e1d778c0df314153c4d6ff0ed0e3c1a7",
+          "sha256": "5534b98579c512736cc5250be367540bb6173f0f7532ed77f8855b1cddeb5c24",
           "tris": 66
         },
         "flower_purple": {
           "bbox_max_m": [
-            0.27124080061912537,
+            0.26024724543094635,
             0.5343322157859802,
-            0.27558043599128723
+            0.2813103199005127
           ],
           "bbox_min_m": [
-            -0.27124080061912537,
+            -0.2822343558073044,
             0.0,
-            -0.27558043599128723
+            -0.26985055208206177
+          ],
+          "lod_distances_m": [
+            3.37,
+            8.43
+          ],
+          "lod_tris": [
+            24,
+            12,
+            6
           ],
           "path": "kits/flora/flower_purple.glb",
           "recipe": "out/assets/flora_flower_purple/recipe.py",
-          "sha256": "60029ae1db0447b112c14da5e88930c0b72435a9db507fb5bb5ec1e4973a979b",
+          "sha256": "a36d443f1404474aa19b734559420b3f24c312646334e10cf3f8d04f0c168f5a",
           "tris": 24
         },
         "flower_red": {
           "bbox_max_m": [
-            0.2768428921699524,
+            0.3042324185371399,
             0.5133461356163025,
-            0.27658163011074066
+            0.28456561267375946
           ],
           "bbox_min_m": [
-            -0.2768428921699524,
+            -0.2494533658027649,
             0.0,
-            -0.27658163011074066
+            -0.26859764754772186
+          ],
+          "lod_distances_m": [
+            3.29,
+            8.22
+          ],
+          "lod_tris": [
+            24,
+            12,
+            6
           ],
           "path": "kits/flora/flower_red.glb",
           "recipe": "out/assets/flora_flower_red/recipe.py",
-          "sha256": "62c1d96cb7cafac5842ba1f9fc60ac65a55837015698586b1fd4f5005335f654",
+          "sha256": "6ed3fea1020368881e2424034c5ecc4303f3f8aad0a6beea133ee39ff6642016",
           "tris": 24
         },
         "flower_yellow": {
           "bbox_max_m": [
-            0.25387732684612274,
+            0.25387777388095856,
             0.5035971403121948,
-            0.26233410835266113
+            0.26600922644138336
           ],
           "bbox_min_m": [
-            -0.25387732684612274,
+            -0.2538768798112869,
             0.0,
-            -0.26233410835266113
+            -0.2586589902639389
+          ],
+          "lod_distances_m": [
+            3.11,
+            7.78
+          ],
+          "lod_tris": [
+            24,
+            12,
+            6
           ],
           "path": "kits/flora/flower_yellow.glb",
           "recipe": "out/assets/flora_flower_yellow/recipe.py",
-          "sha256": "3f023e58760790fdb72bb2364f012270423ea0d1ef118621fab6922e320eb6d5",
+          "sha256": "58042c44b83071f18c8abf64b9aad4fdb2e24564bbf817fa6efccc5e7f5d5e35",
           "tris": 24
         },
         "grass_a": {
           "bbox_max_m": [
-            0.3078412860631943,
+            0.3307194411754608,
             0.5487619042396545,
-            0.3103204667568207
+            0.29796215891838074
           ],
           "bbox_min_m": [
-            -0.3078412860631943,
+            -0.28496313095092773,
             0.0,
-            -0.3103204667568207
+            -0.3226787745952606
+          ],
+          "lod_distances_m": [
+            3.53,
+            8.83
+          ],
+          "lod_tris": [
+            48,
+            24,
+            12
           ],
           "path": "kits/flora/grass_a.glb",
           "recipe": "out/assets/flora_grass_a/recipe.py",
-          "sha256": "6b2dc3a226744c131350b8e40faeb39ff801ac2035c216cb75388491860235b2",
+          "sha256": "626baf533fd4c7f1367991aa0b857534083b929faac4b48b3bd2b0e4cebe8133",
           "tris": 48
         },
         "grass_b": {
           "bbox_max_m": [
-            0.2249305322766304,
+            0.22155439853668213,
             0.3817293643951416,
-            0.23076669871807098
+            0.20290779322385788
           ],
           "bbox_min_m": [
-            -0.2249305322766304,
+            -0.22830666601657867,
             0.0,
-            -0.23076669871807098
+            -0.2586256042122841
+          ],
+          "lod_distances_m": [
+            2.64,
+            6.6
+          ],
+          "lod_tris": [
+            40,
+            20,
+            10
           ],
           "path": "kits/flora/grass_b.glb",
           "recipe": "out/assets/flora_grass_b/recipe.py",
-          "sha256": "ed5131f5bb72082cd68851743620debeff9477614b183f4452d818744f149f97",
+          "sha256": "4f8b3546454b7a45b9a2df2d70232a264ff13d70dba8982960fa6c8ae9ec4d4a",
           "tris": 40
         },
         "grass_dry_a": {
           "bbox_max_m": [
-            0.3236791044473648,
+            0.3379260450601578,
             0.6245392560958862,
-            0.34610140323638916
+            0.3773917257785797
           ],
           "bbox_min_m": [
-            -0.3236791044473648,
+            -0.30943216383457184,
             0.0,
-            -0.34610140323638916
+            -0.3148110806941986
+          ],
+          "lod_distances_m": [
+            3.95,
+            9.86
+          ],
+          "lod_tris": [
+            48,
+            24,
+            12
           ],
           "path": "kits/flora/grass_dry_a.glb",
           "recipe": "out/assets/flora_grass_dry_a/recipe.py",
-          "sha256": "b2263fe83b1c48964d5b967b9799cb8b3c13feda578573a2539aedf45c193be0",
+          "sha256": "f27cabd20db8391b0f8a6aff00adf2388e00fa8b84ebbf6928cfd481af1503aa",
           "tris": 48
         },
         "grass_dry_b": {
           "bbox_max_m": [
-            0.24206823855638504,
+            0.23249633610248566,
             0.42726653814315796,
-            0.2290515974164009
+            0.19680185616016388
           ],
           "bbox_min_m": [
-            -0.24206823855638504,
+            -0.2516401410102844,
             0.0,
-            -0.2290515974164009
+            -0.26130133867263794
+          ],
+          "lod_distances_m": [
+            2.95,
+            7.37
+          ],
+          "lod_tris": [
+            40,
+            20,
+            10
           ],
           "path": "kits/flora/grass_dry_b.glb",
           "recipe": "out/assets/flora_grass_dry_b/recipe.py",
-          "sha256": "e9e1ccbe95e97d3d3ddfa3c3bfae9495b7e5b00ea67549ddef03b3316023758e",
+          "sha256": "dcb2a52a8ee3a6005a52596d81e7b3f7e22aa2da87bba302cf16d134d7f8f424",
           "tris": 40
         },
         "hazel_a": {
           "bbox_max_m": [
-            1.0278186798095703,
+            1.0446642637252808,
             1.5051823854446411,
-            1.0192966759204865
+            1.0193015933036804
           ],
           "bbox_min_m": [
-            -1.0278186798095703,
+            -1.0109730958938599,
             0.0,
-            -1.0192966759204865
+            -1.0192917585372925
+          ],
+          "impostor": {
+            "albedo": "kits/flora/hazel_a_impostor_albedo.png",
+            "albedo_sha256": "b966d0b3a00b3f5e6a81b69bc761cec5355db3603ae35c00955af29070499627",
+            "centre": [
+              0.0168,
+              0.7526,
+              0.0
+            ],
+            "frame_px": 128,
+            "frames": 8,
+            "layout": "hemi_octahedral",
+            "normal": "kits/flora/hazel_a_impostor_normal.png",
+            "normal_sha256": "4e4103d0aa08d3de33264a1982e08cdda2f5eb2d2c8434244c097b27731584b6",
+            "radius": 1.3207
+          },
+          "lod_distances_m": [
+            11.33,
+            28.32,
+            70.8
+          ],
+          "lod_tris": [
+            190,
+            96,
+            64
           ],
           "path": "kits/flora/hazel_a.glb",
           "recipe": "out/assets/flora_hazel_a/recipe.py",
-          "sha256": "e370246862214dc0af5cb0b58b736806a9a04ffed73dbf4f2c033d9283480cc5",
+          "sha256": "6d6d17ff57f56c4069bd8ed7fc8ea428f29cc1559112e522f7b0f0a14a63317f",
           "tris": 190
         },
         "hazel_b": {
           "bbox_max_m": [
-            0.8380394279956818,
+            0.8326129615306854,
             1.1332191228866577,
-            0.8502866625785828
+            0.8508457243442535
           ],
           "bbox_min_m": [
-            -0.8380394279956818,
+            -0.8434658944606781,
             0.0,
-            -0.8502866625785828
+            -0.849727600812912
+          ],
+          "impostor": {
+            "albedo": "kits/flora/hazel_b_impostor_albedo.png",
+            "albedo_sha256": "951108984c5a8d10fd2fd0b6738ed2006862f568da07454c01c1141cb3fe36d6",
+            "centre": [
+              -0.0054,
+              0.5666,
+              0.0006
+            ],
+            "frame_px": 128,
+            "frames": 8,
+            "layout": "hemi_octahedral",
+            "normal": "kits/flora/hazel_b_impostor_normal.png",
+            "normal_sha256": "5d075cbdfad16cd6d13d7bcdfba2aff9a5394e00a5eb433314c43522fbef9bd1",
+            "radius": 1.0918
+          },
+          "lod_distances_m": [
+            9.37,
+            23.41,
+            58.53
+          ],
+          "lod_tris": [
+            180,
+            90,
+            60
           ],
           "path": "kits/flora/hazel_b.glb",
           "recipe": "out/assets/flora_hazel_b/recipe.py",
-          "sha256": "ea79d92434aeecf7adf4a9be50837c1865588526be5ecf23ec65e48f35bca7b5",
+          "sha256": "a44b456c3398d6f481f382d416e5868377715285c487ff7cb7fc19cc97633138",
           "tris": 180
         },
         "juniper_a": {
           "bbox_max_m": [
-            1.0482866168022156,
+            1.086988925933838,
             0.8661229610443115,
-            0.9528804123401642
+            0.947994738817215
           ],
           "bbox_min_m": [
-            -1.0482866168022156,
+            -1.0095843076705933,
             0.0,
-            -0.9528804123401642
+            -0.9577660858631134
+          ],
+          "impostor": {
+            "albedo": "kits/flora/juniper_a_impostor_albedo.png",
+            "albedo_sha256": "275dbaff6a44eacf86b72e2b676b304e7d9242e903aebb6257021011631f125e",
+            "centre": [
+              0.0387,
+              0.4331,
+              -0.0049
+            ],
+            "frame_px": 128,
+            "frames": 8,
+            "layout": "hemi_octahedral",
+            "normal": "kits/flora/juniper_a_impostor_normal.png",
+            "normal_sha256": "84d231e44766cd6f9fd6ae84582ebf5cb919e24c1016534accd14fd2c641d015",
+            "radius": 1.1739
+          },
+          "lod_distances_m": [
+            10.07,
+            25.17,
+            62.93
+          ],
+          "lod_tris": [
+            180,
+            90,
+            60
           ],
           "path": "kits/flora/juniper_a.glb",
           "recipe": "out/assets/flora_juniper_a/recipe.py",
-          "sha256": "71b4f7aab499f4dfe5ef764158aba35c66805c89522d703aeb4e2aa831a7935c",
+          "sha256": "3249b5ef691c28c3a0136266642a165930092673e577c4c41c324804b37c0488",
           "tris": 180
         },
         "juniper_b": {
           "bbox_max_m": [
-            0.7805308103561401,
+            0.7903152108192444,
             0.8031347990036011,
-            0.7355611026287079
+            0.7280349433422089
           ],
           "bbox_min_m": [
-            -0.7805308103561401,
+            -0.7707464098930359,
             0.0,
-            -0.7355611026287079
+            -0.7430872619152069
+          ],
+          "impostor": {
+            "albedo": "kits/flora/juniper_b_impostor_albedo.png",
+            "albedo_sha256": "2c9630c97ec53198cfe1b665b6d4c9ae067ba4dc8c902bce22b9e3849ed458ce",
+            "centre": [
+              0.0098,
+              0.4016,
+              -0.0075
+            ],
+            "frame_px": 128,
+            "frames": 8,
+            "layout": "hemi_octahedral",
+            "normal": "kits/flora/juniper_b_impostor_normal.png",
+            "normal_sha256": "e525e62cfa945a25a8ac7151808726a3088032f50efdd01c88d6e2ae22cf7aac",
+            "radius": 0.8686
+          },
+          "lod_distances_m": [
+            7.45,
+            18.63,
+            46.57
+          ],
+          "lod_tris": [
+            160,
+            80,
+            54
           ],
           "path": "kits/flora/juniper_b.glb",
           "recipe": "out/assets/flora_juniper_b/recipe.py",
-          "sha256": "8bdd69ad1921609cf381606326307220c7d69c85693ddc3a0c0d72eced67880f",
+          "sha256": "e11656a5c9d3245a9be40ab6924b61c03d5947cfe6487308bc6097d37889f782",
           "tris": 160
         },
         "mesquite_a": {
           "bbox_max_m": [
-            3.8853237628936768,
+            3.917662739753723,
             4.779443264007568,
-            3.234052538871765
+            3.2283488512039185
           ],
           "bbox_min_m": [
-            -3.8853237628936768,
+            -3.8529847860336304,
             0.0,
-            -3.234052538871765
+            -3.239756226539612
+          ],
+          "impostor": {
+            "albedo": "kits/flora/mesquite_a_impostor_albedo.png",
+            "albedo_sha256": "5c10267e486eb9264456b78865a109b2e03814d92e83e2986e4da9192ad31ad9",
+            "centre": [
+              0.0323,
+              2.3897,
+              -0.0057
+            ],
+            "frame_px": 128,
+            "frames": 8,
+            "layout": "hemi_octahedral",
+            "normal": "kits/flora/mesquite_a_impostor_normal.png",
+            "normal_sha256": "2ebd62f154fdb0a4c05ce2e62fa7ebf832d021c55c2244651ecb053a6a9538dd",
+            "radius": 4.087
+          },
+          "lod_distances_m": [
+            35.06,
+            87.65,
+            219.11
+          ],
+          "lod_tris": [
+            542,
+            290,
+            212
           ],
           "path": "kits/flora/mesquite_a.glb",
           "recipe": "out/assets/flora_mesquite_a/recipe.py",
-          "sha256": "76bcef80741b67dfda4b015798478440d1853b365d027095becbc244e4a92973",
+          "sha256": "27791a814844c54a978fb82504a7ab7e2435d398d854d2e737e4e94e61809674",
           "tris": 542
         },
         "mesquite_b": {
           "bbox_max_m": [
-            3.1360690593719482,
+            3.1036298274993896,
             5.419216156005859,
-            3.015347719192505
+            2.969625234603882
           ],
           "bbox_min_m": [
-            -3.1360690593719482,
+            -3.168508291244507,
             0.0,
-            -3.015347719192505
+            -3.061070203781128
+          ],
+          "impostor": {
+            "albedo": "kits/flora/mesquite_b_impostor_albedo.png",
+            "albedo_sha256": "c0b4310ec1c933a5e64435a7a7fa46774c9f34fd4a72203af8beee2165a0333f",
+            "centre": [
+              -0.0324,
+              2.7096,
+              -0.0457
+            ],
+            "frame_px": 128,
+            "frames": 8,
+            "layout": "hemi_octahedral",
+            "normal": "kits/flora/mesquite_b_impostor_normal.png",
+            "normal_sha256": "59f4b5ef2495c76066a5f49723788f2ddbd966dd0ab43424cb5a5ba607337fb1",
+            "radius": 3.5755
+          },
+          "lod_distances_m": [
+            30.67,
+            76.68,
+            191.69
+          ],
+          "lod_tris": [
+            522,
+            278,
+            200
           ],
           "path": "kits/flora/mesquite_b.glb",
           "recipe": "out/assets/flora_mesquite_b/recipe.py",
-          "sha256": "a3009a35eaa9a55b9820b401b7e11c40809637e90290ebade66b9f13b4dfba01",
+          "sha256": "4eb3528fc97d261bfeaced4783d06fc5a422548daa06e91b4af380546006f72c",
           "tris": 522
         },
         "oak_a": {
           "bbox_max_m": [
-            3.8483004570007324,
+            3.901916980743408,
             8.974221229553223,
-            4.150355339050293
+            4.136807203292847
           ],
           "bbox_min_m": [
-            -3.8483004570007324,
+            -3.7946839332580566,
             0.0,
-            -4.150355339050293
+            -4.163903474807739
+          ],
+          "impostor": {
+            "albedo": "kits/flora/oak_a_impostor_albedo.png",
+            "albedo_sha256": "7ec33a89f1ccef96a454350052e3ee0d71d130a41d9aa43d73a757b41a13cd0b",
+            "centre": [
+              0.0536,
+              4.4871,
+              -0.0135
+            ],
+            "frame_px": 128,
+            "frames": 8,
+            "layout": "hemi_octahedral",
+            "normal": "kits/flora/oak_a_impostor_normal.png",
+            "normal_sha256": "91b789212892c8d8ae2b8d9498af1ef5bc7dce5f6c03927c769cc0aa98e6df0f",
+            "radius": 4.6671
+          },
+          "lod_distances_m": [
+            40.03,
+            100.09,
+            250.22
+          ],
+          "lod_tris": [
+            562,
+            300,
+            218
           ],
           "path": "kits/flora/oak_a.glb",
           "recipe": "out/assets/flora_oak_a/recipe.py",
-          "sha256": "81690fb9a23faf594b0bb2c8036473c4b645e3de44da375655a4938a8e0f32c8",
+          "sha256": "3260e42c7270fbd6e532660c069641ee7a9aaa0da3f9a4243cc860292b79aeb6",
           "tris": 562
         },
         "oak_b": {
           "bbox_max_m": [
-            3.605271816253662,
+            3.6153156757354736,
             9.94253921508789,
-            3.3189382553100586
+            3.3261667490005493
           ],
           "bbox_min_m": [
-            -3.605271816253662,
+            -3.5952279567718506,
             0.0,
-            -3.3189382553100586
+            -3.311709761619568
+          ],
+          "impostor": {
+            "albedo": "kits/flora/oak_b_impostor_albedo.png",
+            "albedo_sha256": "40fef7b552d5301f21c81434705678388e46695ed2aed7fa82dcbbebd768b71c",
+            "centre": [
+              0.01,
+              4.9713,
+              0.0072
+            ],
+            "frame_px": 128,
+            "frames": 8,
+            "layout": "hemi_octahedral",
+            "normal": "kits/flora/oak_b_impostor_normal.png",
+            "normal_sha256": "33886cd2f13c396b110b28e8d2ecc2342b01c8573d885f17afc6682adb3275cd",
+            "radius": 5.0413
+          },
+          "lod_distances_m": [
+            43.24,
+            108.11,
+            270.28
+          ],
+          "lod_tris": [
+            562,
+            300,
+            218
           ],
           "path": "kits/flora/oak_b.glb",
           "recipe": "out/assets/flora_oak_b/recipe.py",
-          "sha256": "1be835880840f1c013489ad0ac90725b506ff85d94a47304b0222e6df388c1fd",
+          "sha256": "9a24037c0e746f7140ae15ffae1aed4d04dea4028fe69ccdbe17c9656d2e097a",
           "tris": 562
         },
         "sage_a": {
           "bbox_max_m": [
-            0.6373921632766724,
+            0.6343986093997955,
             0.8691856861114502,
-            0.6488727331161499
+            0.6586800217628479
           ],
           "bbox_min_m": [
-            -0.6373921632766724,
+            -0.6403857171535492,
             0.0,
-            -0.6488727331161499
+            -0.6390654444694519
+          ],
+          "impostor": {
+            "albedo": "kits/flora/sage_a_impostor_albedo.png",
+            "albedo_sha256": "da23e52b5c8fca4dd88d2498a69e26226912b76af07a029a7d7eaae3baf5b0da",
+            "centre": [
+              -0.003,
+              0.4346,
+              0.0098
+            ],
+            "frame_px": 128,
+            "frames": 8,
+            "layout": "hemi_octahedral",
+            "normal": "kits/flora/sage_a_impostor_normal.png",
+            "normal_sha256": "d87afb462070f239a79c2a74a4c6302c2064c41e2c2823b5988cb2bec5408da9",
+            "radius": 0.8303
+          },
+          "lod_distances_m": [
+            7.12,
+            17.8,
+            44.51
+          ],
+          "lod_tris": [
+            160,
+            80,
+            54
           ],
           "path": "kits/flora/sage_a.glb",
           "recipe": "out/assets/flora_sage_a/recipe.py",
-          "sha256": "5e3bf76b0c3f3e6fb37a5a76602aa14aa3c512c3c42dabd601f8d18419f67224",
+          "sha256": "c9be18760f357a393718ee5a3d02b5b5c81963f873efd2388c61ee1595513ccc",
           "tris": 160
         },
         "sage_b": {
           "bbox_max_m": [
-            0.5173493027687073,
+            0.5307343602180481,
             0.9087886214256287,
-            0.5524037778377533
+            0.5488967597484589
           ],
           "bbox_min_m": [
-            -0.5173493027687073,
+            -0.5039642453193665,
             0.0,
-            -0.5524037778377533
+            -0.5559107959270477
+          ],
+          "impostor": {
+            "albedo": "kits/flora/sage_b_impostor_albedo.png",
+            "albedo_sha256": "408511d8f02daac8122504dc025a9ac7b7033cb1506ef47b8040c1f5b1228812",
+            "centre": [
+              0.0134,
+              0.4544,
+              -0.0035
+            ],
+            "frame_px": 128,
+            "frames": 8,
+            "layout": "hemi_octahedral",
+            "normal": "kits/flora/sage_b_impostor_normal.png",
+            "normal_sha256": "36c5cd308ec14d7c7263c94b7f686257132cc438b53155ff521ca8425103d148",
+            "radius": 0.6503
+          },
+          "lod_distances_m": [
+            5.58,
+            13.95,
+            34.86
+          ],
+          "lod_tris": [
+            140,
+            70,
+            48
           ],
           "path": "kits/flora/sage_b.glb",
           "recipe": "out/assets/flora_sage_b/recipe.py",
-          "sha256": "5773fa98f363221f30d097c1b895effb0e88cc394692a7b42307e69f81406fa3",
+          "sha256": "932f58f294a3358d79bf5d6c9c5814e4aaf3d86b60da77814703b7cbf739cec2",
           "tris": 140
         },
         "spruce_a": {
           "bbox_max_m": [
-            2.8555750846862793,
+            2.7277092933654785,
             11.4399995803833,
-            2.83695125579834
+            2.8370797634124756
           ],
           "bbox_min_m": [
-            -2.8555750846862793,
+            -2.98344087600708,
             0.0,
-            -2.83695125579834
+            -2.836822748184204
+          ],
+          "impostor": {
+            "albedo": "kits/flora/spruce_a_impostor_albedo.png",
+            "albedo_sha256": "29417db54715d7a5d8c4ae51ccffada84d113158109a905977a66acf90ffa6fe",
+            "centre": [
+              -0.1279,
+              5.72,
+              0.0001
+            ],
+            "frame_px": 128,
+            "frames": 8,
+            "layout": "hemi_octahedral",
+            "normal": "kits/flora/spruce_a_impostor_normal.png",
+            "normal_sha256": "5d6c3bca5b9e20334c50d211f525cad43f2fccf347337865fba5fa8c88dc93c1",
+            "radius": 6.0253
+          },
+          "lod_distances_m": [
+            51.68,
+            129.21,
+            323.03
+          ],
+          "lod_tris": [
+            586,
+            210,
+            144
           ],
           "path": "kits/flora/spruce_a.glb",
           "recipe": "out/assets/flora_spruce_a/recipe.py",
-          "sha256": "bedc7d659d960537e443bc552cef334a34f2e57e6ad44a9d4f30b72ee0ca61e3",
+          "sha256": "6687741d30d0e2dc69d2393b0db4a5f8a2b52893c184321677c31097e4075c5a",
           "tris": 586
         },
         "spruce_b": {
           "bbox_max_m": [
-            2.5757566690444946,
+            2.48592209815979,
             8.84000015258789,
-            2.6300017833709717
+            2.5777790546417236
           ],
           "bbox_min_m": [
-            -2.5757566690444946,
+            -2.665591239929199,
             0.0,
-            -2.6300017833709717
+            -2.6822245121002197
+          ],
+          "impostor": {
+            "albedo": "kits/flora/spruce_b_impostor_albedo.png",
+            "albedo_sha256": "e0a59f120fd005fb627f3841c464f00b2d72a11f3866c235e22d1147df7142d1",
+            "centre": [
+              -0.0898,
+              4.42,
+              -0.0522
+            ],
+            "frame_px": 128,
+            "frames": 8,
+            "layout": "hemi_octahedral",
+            "normal": "kits/flora/spruce_b_impostor_normal.png",
+            "normal_sha256": "0077c1d509e26651a4bc7ecc1a9ec04b452aa93879bc601bc1e3a894e2df4382",
+            "radius": 4.8369
+          },
+          "lod_distances_m": [
+            41.49,
+            103.73,
+            259.32
+          ],
+          "lod_tris": [
+            520,
+            190,
+            130
           ],
           "path": "kits/flora/spruce_b.glb",
           "recipe": "out/assets/flora_spruce_b/recipe.py",
-          "sha256": "fe43fc6d61feaa1bea0fab311de69adfe2a330a9875a1f70cd049252b911a450",
+          "sha256": "71daa2110f3414665315633d0f04da3cb70a085d6fbef062e6d2f71d10b132db",
           "tris": 520
         },
         "spruce_c": {
           "bbox_max_m": [
-            1.9938883185386658,
+            1.9645862579345703,
             5.199999809265137,
-            1.9128126502037048
+            2.0193278789520264
           ],
           "bbox_min_m": [
-            -1.9938883185386658,
+            -2.0231903791427612,
             0.0,
-            -1.9128126502037048
+            -1.8062974214553833
+          ],
+          "impostor": {
+            "albedo": "kits/flora/spruce_c_impostor_albedo.png",
+            "albedo_sha256": "a445a5567f330055b59ba0db9116a6442c9b70a51cf0ad132ae737a485ddd0c2",
+            "centre": [
+              -0.0293,
+              2.6,
+              0.1065
+            ],
+            "frame_px": 128,
+            "frames": 8,
+            "layout": "hemi_octahedral",
+            "normal": "kits/flora/spruce_c_impostor_normal.png",
+            "normal_sha256": "d2d068b53179440e78110a3f7cfb71bc1d1a6b9324d578a0d71584b556afc491",
+            "radius": 3.2576
+          },
+          "lod_distances_m": [
+            27.94,
+            69.86,
+            174.65
+          ],
+          "lod_tris": [
+            540,
+            192,
+            132
           ],
           "path": "kits/flora/spruce_c.glb",
           "recipe": "out/assets/flora_spruce_c/recipe.py",
-          "sha256": "ff270391d80ee0c9e30fe77955d25316132447ed68f808795c909268cc9966aa",
+          "sha256": "6834ab7437dc85ab77304513feff566e179f3a6e2e1a1feef54dde454b7ad446",
           "tris": 540
         },
         "spruce_d": {
           "bbox_max_m": [
-            2.2634470462799072,
+            2.3126851320266724,
             6.760000228881836,
-            2.2610262632369995
+            2.126298189163208
           ],
           "bbox_min_m": [
-            -2.2634470462799072,
+            -2.214208960533142,
             0.0,
-            -2.2610262632369995
+            -2.395754337310791
+          ],
+          "impostor": {
+            "albedo": "kits/flora/spruce_d_impostor_albedo.png",
+            "albedo_sha256": "f4ec1ca0ac26e21eeebbcd2fc5f2a096cfd9a8a163ee31767f526ed5da39c40a",
+            "centre": [
+              0.0492,
+              3.38,
+              -0.1347
+            ],
+            "frame_px": 128,
+            "frames": 8,
+            "layout": "hemi_octahedral",
+            "normal": "kits/flora/spruce_d_impostor_normal.png",
+            "normal_sha256": "ca2740d9d9ff819a4362c20732b2960ec519aa1dbad876673e6268870f63dbff",
+            "radius": 4.05
+          },
+          "lod_distances_m": [
+            34.74,
+            86.85,
+            217.13
+          ],
+          "lod_tris": [
+            520,
+            190,
+            130
           ],
           "path": "kits/flora/spruce_d.glb",
           "recipe": "out/assets/flora_spruce_d/recipe.py",
-          "sha256": "e95601fbda3c649edee2096a235d0579ef5b8a89d068619cac597963e44ec6b3",
+          "sha256": "f06f8533c6e033c7e3050e0e6bfff4ea3878779fa18e1ee278b4b1abf3ee0ecc",
           "tris": 520
         }
       },
@@ -9663,113 +10126,113 @@
         "barrel_cactus_a": {
           "bbox_max_m": [
             0.35000038146972656,
-            0.7300000190734863,
+            0.7310566772939637,
             0.3412247598171234
           ],
           "bbox_min_m": [
             -0.35000038146972656,
-            0.0,
+            0.0010566582204774022,
             -0.3412247598171234
           ],
           "path": "kits/scatter/barrel_cactus_a.glb",
           "recipe": "out/assets/scatter_barrel_cactus_a/recipe.py",
-          "sha256": "5581c63f17ba9beb9c346330df949e52704adc9a90127db9507dd35a5044567c",
+          "sha256": "729bb3e99cff3544315dc235c5e68d643b78e4a20a0b04b0295bcfbc92307a8f",
           "tris": 390
         },
         "barrel_cactus_b": {
           "bbox_max_m": [
             0.3082733154296875,
-            0.8868706226348877,
+            0.8876426631468348,
             0.2924783527851105
           ],
           "bbox_min_m": [
             -0.3082714080810547,
-            0.0,
+            0.0007720405119471252,
             -0.2924783527851105
           ],
           "path": "kits/scatter/barrel_cactus_b.glb",
           "recipe": "out/assets/scatter_barrel_cactus_b/recipe.py",
-          "sha256": "28889885e7edaa22abd5cefea18ca6bebfdb72ab312fb6dcb1b16d8fc6e80396",
+          "sha256": "476914b65e614cc786759fde540184366db52783d19629c230b23f7c66a0d76c",
           "tris": 390
         },
         "boulder_a": {
           "bbox_max_m": [
-            0.8273282945156097,
+            0.8277523815631866,
             0.8800611509941518,
-            0.7104279100894928
+            0.7124121785163879
           ],
           "bbox_min_m": [
-            -0.8273282945156097,
+            -0.8269042074680328,
             0.0,
-            -0.7104279100894928
+            -0.7084436416625977
           ],
           "path": "kits/scatter/boulder_a.glb",
           "recipe": "out/assets/scatter_boulder_a/recipe.py",
-          "sha256": "998a1a2c47d2e48491932c76a4d6408f6a1b306450ae242efb4f303bd40cac16",
+          "sha256": "d323b4db32a741e40cb775804927a93258b4431c0aeb1eb23e3ef65cf2a2db54",
           "tris": 450
         },
         "boulder_b": {
           "bbox_max_m": [
-            0.8226170539855957,
+            0.8285214900970459,
             0.5445489125413587,
-            0.5994336009025574
+            0.5980623066425323
           ],
           "bbox_min_m": [
-            -0.8226168155670166,
+            -0.8167123794555664,
             0.0,
-            -0.5994336009025574
+            -0.6008048951625824
           ],
           "path": "kits/scatter/boulder_b.glb",
           "recipe": "out/assets/scatter_boulder_b/recipe.py",
-          "sha256": "a0785ccd7595aac98a0fb08bcf9516b3f15f31a9023c7f0fb99eeb10a57cec1b",
+          "sha256": "7cfff1102cc0e4b381b959a7271221768dc75ea41a2e71399eb7f5eca9885ae9",
           "tris": 450
         },
         "boulder_c": {
           "bbox_max_m": [
-            0.5155768394470215,
-            1.4785462348372675,
-            0.4058547168970108
+            0.5176939964294434,
+            1.478706109104678,
+            0.4059494435787201
           ],
           "bbox_min_m": [
-            -0.5155768394470215,
-            0.0,
-            -0.4058547168970108
+            -0.5134596824645996,
+            0.00015987426741048694,
+            -0.4057599902153015
           ],
           "path": "kits/scatter/boulder_c.glb",
           "recipe": "out/assets/scatter_boulder_c/recipe.py",
-          "sha256": "c96586c8a0d3faea897d1eedcdc17cffc798b5332ae65429190ad56b3586f744",
+          "sha256": "b888c73ecae1ab853f52bdb3799da561187a5ddfdb2a6ab16ab7c61918111b32",
           "tris": 450
         },
         "log_a": {
           "bbox_max_m": [
-            1.2104930877685547,
-            0.35005809366703033,
-            0.1889696791768074
+            1.210601806640625,
+            0.3521908512338996,
+            0.18761546164751053
           ],
           "bbox_min_m": [
-            -1.2104930877685547,
-            0.0,
-            -0.1889696791768074
+            -1.2103843688964844,
+            0.002132757566869259,
+            -0.19032389670610428
           ],
           "path": "kits/scatter/log_a.glb",
           "recipe": "out/assets/scatter_log_a/recipe.py",
-          "sha256": "ac962eee783b0f4c99722b286b2450d8d83754f8264cac1bbddeebd6227aa815",
+          "sha256": "67587fec5a40eb9cb274bf24bfd32aa7e69b40647f5865912eda070222bdcf23",
           "tris": 220
         },
         "saguaro_a": {
           "bbox_max_m": [
             0.6747455596923828,
             3.890000104904175,
-            0.2331123948097229
+            0.23355599492788315
           ],
           "bbox_min_m": [
             -0.67474365234375,
             0.0,
-            -0.2331123948097229
+            -0.23266879469156265
           ],
           "path": "kits/scatter/saguaro_a.glb",
           "recipe": "out/assets/scatter_saguaro_a/recipe.py",
-          "sha256": "723a48cf541bbdb1feaf8174bcdddc4216335feb9e912fb085febc9ab11125be",
+          "sha256": "8d6a072384976b089608cf52c06dce24b391376eaf3c4194c8c2d7ec2cd2c9d0",
           "tris": 1084
         },
         "saguaro_b": {
@@ -9785,71 +10248,71 @@
           ],
           "path": "kits/scatter/saguaro_b.glb",
           "recipe": "out/assets/scatter_saguaro_b/recipe.py",
-          "sha256": "c59eaf6b71edc5ecbc554743b26c5a07794bd93e5cc9751171cb78154c7ea6e4",
+          "sha256": "c7f9df44fef3989e0ae6207e9cd433a97e7e090c279c68289565659845f1666b",
           "tris": 786
         },
         "stone_a": {
           "bbox_max_m": [
-            0.20687198638916016,
+            0.2075972557067871,
             0.20080962486645149,
-            0.17279646545648575
+            0.17536546289920807
           ],
           "bbox_min_m": [
-            -0.20687198638916016,
+            -0.2061467170715332,
             0.0,
-            -0.17279646545648575
+            -0.17022746801376343
           ],
           "path": "kits/scatter/stone_a.glb",
           "recipe": "out/assets/scatter_stone_a/recipe.py",
-          "sha256": "34c2092a0de2e5475be0557b1152fcf28e288047c81108094e64ddb5db232370",
+          "sha256": "8201b92ebe5da418b1608667766e85da5db8df657dd2a0862525ed86c1026103",
           "tris": 260
         },
         "stone_b": {
           "bbox_max_m": [
-            0.2340717315673828,
-            0.12388876808108762,
+            0.2339324951171875,
+            0.12410701788030565,
             0.1813277006149292
           ],
           "bbox_min_m": [
-            -0.2340707778930664,
-            0.0,
+            -0.23421001434326172,
+            0.00021824979921802878,
             -0.1813277006149292
           ],
           "path": "kits/scatter/stone_b.glb",
           "recipe": "out/assets/scatter_stone_b/recipe.py",
-          "sha256": "dd04e9f6c0a2d5f45fa9e7b55d4b99b45ffc999784b7b3bfaba4985e460b15e4",
+          "sha256": "a021ee1c0ab93a3e77f16ec09764b4256face65852d9c6f87d0ac05279cb0d49",
           "tris": 260
         },
         "stump_a": {
           "bbox_max_m": [
             0.40122318267822266,
             0.4399999976158142,
-            0.4188358038663864
+            0.4189828783273697
           ],
           "bbox_min_m": [
             -0.40122318267822266,
             0.0,
-            -0.4188358038663864
+            -0.41868872940540314
           ],
           "path": "kits/scatter/stump_a.glb",
           "recipe": "out/assets/scatter_stump_a/recipe.py",
-          "sha256": "16400158b6cfdd275b8b9da459a400f8703bdcd863d4a3a70aedd5b39be8d0f2",
+          "sha256": "c601ea33c454ae08491e1684416616ff8b349e275c6c86f26290f3884f3ca017",
           "tris": 220
         },
         "stump_b": {
           "bbox_max_m": [
             0.3555927276611328,
             0.7705205455422401,
-            0.36191190779209137
+            0.3613599091768265
           ],
           "bbox_min_m": [
             -0.3555927276611328,
             0.0,
-            -0.36191190779209137
+            -0.36246390640735626
           ],
           "path": "kits/scatter/stump_b.glb",
           "recipe": "out/assets/scatter_stump_b/recipe.py",
-          "sha256": "3a9da4b2a5387220490739f3f3002afd9f396b620eaae917f570900652d0c1c9",
+          "sha256": "d99314f9dd09078fbc65b54c906f2c98ee65b4bf81889aa8926508eb2eec0458",
           "tris": 220
         }
       },

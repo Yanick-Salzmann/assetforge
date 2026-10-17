@@ -32,7 +32,9 @@ TRI_BUDGETS: dict[str, tuple[int, int]] = {
     "organic_prop": (100, 2000),
 }
 OPEN_SURFACE_KINDS = ("vegetation",)
-LOD_CHAIN_KINDS = ("unit", "creature", "organic_prop")
+LOD_CHAIN_KINDS = ("unit", "creature", "organic_prop", "vegetation")
+IMPOSTOR_KINDS = ("vegetation",)
+IMPOSTOR_MAPS = ("albedo", "normal")
 REQUIRED_LODS = 3
 LOD_STEP_MAX_RATIO = 0.75
 
@@ -171,6 +173,7 @@ def validate_asset(name: str, kind: str) -> ValidationReport:
         checks.extend(_check_mechanisms(name, document, buffers, animations))
     checks.append(_check_fx(name, document, world_bbox_min, world_bbox_max))
     checks.append(_check_props(name, world_bbox_min, world_bbox_max))
+    checks.append(_check_impostor(name, kind))
 
     return ValidationReport(
         name=name,
@@ -716,6 +719,40 @@ def _check_props(name: str, bbox_min: np.ndarray, bbox_max: np.ndarray) -> Check
         return CheckResult(label, False, "; ".join(errors))
     meshes = sorted({entry["mesh"] for entry in props})
     return CheckResult(label, True, f"{len(props)} placement(s) of {len(meshes)} kit prop(s): {', '.join(meshes)}")
+
+
+def _check_impostor(name: str, kind: str) -> CheckResult:
+    """An asset.json impostor (assets/impostor.py) is a far LOD for scatter vegetation only:
+    its albedo and normal atlases exist, are square powers of two and hold frames x frames
+    frames of frame_px each."""
+    label = "impostor"
+    manifest_path = config.ASSET_OUT_DIR / name / "asset.json"
+    entry = None
+    if manifest_path.is_file():
+        entry = json.loads(manifest_path.read_text(encoding="utf-8")).get("impostor")
+    if entry is None:
+        return CheckResult(label, True, "no impostor")
+    if kind not in IMPOSTOR_KINDS:
+        return CheckResult(label, False, f"kind {kind!r} may not ship an impostor; only {IMPOSTOR_KINDS} do")
+    try:
+        expected = int(entry["frames"]) * int(entry["frame_px"])
+        if float(entry["radius"]) <= 0.0 or len(entry["centre"]) != 3:
+            return CheckResult(label, False, "impostor needs a positive radius and a 3-component centre")
+        maps = {key: config.ASSET_OUT_DIR / name / entry[key] for key in IMPOSTOR_MAPS}
+    except (KeyError, TypeError, ValueError) as error:
+        return CheckResult(label, False, f"malformed impostor entry: {error}")
+    errors = []
+    for key, path in maps.items():
+        if not path.is_file():
+            errors.append(f"{key} {path.name} missing")
+            continue
+        with Image.open(path) as image:
+            size = image.size
+        if size != (expected, expected) or not _is_power_of_two(expected):
+            errors.append(f"{key} is {size[0]}x{size[1]}, expected a power-of-two {expected}x{expected}")
+    if errors:
+        return CheckResult(label, False, "; ".join(errors))
+    return CheckResult(label, True, f"{entry['frames']}x{entry['frames']} frames of {entry['frame_px']} px")
 
 
 def _as_gltf_matrix(matrix: np.ndarray) -> gltf.Matrix:

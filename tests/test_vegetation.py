@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from library import kits, materials
@@ -103,3 +105,14 @@ def test_props_from_a_metric_source_keep_their_modelled_size(index):
         pytest.skip("no generated pack is locked")
     species = parse(RULES.replace('meshes = ["nature/tree_pineTallA", "nature/tree_oak"]', f'meshes = ["{metric[0]}"]'))[0]
     assert vegetation.resolve(species, index)[0].unit_scale == 1.0
+
+
+def test_switch_distances_grow_as_the_screen_share_shrinks():
+    distances = vegetation.switch_distances(10.0)
+    assert len(distances) == len(vegetation.LOD_SCREEN_FRACTIONS)
+    assert list(distances) == sorted(distances)
+    focal = 2.0 * math.tan(math.radians(vegetation.REFERENCE_FOV_DEG) * 0.5)
+    pixels = vegetation.switch_pixels()
+    for distance, px in zip(distances, pixels):
+        assert 10.0 / (focal * distance) * vegetation.REFERENCE_VIEWPORT_PX == pytest.approx(px, abs=0.5)
+    assert len(vegetation.switch_distances(10.0, 2)) == 2

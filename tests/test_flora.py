@@ -11,7 +11,11 @@ from terrain import vegetation
 
 @pytest.fixture(scope="module")
 def meshes() -> dict[str, tuple[str, flora.MeshData]]:
-    return {name: (kind, build()) for name, (kind, build) in flora.MODELS.items()}
+    return {
+        f"{name}_LOD{lod}": (kind, build(lod=lod))
+        for name, (kind, build) in flora.MODELS.items()
+        for lod in range(flora.LODS)
+    }
 
 
 def test_every_model_fits_its_kind_budget(meshes):
@@ -110,3 +114,36 @@ def test_card_droop_bends_the_tip_down():
     tip_z = builder.mesh.vertices[-1][2]
     assert tip_z < 1.0
     assert builder.mesh.triangles() == 6
+
+
+@pytest.mark.parametrize("name", sorted(flora.MODELS))
+def test_each_lod_step_keeps_at_most_the_validator_ratio(name):
+    from assets import validate
+
+    _, build = flora.MODELS[name]
+    counts = [build(lod=lod).triangles() for lod in range(flora.LODS)]
+    for previous, current in zip(counts, counts[1:]):
+        assert 0 < current <= validate.LOD_STEP_MAX_RATIO * previous, (name, counts)
+
+
+@pytest.mark.parametrize("name", ["spruce_a", "oak_a", "hazel_a", "fern_a", "grass_a"])
+def test_reduced_lods_keep_the_lod0_footprint(name):
+    _, build = flora.MODELS[name]
+    low0, high0 = build(lod=0).bounds()
+    size = max(h - l for l, h in zip(low0, high0))
+    for lod in range(1, flora.LODS):
+        low, high = build(lod=lod).bounds()
+        for axis in range(3):
+            assert abs(low[axis] - low0[axis]) < 0.2 * size, (name, lod, axis)
+            assert abs(high[axis] - high0[axis]) < 0.2 * size, (name, lod, axis)
+
+
+def test_a_crown_lod_keeps_its_outermost_cards():
+    shell = [
+        flora.CrownCard(reach, (reach, 0.0, 1.0), (1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (1.0, 0.0, 0.0), 0.5)
+        for reach in (0.5, 0.9, 0.6, 1.0, 0.7, 0.8)
+    ]
+    builder = flora.Builder()
+    flora._crown(builder, shell, foliage_atlas.cell_rect("oak"), 2)
+    xs = sorted({round(vertex[0], 6) for vertex in builder.mesh.vertices})
+    assert xs == [0.9, 1.0]

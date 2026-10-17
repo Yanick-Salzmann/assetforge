@@ -4,7 +4,9 @@ A pack pinned in kits.toml with source = "assetforge" names an asset prefix as i
 out/assets/<slug>_<model>/ whose .gate.json records human approval is copied into
 library/kits/<pack>/<model>.glb and locked in kits.lock.json beside the downloaded packs, so
 library/kits.py indexes it like any other kit. The lock records the recipe that rebuilds each
-model, since generated binaries are not committed.
+model, since generated binaries are not committed. A model whose asset.json carries a lod entry
+(scatter vegetation, af-8m0.9) also locks its LOD triangle counts and switch distances, and an
+impostor entry copies its atlases beside the glb as <model>_impostor_<map>.png.
 """
 
 from __future__ import annotations
@@ -22,6 +24,9 @@ SOURCE = "assetforge"
 LICENCE = "CC0"
 GATE_NAME = ".gate.json"
 RECIPE_NAME = "recipe.py"
+MANIFEST_NAME = "asset.json"
+IMPOSTOR_MAPS = ("albedo", "normal")
+IMPOSTOR_FIELDS = ("layout", "frames", "frame_px", "centre", "radius")
 
 
 class GeneratedError(ValueError):
@@ -62,9 +67,32 @@ def _collect(spec: PackSpec, asset_dir: Path, pack_dir: Path) -> dict[str, dict]
             "sha256": hashlib.sha256(destination.read_bytes()).hexdigest(),
             "recipe": _relative(source / RECIPE_NAME),
         }
+        models[model].update(_lod_entries(source, pack_dir, model))
     if not models:
         raise GeneratedError(f"{spec.slug}: no approved assets under {asset_dir} named {prefix}*")
     return models
+
+
+def _lod_entries(source: Path, pack_dir: Path, model: str) -> dict:
+    manifest_path = source / MANIFEST_NAME
+    if not manifest_path.is_file():
+        return {}
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    entries = {}
+    if "lod" in manifest:
+        counts = manifest.get("triangle_counts", {})
+        entries["lod_tris"] = [counts[key] for key in sorted(counts, key=lambda key: int(key[len("LOD"):]))]
+        entries["lod_distances_m"] = manifest["lod"]["switch_distances_m"]
+    impostor = manifest.get("impostor")
+    if impostor is not None:
+        locked = {field: impostor[field] for field in IMPOSTOR_FIELDS}
+        for key in IMPOSTOR_MAPS:
+            destination = pack_dir / f"{model}_impostor_{key}.png"
+            shutil.copyfile(source / impostor[key], destination)
+            locked[key] = destination.relative_to(pack_dir.parent.parent).as_posix()
+            locked[f"{key}_sha256"] = hashlib.sha256(destination.read_bytes()).hexdigest()
+        entries["impostor"] = locked
+    return entries
 
 
 def pull(

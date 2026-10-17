@@ -97,6 +97,7 @@ def render(
     device: str = DEFAULT_DEVICE,
     blender_executable: str | None = None,
     timeout_s: float = DEFAULT_TIMEOUT_S,
+    lod: int = 0,
 ) -> ContactSheetRender:
     """Blender headless: import the exported glb, stand a 1.8 m scale reference beside it, and
     render 6 orthographic views plus a 3/4 beauty shot and a worm's-eye shot under flat, even
@@ -104,8 +105,13 @@ def render(
 
     This is how the agent sees the asset: it must expose missing back faces, flipped normals
     and one-angle-only detail.
+
+    lod renders only that LOD's meshes (nodes without a _LOD<n> suffix count as LOD0); a reduced
+    LOD's sheet and views are written as contact_sheet_lod<n>[_<view>].png.
     """
     validate_name(name)
+    if lod < 0:
+        raise ContactSheetError(f"lod {lod} must not be negative")
     glb_path = _find_glb(name)
     if resolution[0] < 16 or resolution[1] < 16:
         raise ContactSheetError(f"resolution {tuple(resolution)} must be at least 16x16")
@@ -135,6 +141,7 @@ def render(
             "margin": margin,
             "outputs": view_outputs,
             "result_json": str(result_json),
+            "lod": lod,
         }
         args_path = scratch / "args.json"
         args_path.write_text(json.dumps(args), encoding="utf-8")
@@ -164,12 +171,13 @@ def render(
 
         sheet_tile = tile or max(resolution)
         sheet_image = _compose_sheet({view: Path(path) for view, path in view_outputs.items()}, sheet_tile)
-        sheet_path = target_dir / SHEET_NAME
+        stem = "contact_sheet" if lod == 0 else f"contact_sheet_lod{lod}"
+        sheet_path = target_dir / (SHEET_NAME if lod == 0 else f"{stem}.png")
         sheet_image.save(sheet_path, optimize=True)
 
         persisted_views: dict[str, Path] = {}
         for view, path in view_outputs.items():
-            destination = target_dir / f"contact_sheet_{view}.png"
+            destination = target_dir / f"{stem}_{view}.png"
             destination.write_bytes(Path(path).read_bytes())
             persisted_views[view] = destination
 

@@ -184,7 +184,7 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   `out/assets/<slug>_<model>/` into `library/kits/<pack>/<model>.glb` and locks it (sha256 and
   recipe path) in `kits.lock.json`. The `scatter` pack is rebuilt by
   `blender --background --python assets/blender_scripts/scatter_set_build.py` (geometry from
-  `assets/organic.py`), then approved and pulled.
+  `assets/organic.py`, LOD0/1/2 from `lod.generate_lods`), then approved and pulled.
 - Environment organics (stumps, root clusters, mushrooms, corals) are the `organics` pack (slug
   `organic`, kind `organic_prop`, LOD0/1/2), rebuilt by
   `blender --background --python assets/blender_scripts/organic_set_build.py` from the
@@ -201,7 +201,23 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   to its scatter kind) over one shared 2048 RGBA atlas painted by `assets/foliage_atlas.py` (bark
   strip from `bark_cc0`, 12 procedural foliage cells with an 8 px transparent gutter). One
   material, glTF `alphaMode` MASK (alpha through a Math Round node), double-sided; card normals
-  lean outward from the plant. Exported with kind `vegetation`.
+  lean outward from the plant. Exported with kind `vegetation`, LOD0/1/2 per model (af-8m0.9):
+  every builder takes `lod`; a reduced LOD replays LOD0's draws and keeps every
+  `flora.LOD_STRIDES[lod]`-th card widened by `LOD_WIDEN` (crowns keep their outermost cards,
+  `CROWN_WIDEN`; ferns only drop card segments; tufts drop segments, then cards at LOD2), with
+  fewer tube sides. Kinds in `vegetation.IMPOSTOR_KINDS` (conifer, broadleaf, shrub) also ship a
+  hemi-octahedral impostor as the far LOD (`assets/impostor.py` layout, rendered by
+  `assets/impostor_render.py`): `textures/impostor_albedo.png` (unlit, alpha cutout) and
+  `impostor_normal.png` (glTF object-space normal * 0.5 + 0.5), 8x8 frames of 128 px framed on
+  LOD0's bounding sphere, recorded as `asset.json` `impostor` (`layout`, `frames`, `frame_px`,
+  `centre` in glTF axes, `radius`). `asset.json` `lod` records the switch policy: the bounding
+  sphere drops below `vegetation.LOD_SCREEN_FRACTIONS` (0.25, 0.1, 0.04) of a 1080 px, 50 degree
+  view at `switch_distances_m`, and `silhouette_pop` is the worst `assets/silhouette.py`
+  blurred coverage change at each switch, which the viewer hides with a dithered cross-fade.
+  `lod_sheet.png` shows LOD0, LOD1, LOD2 and the impostor side by side, unlit. `library.generated`
+  locks `lod_tris`, `lod_distances_m` and `impostor` (atlases copied to
+  `kits/<pack>/<model>_impostor_<map>.png`) per model; `validate_asset` requires the LOD chain for
+  vegetation and checks the impostor atlases.
 - Scatter masks are single-channel 8-bit, one per species: `scatter_<species>.png`.
   `terrain.json` `scatter[]` records `species`, `kind`, `path`, `density`, `spacing_m`,
   `scale`, `slope_align`, `exclusion_m`, `water_buffer_m`, `instances`, `count`,

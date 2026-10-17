@@ -37,3 +37,36 @@ def test_pull_reports_a_pack_with_nothing_approved(tmp_path):
     spec = PackSpec(name="scatter", slug="scatter", category="vegetation", source="assetforge")
     report = generated.pull([spec], tmp_path / "kits", tmp_path / "lock.json", asset_dir=tmp_path / "assets")
     assert report["failed"][0]["pack"] == "scatter"
+
+
+def test_pull_locks_lods_and_copies_the_impostor(tmp_path):
+    assets = tmp_path / "assets"
+    _asset(assets, "flora_oak_a", True)
+    directory = assets / "flora_oak_a"
+    (directory / "textures").mkdir()
+    for key in generated.IMPOSTOR_MAPS:
+        (directory / "textures" / f"impostor_{key}.png").write_bytes(key.encode())
+    manifest = {
+        "triangle_counts": {"LOD0": 9, "LOD2": 2, "LOD1": 4},
+        "lod": {"switch_distances_m": [40.0, 100.0, 250.0]},
+        "impostor": {
+            "albedo": "textures/impostor_albedo.png",
+            "normal": "textures/impostor_normal.png",
+            "layout": "hemi_octahedral",
+            "frames": 8,
+            "frame_px": 128,
+            "centre": [0.0, 4.0, 0.0],
+            "radius": 5.0,
+        },
+    }
+    (directory / generated.MANIFEST_NAME).write_text(json.dumps(manifest), encoding="utf-8")
+    spec = PackSpec(name="flora", slug="flora", category="vegetation", source="assetforge")
+    lock_path = tmp_path / "kits.lock.json"
+    generated.pull([spec], tmp_path / "kits", lock_path, asset_dir=assets)
+    model = json.loads(lock_path.read_text())["packs"]["flora"]["models"]["oak_a"]
+    assert model["lod_tris"] == [9, 4, 2]
+    assert model["lod_distances_m"] == [40.0, 100.0, 250.0]
+    assert model["impostor"]["albedo"] == "kits/flora/oak_a_impostor_albedo.png"
+    assert model["impostor"]["frames"] == 8
+    assert len(model["impostor"]["normal_sha256"]) == 64
+    assert (tmp_path / "kits" / "flora" / "oak_a_impostor_normal.png").read_bytes() == b"normal"

@@ -15,7 +15,7 @@ import bpy
 from mathutils import Vector
 
 TRANSPARENT_BOUNCES = 64
-LOWER_LOD_SUFFIX = re.compile(r"_LOD[1-9]\d*(?:_ANIM)?$")
+LOD_SUFFIX = re.compile(r"_LOD(\d+)(?:_ANIM)?$")
 
 VIEW_DIRECTIONS = {
     "front": Vector((0.0, 1.0, 0.0)),
@@ -72,10 +72,15 @@ def _build_world() -> None:
     bpy.context.scene.world = world
 
 
-def _import_asset(glb_path: str) -> list:
+def _lod_of(name: str) -> int:
+    match = LOD_SUFFIX.search(name)
+    return int(match.group(1)) if match else 0
+
+
+def _import_asset(glb_path: str, lod: int = 0) -> list:
     bpy.ops.import_scene.gltf(filepath=glb_path)
     for obj in list(bpy.data.objects):
-        if obj.type == "MESH" and LOWER_LOD_SUFFIX.search(obj.name):
+        if obj.type == "MESH" and _lod_of(obj.name) != lod:
             bpy.data.objects.remove(obj, do_unlink=True)
     bpy.context.view_layer.update()
     return [obj for obj in bpy.data.objects if obj.type == "MESH"]
@@ -180,7 +185,7 @@ def main() -> None:
     device_info = _set_cycles_device(args.get("device", "OPTIX"))
     _build_world()
 
-    asset_objects = _import_asset(args["glb_path"])
+    asset_objects = _import_asset(args["glb_path"], int(args.get("lod", 0)))
     if not asset_objects:
         raise RuntimeError(f"no mesh objects found in {args['glb_path']}")
     bbox_min, bbox_max = _world_bbox(asset_objects)

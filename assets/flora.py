@@ -1,7 +1,12 @@
 """Scatter vegetation geometry: bark tubes and alpha-cutout foliage cards over the flora atlas.
 
 Pure Python (math and random only), so tri counts and placement are testable without Blender;
-assets/blender_scripts/flora_build.py turns each MeshData into a bpy mesh. Blender axes: Z up,
+assets/blender_scripts/flora_build.py turns each MeshData into a bpy mesh.
+
+Every builder takes lod (0..LODS-1). A reduced LOD replays LOD0's random draws and keeps every
+LOD_STRIDES[lod]-th card, widened by LOD_WIDEN[lod], with fewer tube sides and card segments.
+A crown (broadleaf, bush) keeps its outermost cards instead; ferns only lose card segments, and
+grass and flower tufts lose segments first and cards (TUFT_STRIDES) only at LOD2. Blender axes: Z up,
 origin at base centre, metres. Cards are single-sided quads rendered double-sided; each faces
 outward from its plant and carries custom normals bent toward that outward direction, so a crown
 shades as a volume rather than as a heap of flat planes. Card UVs map a whole foliage cell of
@@ -23,6 +28,12 @@ Z: Vec = (0.0, 0.0, 1.0)
 NORMAL_BEND = 0.9
 GROUND_Z = 0.0
 BARK_TILES = 4
+LOD_STRIDES: tuple[int, ...] = (1, 2, 3)
+LOD_WIDEN: tuple[float, ...] = (1.0, 1.4, 1.9)
+CROWN_WIDEN: tuple[float, ...] = (1.0, 1.25, 1.3)
+TUFT_STRIDES: tuple[int, ...] = (1, 1, 2)
+TUFT_WIDEN: tuple[float, ...] = (1.0, 1.0, 1.4)
+LODS = len(LOD_STRIDES)
 
 
 def add(a: Vec, b: Vec) -> Vec:
@@ -66,6 +77,18 @@ def rotate(v: Vec, axis: Vec, angle: float) -> Vec:
 def perpendicular(a: Vec, b: Vec) -> Vec:
     """b with its component along unit a removed, normalised."""
     return unit(sub(b, mul(a, dot(a, b))))
+
+
+def kept(index: int, lod: int, strides: tuple[int, ...] = LOD_STRIDES) -> bool:
+    return index % strides[lod] == 0
+
+
+def segments_at(segments: int, lod: int) -> int:
+    return max(1, segments - lod)
+
+
+def sides_at(sides: int, lod: int) -> int:
+    return max(3, sides - 2 * lod)
 
 
 @dataclass
@@ -213,6 +236,7 @@ def spruce(
     crown_base: float = 0.18,
     tiers: int = 17,
     per_tier: int = 13,
+    lod: int = 0,
 ) -> MeshData:
     """A spruce: a tapering trunk and whorls of needle-spray cards, long and drooping at the
     bottom, short and lifted near the leader, with a crossed tuft on the tip."""
@@ -221,7 +245,9 @@ def spruce(
     rect = cell_rect(cell)
     path = _trunk_path(rng, height, 4, 0.01)
     base_radius = 0.022 * height
-    builder.tube(path, [base_radius * 1.25, base_radius * 0.8, base_radius * 0.55, base_radius * 0.3, 0.015], 6, bark_rect())
+    builder.tube(path, [base_radius * 1.25, base_radius * 0.8, base_radius * 0.55, base_radius * 0.3, 0.015], sides_at(6, lod), bark_rect())
+    widen = LOD_WIDEN[lod]
+    card_index = 0
     for tier in range(tiers):
         f = tier / (tiers - 1)
         z = height * (crown_base + (0.93 - crown_base) * f)
@@ -235,19 +261,22 @@ def spruce(
             pitch = -0.2 + 0.55 * f + rng.uniform(-0.08, 0.08)
             up = unit(add(mul(horizontal, math.cos(pitch)), mul(Z, math.sin(pitch))))
             side = rotate((-horizontal[1], horizontal[0], 0.0), up, rng.uniform(-1.15, 1.15))
+            card_index += 1
+            if not kept(card_index - 1, lod):
+                continue
             builder.card(
                 add(centre, mul(horizontal, 0.04)),
                 up,
                 side,
                 reach,
-                reach * 0.85,
+                reach * 0.85 * widen,
                 rect,
                 outward=unit(add(horizontal, mul(Z, 0.35))),
-                segments=2 if f < 0.5 else 1,
+                segments=segments_at(2 if f < 0.5 else 1, lod),
                 droop=0.45 * (1.0 - f),
             )
     top = path[-1]
-    for index in range(3):
+    for index in range(3 if lod < 2 else 2):
         angle = index * math.pi / 3.0
         side = (math.cos(angle), math.sin(angle), 0.0)
         builder.card(
@@ -272,6 +301,7 @@ def broadleaf(
     trunk_radius: float,
     branches: int = 5,
     branch_lift: float = 0.6,
+    lod: int = 0,
 ) -> MeshData:
     """A broadleaf tree: a trunk forking into branches that reach into an ellipsoidal crown of
     leaf-cluster cards, denser toward the shell than the core."""
@@ -279,7 +309,7 @@ def broadleaf(
     builder = Builder()
     rect = cell_rect(cell)
     path = _trunk_path(rng, trunk_height * 1.1, 3, 0.03)
-    builder.tube(path, [trunk_radius * 1.35, trunk_radius, trunk_radius * 0.85, trunk_radius * 0.7], 7, bark_rect())
+    builder.tube(path, [trunk_radius * 1.35, trunk_radius, trunk_radius * 0.85, trunk_radius * 0.7], sides_at(7, lod), bark_rect())
     centre = (path[-1][0], path[-1][1], trunk_height + crown[2] * 0.85)
     phase = rng.uniform(0.0, 2.0 * math.pi)
     for index in range(branches):
@@ -288,7 +318,8 @@ def broadleaf(
         direction = unit((math.cos(azimuth), math.sin(azimuth), branch_lift))
         tip = add(centre, (direction[0] * crown[0] * 0.75, direction[1] * crown[1] * 0.75, (direction[2] - 0.2) * crown[2] * 0.6))
         middle = add(mul(add(start, tip), 0.5), (0.0, 0.0, crown[2] * 0.12))
-        builder.tube([start, middle, tip], [trunk_radius * 0.6, trunk_radius * 0.35, 0.02], 5, bark_rect())
+        builder.tube([start, middle, tip], [trunk_radius * 0.6, trunk_radius * 0.35, 0.02], sides_at(5, lod), bark_rect())
+    shell = []
     for _ in range(cards):
         direction = unit((rng.gauss(0.0, 1.0), rng.gauss(0.0, 1.0), abs(rng.gauss(0.0, 1.0)) * 1.2 - 0.35))
         reach = 0.5 + 0.5 * math.sqrt(rng.random())
@@ -296,17 +327,42 @@ def broadleaf(
         facing = unit(add(direction, (rng.gauss(0.0, 0.5), rng.gauss(0.0, 0.5), rng.gauss(0.0, 0.5))))
         up = rotate(perpendicular(facing, Z), facing, rng.uniform(-0.7, 0.7))
         size = card_size * rng.uniform(0.8, 1.2)
-        builder.card(sub(position, mul(up, size * 0.5)), up, cross(up, facing), size, size, rect, outward=direction)
+        shell.append(CrownCard(reach, position, direction, up, facing, size))
+    _crown(builder, shell, rect, lod)
     return builder.mesh
 
 
-def bush(seed: int, radii: Vec, cell: str, cards: int, card_size: float) -> MeshData:
+@dataclass(frozen=True)
+class CrownCard:
+    reach: float
+    position: Vec
+    direction: Vec
+    up: Vec
+    facing: Vec
+    size: float
+
+
+def _crown(builder: Builder, shell: list[CrownCard], rect: Rect, lod: int) -> None:
+    """Square cluster cards centred on their positions. A reduced LOD keeps the outermost
+    1 / LOD_STRIDES[lod] of them by reach - the inner ones are hidden behind the shell anyway -
+    widened by CROWN_WIDEN[lod]."""
+    count = math.ceil(len(shell) / LOD_STRIDES[lod])
+    order = sorted(range(len(shell)), key=lambda index: (-shell[index].reach, index))
+    widen = CROWN_WIDEN[lod]
+    for index in sorted(order[:count]):
+        card = shell[index]
+        size = card.size * widen
+        builder.card(sub(card.position, mul(card.up, size * 0.5)), card.up, cross(card.up, card.facing), size, size, rect, outward=card.direction)
+
+
+def bush(seed: int, radii: Vec, cell: str, cards: int, card_size: float, lod: int = 0) -> MeshData:
     """A shrub: a dome of cluster cards rooted near the ground, no trunk (the cell's own twigs
     read as stems)."""
     rng = random.Random(seed)
     builder = Builder()
     rect = cell_rect(cell)
     centre = (0.0, 0.0, radii[2] * 0.45)
+    shell = []
     for _ in range(cards):
         direction = unit((rng.gauss(0.0, 1.0), rng.gauss(0.0, 1.0), abs(rng.gauss(0.0, 1.0)) * 1.4 - 0.2))
         reach = 0.5 + 0.5 * math.sqrt(rng.random())
@@ -314,11 +370,12 @@ def bush(seed: int, radii: Vec, cell: str, cards: int, card_size: float) -> Mesh
         facing = unit(add((direction[0], direction[1], direction[2] * 0.35), (rng.gauss(0.0, 0.3), rng.gauss(0.0, 0.3), rng.gauss(0.0, 0.2))))
         up = rotate(perpendicular(facing, Z), facing, rng.uniform(-0.6, 0.6))
         size = card_size * rng.uniform(0.8, 1.2)
-        builder.card(sub(position, mul(up, size * 0.5)), up, cross(up, facing), size, size, rect, outward=direction)
+        shell.append(CrownCard(reach, position, direction, up, facing, size))
+    _crown(builder, shell, rect, lod)
     return builder.mesh
 
 
-def fern(seed: int, frond_length: float, fronds: int, upright: int = 0, cell: str = "fern") -> MeshData:
+def fern(seed: int, frond_length: float, fronds: int, upright: int = 0, cell: str = "fern", lod: int = 0) -> MeshData:
     """A fern: arching frond cards radiating from the crown, plus optional young upright ones."""
     rng = random.Random(seed)
     builder = Builder()
@@ -341,13 +398,13 @@ def fern(seed: int, frond_length: float, fronds: int, upright: int = 0, cell: st
             size * 0.9,
             rect,
             outward=unit(add(horizontal, Z)),
-            segments=3,
+            segments=segments_at(3, lod),
             droop=0.4 if young else 1.0,
         )
     return builder.mesh
 
 
-def tuft(seed: int, height: float, cell: str, cards: int = 10, width: float = 1.0, lean: float = 0.3) -> MeshData:
+def tuft(seed: int, height: float, cell: str, cards: int = 10, width: float = 1.0, lean: float = 0.3, lod: int = 0) -> MeshData:
     """Grass or flowering stems: crossed upright cards leaning slightly out from a small base."""
     rng = random.Random(seed)
     builder = Builder()
@@ -362,32 +419,34 @@ def tuft(seed: int, height: float, cell: str, cards: int = 10, width: float = 1.
         offset = mul(facing, rng.uniform(0.0, 0.06) * height)
         up = unit(add(Z, mul(facing, rng.uniform(0.0, lean))))
         size = height * rng.uniform(0.85, 1.15)
-        builder.card(offset, up, side, size, size * width, rect, outward=unit(add(facing, Z)), segments=2, droop=rng.uniform(0.05, 0.25))
+        droop = rng.uniform(0.05, 0.25)
+        if kept(index, lod, TUFT_STRIDES):
+            builder.card(offset, up, side, size, size * width * TUFT_WIDEN[lod], rect, outward=unit(add(facing, Z)), segments=segments_at(2, lod), droop=droop)
     return builder.mesh
 
 
-MODELS: dict[str, tuple[str, Callable[[], MeshData]]] = {
-    "spruce_a": ("conifer", lambda: spruce(101, 11.0, 2.6)),
-    "spruce_b": ("conifer", lambda: spruce(102, 8.5, 2.1, tiers=15)),
-    "spruce_c": ("conifer", lambda: spruce(103, 5.0, 1.6, cell="spruce_alpine", crown_base=0.08, tiers=14, per_tier=14)),
-    "spruce_d": ("conifer", lambda: spruce(104, 6.5, 1.7, cell="spruce_alpine", crown_base=0.1, tiers=15)),
-    "oak_a": ("broadleaf", lambda: broadleaf(201, 2.6, (3.4, 3.2, 2.9), "oak", 210, 1.7, 0.3)),
-    "oak_b": ("broadleaf", lambda: broadleaf(202, 3.0, (2.8, 2.6, 3.4), "oak", 210, 1.6, 0.27)),
-    "mesquite_a": ("broadleaf", lambda: broadleaf(301, 1.2, (3.2, 3.0, 1.5), "mesquite", 200, 1.5, 0.2, branch_lift=0.35)),
-    "mesquite_b": ("broadleaf", lambda: broadleaf(302, 1.5, (2.6, 2.4, 1.8), "mesquite", 200, 1.4, 0.18, branches=4, branch_lift=0.45)),
-    "hazel_a": ("shrub", lambda: bush(401, (0.8, 0.75, 0.75), "hazel", 95, 0.8)),
-    "hazel_b": ("shrub", lambda: bush(402, (0.6, 0.6, 0.55), "hazel", 90, 0.65)),
-    "sage_a": ("shrub", lambda: bush(501, (0.5, 0.45, 0.4), "sage", 80, 0.5)),
-    "sage_b": ("shrub", lambda: bush(502, (0.4, 0.4, 0.45), "sage", 70, 0.45)),
-    "juniper_a": ("shrub", lambda: bush(601, (0.85, 0.75, 0.3), "spruce_alpine", 90, 0.7)),
-    "juniper_b": ("shrub", lambda: bush(602, (0.6, 0.55, 0.35), "spruce_alpine", 80, 0.55)),
-    "fern_a": ("shrub", lambda: fern(701, 0.9, 9)),
-    "fern_b": ("shrub", lambda: fern(702, 0.7, 7, upright=4)),
-    "grass_a": ("grass", lambda: tuft(801, 0.5, "grass", cards=12)),
-    "grass_b": ("grass", lambda: tuft(802, 0.35, "grass", cards=10)),
-    "grass_dry_a": ("grass", lambda: tuft(803, 0.55, "grass_dry", cards=12)),
-    "grass_dry_b": ("grass", lambda: tuft(804, 0.4, "grass_dry", cards=10)),
-    "flower_purple": ("flower", lambda: tuft(901, 0.5, "flower_purple", cards=6, lean=0.2)),
-    "flower_yellow": ("flower", lambda: tuft(902, 0.45, "flower_yellow", cards=6, lean=0.2)),
-    "flower_red": ("flower", lambda: tuft(903, 0.45, "flower_red", cards=6, lean=0.2)),
+MODELS: dict[str, tuple[str, Callable[..., MeshData]]] = {
+    "spruce_a": ("conifer", lambda lod=0: spruce(101, 11.0, 2.6, lod=lod)),
+    "spruce_b": ("conifer", lambda lod=0: spruce(102, 8.5, 2.1, tiers=15, lod=lod)),
+    "spruce_c": ("conifer", lambda lod=0: spruce(103, 5.0, 1.6, cell="spruce_alpine", crown_base=0.08, tiers=14, per_tier=14, lod=lod)),
+    "spruce_d": ("conifer", lambda lod=0: spruce(104, 6.5, 1.7, cell="spruce_alpine", crown_base=0.1, tiers=15, lod=lod)),
+    "oak_a": ("broadleaf", lambda lod=0: broadleaf(201, 2.6, (3.4, 3.2, 2.9), "oak", 210, 1.7, 0.3, lod=lod)),
+    "oak_b": ("broadleaf", lambda lod=0: broadleaf(202, 3.0, (2.8, 2.6, 3.4), "oak", 210, 1.6, 0.27, lod=lod)),
+    "mesquite_a": ("broadleaf", lambda lod=0: broadleaf(301, 1.2, (3.2, 3.0, 1.5), "mesquite", 200, 1.5, 0.2, branch_lift=0.35, lod=lod)),
+    "mesquite_b": ("broadleaf", lambda lod=0: broadleaf(302, 1.5, (2.6, 2.4, 1.8), "mesquite", 200, 1.4, 0.18, branches=4, branch_lift=0.45, lod=lod)),
+    "hazel_a": ("shrub", lambda lod=0: bush(401, (0.8, 0.75, 0.75), "hazel", 95, 0.8, lod=lod)),
+    "hazel_b": ("shrub", lambda lod=0: bush(402, (0.6, 0.6, 0.55), "hazel", 90, 0.65, lod=lod)),
+    "sage_a": ("shrub", lambda lod=0: bush(501, (0.5, 0.45, 0.4), "sage", 80, 0.5, lod=lod)),
+    "sage_b": ("shrub", lambda lod=0: bush(502, (0.4, 0.4, 0.45), "sage", 70, 0.45, lod=lod)),
+    "juniper_a": ("shrub", lambda lod=0: bush(601, (0.85, 0.75, 0.3), "spruce_alpine", 90, 0.7, lod=lod)),
+    "juniper_b": ("shrub", lambda lod=0: bush(602, (0.6, 0.55, 0.35), "spruce_alpine", 80, 0.55, lod=lod)),
+    "fern_a": ("shrub", lambda lod=0: fern(701, 0.9, 9, lod=lod)),
+    "fern_b": ("shrub", lambda lod=0: fern(702, 0.7, 7, upright=4, lod=lod)),
+    "grass_a": ("grass", lambda lod=0: tuft(801, 0.5, "grass", cards=12, lod=lod)),
+    "grass_b": ("grass", lambda lod=0: tuft(802, 0.35, "grass", cards=10, lod=lod)),
+    "grass_dry_a": ("grass", lambda lod=0: tuft(803, 0.55, "grass_dry", cards=12, lod=lod)),
+    "grass_dry_b": ("grass", lambda lod=0: tuft(804, 0.4, "grass_dry", cards=10, lod=lod)),
+    "flower_purple": ("flower", lambda lod=0: tuft(901, 0.5, "flower_purple", cards=6, lean=0.2, lod=lod)),
+    "flower_yellow": ("flower", lambda lod=0: tuft(902, 0.45, "flower_yellow", cards=6, lean=0.2, lod=lod)),
+    "flower_red": ("flower", lambda lod=0: tuft(903, 0.45, "flower_red", cards=6, lean=0.2, lod=lod)),
 }

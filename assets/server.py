@@ -108,17 +108,18 @@ def build_demo_asset(name: str = "hardsurface-demo") -> list:
 
 
 @mcp.tool
-def render_contact_sheet(name: str) -> list:
+def render_contact_sheet(name: str, lod: int = 0) -> list:
     """Render out/assets/<name>/<name>.glb as one contact sheet: 6 orthographic views, a 3/4
     beauty shot and a worm's-eye shot, flat even lighting, a 1.8 m human scale reference beside
     the asset. This is how the agent sees the asset - it must expose missing back faces, flipped
-    normals and one-angle-only detail.
+    normals and one-angle-only detail. lod picks which LOD's meshes are shown (default LOD0).
     """
     from assets import contact_sheet
 
-    result, rendered = contact_sheet.contact_sheet_preview(name)
+    result, rendered = contact_sheet.contact_sheet_preview(name, lod=lod)
     summary = {
         "name": name,
+        "lod": lod,
         "bbox_min": list(result.bbox_min),
         "bbox_max": list(result.bbox_max),
         "device": result.device,

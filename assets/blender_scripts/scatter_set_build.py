@@ -13,7 +13,7 @@ if str(REPO) not in sys.path:
 
 import bpy
 
-from assets import atlas_bake, export, game_ready, materials, organic
+from assets import atlas_bake, export, game_ready, lod, materials, organic
 from assets import hardsurface as hs
 
 ROCKS = {
@@ -199,7 +199,10 @@ def main() -> None:
     assign_materials(props)
     bake_shared_atlas(props)
     for obj in props:
-        export.export_asset([obj], name=obj.name, kind="prop")
+        name = obj.name
+        lod_set = lod.generate_lods(obj)
+        result = export.export_asset(lod_set.objects, name=name, kind="prop")
+        print(f"[scatter] {name} {result.triangle_counts}", flush=True)
 
 
 if __name__ == "__main__":

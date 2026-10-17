@@ -414,7 +414,8 @@ def test_vegetation_skips_closed_mesh_and_uv_overlap_checks(monkeypatch):
 
     report = validate.validate_asset("test-plant", "vegetation")
 
-    assert report.ok, [c for c in report.checks if not c.passed]
+    failed = [c for c in report.checks if not c.passed]
+    assert [c.name for c in failed] == ["LOD chain"], failed
     names = {c.name for c in report.checks}
     assert not any("watertight" in n or "manifold" in n or "UV overlap" in n for n in names)
     assert any("outward normals" in n for n in names)
@@ -425,7 +426,7 @@ def test_rts_kinds_have_budgets_and_export_accepts_them():
         low, high = validate.TRI_BUDGETS[kind]
         assert 0 < low < high
     assert validate.TRI_BUDGETS["unit"][1] < validate.TRI_BUDGETS["vehicle"][0]
-    assert set(validate.LOD_CHAIN_KINDS) == {"unit", "creature", "organic_prop"}
+    assert set(validate.LOD_CHAIN_KINDS) == {"unit", "creature", "organic_prop", "vegetation"}
     assert set(team_colour.KINDS) <= set(validate.LOD_CHAIN_KINDS)
 
 
@@ -687,3 +688,51 @@ def test_socket_carrying_a_mesh_fails():
 def test_malformed_fx_entry_fails():
     result = _fx_check(({"name": "FX_smoke_chimney"},), [{"node": "FX_smoke_chimney"}])
     assert not result.passed
+
+
+def _impostor_plant(size: int, frames: int = 2, frame_px: int = 4) -> str:
+    name = "test-impostor"
+    _write_tetrahedron_glb(
+        config.ASSET_OUT_DIR / name / f"{name}.glb",
+        node_names=(f"{name}_LOD0", f"{name}_LOD1", f"{name}_LOD2"),
+    )
+    textures = config.ASSET_OUT_DIR / name / "textures"
+    textures.mkdir(parents=True, exist_ok=True)
+    for key in validate.IMPOSTOR_MAPS:
+        Image.new("RGBA", (size, size)).save(textures / f"impostor_{key}.png")
+    entry = {
+        "albedo": "textures/impostor_albedo.png",
+        "normal": "textures/impostor_normal.png",
+        "layout": "hemi_octahedral",
+        "frames": frames,
+        "frame_px": frame_px,
+        "centre": [0.0, 0.5, 0.0],
+        "radius": 1.0,
+    }
+    (config.ASSET_OUT_DIR / name / "asset.json").write_text(json.dumps({"impostor": entry}), encoding="utf-8")
+    return name
+
+
+def _impostor_check(report):
+    return next(c for c in report.checks if c.name == "impostor")
+
+
+def test_a_vegetation_impostor_of_the_right_size_passes(monkeypatch):
+    monkeypatch.setitem(validate.TRI_BUDGETS, "vegetation", (1, 10))
+    monkeypatch.setattr(validate, "LOD_STEP_MAX_RATIO", 1.0)
+    report = validate.validate_asset(_impostor_plant(8), "vegetation")
+    assert _impostor_check(report).passed
+    assert report.ok, [c for c in report.checks if not c.passed]
+
+
+def test_an_impostor_atlas_of_the_wrong_size_fails(monkeypatch):
+    monkeypatch.setitem(validate.TRI_BUDGETS, "vegetation", (1, 10))
+    check = _impostor_check(validate.validate_asset(_impostor_plant(16), "vegetation"))
+    assert not check.passed
+    assert "expected a power-of-two 8x8" in check.detail
+
+
+def test_only_vegetation_may_ship_an_impostor(monkeypatch):
+    monkeypatch.setitem(validate.TRI_BUDGETS, "prop", (1, 10))
+    check = _impostor_check(validate.validate_asset(_impostor_plant(8), "prop"))
+    assert not check.passed

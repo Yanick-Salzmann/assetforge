@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
 
 from terrain.config import MapConfigError
-from terrain.splat import Species
+
+if TYPE_CHECKING:
+    from terrain.splat import Species
 
 KIND_SIZE_M: dict[str, float] = {
     "conifer": 8.0,
@@ -27,6 +30,23 @@ KIND_TRI_BUDGET: dict[str, int] = {
     "debris": 400,
 }
 METRIC_SOURCES = ("assetforge",)
+IMPOSTOR_KINDS = ("conifer", "broadleaf", "shrub")
+LOD_SCREEN_FRACTIONS: tuple[float, ...] = (0.25, 0.1, 0.04)
+REFERENCE_VIEWPORT_PX = 1080
+REFERENCE_FOV_DEG = 50.0
+
+
+def switch_distances(diameter_m: float, transitions: int = len(LOD_SCREEN_FRACTIONS)) -> tuple[float, ...]:
+    """Camera distances in metres at which a variant whose bounding sphere is diameter_m across
+    shrinks below each LOD_SCREEN_FRACTIONS share of a REFERENCE_VIEWPORT_PX-tall view with the
+    viewer's REFERENCE_FOV_DEG: LOD0 to LOD1, LOD1 to LOD2, then LOD2 to the impostor."""
+    focal = 2.0 * math.tan(math.radians(REFERENCE_FOV_DEG) * 0.5)
+    return tuple(diameter_m / (focal * fraction) for fraction in LOD_SCREEN_FRACTIONS[:transitions])
+
+
+def switch_pixels(transitions: int = len(LOD_SCREEN_FRACTIONS)) -> tuple[int, ...]:
+    """The bounding sphere's on-screen size at each switch distance, in reference pixels."""
+    return tuple(round(fraction * REFERENCE_VIEWPORT_PX) for fraction in LOD_SCREEN_FRACTIONS[:transitions])
 
 
 @dataclass(frozen=True)
