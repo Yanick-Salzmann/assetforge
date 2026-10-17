@@ -264,6 +264,7 @@ def preview_beauty(
         "device": result.device,
         "lighting": result.lighting,
         "scatter": result.scatter,
+        "buildings": list(result.buildings),
     }
     return _result(summary, rendered)
 

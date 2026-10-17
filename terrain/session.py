@@ -427,12 +427,15 @@ def beauty_view(
     budget: PreviewBudget = DEFAULT_BUDGET,
     **kwargs: Any,
 ) -> tuple[beauty_mod.BeautyRender, Preview]:
-    """Render both beauty views, dressed with the same scatter export writes, and hand back the
-    budgeted preview of the one asked for."""
+    """Render both beauty views, dressed with the same scatter export writes and the exported
+    buildings on the viewer's sites, and hand back the budgeted preview of the one asked for."""
     if view not in BEAUTY_VIEWS:
         raise MapConfigError(f"view {view!r} must be one of {', '.join(BEAUTY_VIEWS)}")
     splat = session.splat_result()
-    _masks, placements = export_mod.scatter_placements(session.cfg, session.channels(), splat)
+    stack = session.channels()
+    _masks, placements = export_mod.scatter_placements(session.cfg, stack, splat)
+    if "buildings" not in kwargs:
+        kwargs["buildings"] = beauty_mod.place_buildings(session.cfg, session.current(), stack["water"])
     result = beauty_mod.render(
         session.cfg,
         session.current(),

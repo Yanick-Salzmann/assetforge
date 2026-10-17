@@ -236,6 +236,10 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   night, and per-view metered exposure. It is dressed with the same instances export writes
   (`export.scatter_placements`), instanced per mesh variant by geometry nodes with the viewer's
   per-kind sink, slope alignment and reach (`beauty.KIND_SINK_M`, `beauty.KIND_REACH_M`).
+  Exported buildings (`out/assets/*` of a building kind) stand on the viewer's own sites: `terrain/sites.py`
+  is a numpy port of the viewer's site picker (`buildingSites`, `groundPoint`, `clearScatter`) and must
+  stay in step with `viewer/static/terrain.js`; `beauty.place_buildings` feeds it and the render imports
+  each building's LOD0 at its site and yaw with scatter cleared around it.
 - Wind is per biome: an optional `[wind]` table in `biomes/*.toml` (`terrain/wind.py`: `from_deg`,
   the compass bearing it blows from, clockwise from map +y north; `strength`, 1 = clips as authored;
   `gust_period_s`) recorded as `terrain.json` `wind` (optional on read). The viewer

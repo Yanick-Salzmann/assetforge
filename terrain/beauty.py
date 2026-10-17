@@ -16,6 +16,7 @@ from assets.blender import require_blender
 from library.materials import MaterialIndex
 from terrain import atmosphere as atmosphere_mod
 from terrain import placement as placement_mod
+from terrain import sites as sites_mod
 from terrain import vegetation as vegetation_mod
 from terrain.budget import DEFAULT_BUDGET, Preview, PreviewBudget, deliver_file
 from terrain.config import HEIGHTMAP_MAX, LIBRARY_DIR, MapConfig, MapConfigError
@@ -92,6 +93,7 @@ class BeautyRender:
     lighting: dict[str, Any]
     scatter: dict[str, int]
     log: str
+    buildings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -279,6 +281,38 @@ def scatter_batches(
     return tuple(batches)
 
 
+def place_buildings(
+    cfg: MapConfig,
+    height: torch.Tensor,
+    water: torch.Tensor,
+    footprints: Sequence[sites_mod.Footprint] | None = None,
+) -> tuple[sites_mod.Site, ...]:
+    """Stand every exported building where the viewer stands it, from the same 16-bit height and
+    8-bit water mask the viewer reads."""
+    chosen = sites_mod.building_footprints() if footprints is None else footprints
+    if not chosen:
+        return ()
+    water_u8 = (water.detach().to(device="cpu", dtype=torch.float32).clamp(0.0, 1.0).numpy() * 255 + 0.5).astype(np.uint8)
+    field = sites_mod.HeightField(cfg, _height_u16(height), water_u8)
+    return tuple(site for site in sites_mod.building_sites(chosen, field, cfg.sea_level_m) if site is not None)
+
+
+def building_args(cfg: MapConfig, buildings: Sequence[sites_mod.Site]) -> list[dict[str, Any]]:
+    """Each building's glb and its root transform in Blender's frame: metres from the map's
+    south-west corner, +y north, yaw about +z (the viewer's yaw about +y, Y-up to Z-up)."""
+    half = cfg.world_size_m / 2.0
+    return [
+        {
+            "name": site.name,
+            "glb": str(site.glb),
+            "location": [site.x + half, half - site.z, site.base],
+            "yaw_rad": site.yaw,
+        }
+        for site in buildings
+        if site.glb is not None and site.glb.is_file()
+    ]
+
+
 def _texture_index(texture_name: str) -> int:
     return int(texture_name.removeprefix("splat_").removesuffix(".png"))
 
@@ -360,6 +394,7 @@ def render(
     time_of_day_h: float | None = None,
     placements: Sequence[placement_mod.Placement] = (),
     variants: Mapping[str, tuple[vegetation_mod.Variant, ...]] | None = None,
+    buildings: Sequence[sites_mod.Site] = (),
     three_quarter_azimuth_deg: float = DEFAULT_THREE_QUARTER_AZIMUTH_DEG,
     three_quarter_altitude_deg: float = DEFAULT_THREE_QUARTER_ALTITUDE_DEG,
     ground_eye_height_m: float = DEFAULT_GROUND_EYE_HEIGHT_M,
@@ -372,7 +407,8 @@ def render(
 
     Lit by the biome's [atmosphere] unless one is handed in; time_of_day_h overrides its time.
     Dressed with the given scatter placements (export.scatter_placements), each instancing its
-    species' kit meshes as the viewer does.
+    species' kit meshes as the viewer does, and with the given building sites (place_buildings),
+    their scatter cleared as the viewer clears it.
 
     Reads only what is handed in - no dependency on export.py's terrain.json, since this is the
     Phase 2 gate and must run before the export contract exists.
@@ -402,7 +438,7 @@ def render(
         variants = vegetation_mod.resolve_all(splat.biome.species)
     batches = scatter_batches(
         cfg,
-        placements,
+        sites_mod.clear_scatter(placements, buildings),
         variants or {},
         _height_u16(height),
         (centre_x * cfg.world_size_m, centre_y * cfg.world_size_m),
@@ -446,6 +482,7 @@ def render(
                 }
                 for index, batch in enumerate(batches)
             ],
+            "buildings": building_args(cfg, buildings),
             "camera": {
                 "centre_frac": [centre_x, centre_y],
                 "patch_size_m": patch_size_m,
@@ -500,6 +537,7 @@ def render(
         lighting={**lighting["summary"], "exposure_stops": payload.get("exposure_stops", {})},
         scatter=_scatter_counts(batches),
         log=log,
+        buildings=tuple(payload.get("buildings", ())),
     )
 
 

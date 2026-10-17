@@ -17,6 +17,7 @@ from mathutils import Vector
 
 TRANSPARENT_BOUNCES = 64
 REDUCED_LOD = re.compile(r"_LOD[1-9]\d*(\.\d+)?$")
+REDUCED_BUILDING_LOD = re.compile(r"_LOD[1-9]\d*(_ANIM)?(\.\d+)?$")
 CHANNEL_LABEL = {"r": "Red", "g": "Green", "b": "Blue"}
 RECORD_FIELDS = 7
 
@@ -293,6 +294,37 @@ def _build_scatter(entries: list) -> None:
         modifier.node_group = groups[key]
 
 
+def _reduced(obj: bpy.types.Object) -> bool:
+    node = obj
+    while node is not None:
+        if REDUCED_BUILDING_LOD.search(node.name):
+            return True
+        node = node.parent
+    return False
+
+
+def _build_buildings(entries: list) -> list:
+    """Each building's LOD0 at its site: the glb's top-level nodes parented under a root empty at
+    the site location turned by its yaw, as the viewer stands it."""
+    placed = []
+    for entry in entries:
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.gltf(filepath=entry["glb"])
+        imported = set(bpy.data.objects) - before
+        for obj in [obj for obj in imported if _reduced(obj)]:
+            imported.discard(obj)
+            bpy.data.objects.remove(obj, do_unlink=True)
+        root = bpy.data.objects.new(f"Building_{entry['name']}", None)
+        bpy.context.scene.collection.objects.link(root)
+        root.location = Vector(entry["location"])
+        root.rotation_euler = (0.0, 0.0, float(entry["yaw_rad"]))
+        for obj in imported:
+            if obj.parent is None:
+                obj.parent = root
+        placed.append(entry["name"])
+    return placed
+
+
 def _ground_height(depsgraph, x: float, y: float) -> float:
     origin = Vector((x, y, 1.0e6))
     direction = Vector((0.0, 0.0, -1.0))
@@ -429,6 +461,7 @@ def main() -> None:
     eye_height = float(ground.get("eye_height_m", 1.8))
 
     _build_scatter(args.get("scatter", []))
+    buildings = _build_buildings(args.get("buildings", []))
 
     camera.location = target + offset
     _look_at(camera, target)
@@ -446,6 +479,7 @@ def main() -> None:
         "device": device_info,
         "centre_world_m": [centre_x, centre_y, centre_z],
         "exposure_stops": exposure_stops,
+        "buildings": buildings,
     }
     Path(args["result_json"]).write_text(json.dumps(result), encoding="utf-8")
 
