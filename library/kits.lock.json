@@ -3867,167 +3867,167 @@
         },
         "spruce_a": {
           "bbox_max_m": [
-            2.7277092933654785,
-            11.4399995803833,
-            2.8370797634124756
+            3.3090038299560547,
+            11.108593940734863,
+            3.4119338989257812
           ],
           "bbox_min_m": [
-            -2.98344087600708,
+            -3.8277370929718018,
             0.0,
-            -2.836822748184204
+            -3.6291422843933105
           ],
           "impostor": {
             "albedo": "kits/flora/spruce_a_impostor_albedo.png",
-            "albedo_sha256": "29417db54715d7a5d8c4ae51ccffada84d113158109a905977a66acf90ffa6fe",
+            "albedo_sha256": "a3993de085484a26ab632860f997271d30c2bdec62f5744a09544d03656db222",
             "centre": [
-              -0.1279,
-              5.72,
-              0.0001
+              -0.2594,
+              5.5543,
+              -0.1086
             ],
             "frame_px": 128,
             "frames": 8,
             "layout": "hemi_octahedral",
             "normal": "kits/flora/spruce_a_impostor_normal.png",
-            "normal_sha256": "5d6c3bca5b9e20334c50d211f525cad43f2fccf347337865fba5fa8c88dc93c1",
-            "radius": 6.0253
+            "normal_sha256": "45c8b05604bd4c516478b6cb8e9e9c7b6007b86a5cd4499e85ec7270c640a98b",
+            "radius": 5.9973
           },
           "lod_distances_m": [
-            51.68,
-            129.21,
-            323.03
+            51.44,
+            128.61,
+            321.53
           ],
           "lod_tris": [
-            586,
-            210,
-            144
+            580,
+            226,
+            156
           ],
           "path": "kits/flora/spruce_a.glb",
           "recipe": "out/assets/flora_spruce_a/recipe.py",
-          "sha256": "6687741d30d0e2dc69d2393b0db4a5f8a2b52893c184321677c31097e4075c5a",
-          "tris": 586
+          "sha256": "369293813105b11044590fbdcb57853840278c92e1ae04131c9d0a0a97ab9a3c",
+          "tris": 580
         },
         "spruce_b": {
           "bbox_max_m": [
-            2.48592209815979,
-            8.84000015258789,
-            2.5777790546417236
+            2.854191780090332,
+            8.58391284942627,
+            3.0599125623703003
           ],
           "bbox_min_m": [
-            -2.665591239929199,
+            -2.850684404373169,
             0.0,
-            -2.6822245121002197
+            -2.646849513053894
           ],
           "impostor": {
             "albedo": "kits/flora/spruce_b_impostor_albedo.png",
-            "albedo_sha256": "e0a59f120fd005fb627f3841c464f00b2d72a11f3866c235e22d1147df7142d1",
+            "albedo_sha256": "75abad8e8f6799aaebc5b17cea1d3b93fe191e38199f63bd91e56de013bd91b0",
             "centre": [
-              -0.0898,
-              4.42,
-              -0.0522
+              0.0018,
+              4.292,
+              0.2065
             ],
             "frame_px": 128,
             "frames": 8,
             "layout": "hemi_octahedral",
             "normal": "kits/flora/spruce_b_impostor_normal.png",
-            "normal_sha256": "0077c1d509e26651a4bc7ecc1a9ec04b452aa93879bc601bc1e3a894e2df4382",
-            "radius": 4.8369
+            "normal_sha256": "c828e13f680567007155913af7cf6b631827aab06bea0f9ac4f4009a7dc2c6d1",
+            "radius": 4.7836
           },
           "lod_distances_m": [
-            41.49,
-            103.73,
-            259.32
+            41.03,
+            102.59,
+            256.46
           ],
           "lod_tris": [
-            520,
-            190,
-            130
+            564,
+            218,
+            150
           ],
           "path": "kits/flora/spruce_b.glb",
           "recipe": "out/assets/flora_spruce_b/recipe.py",
-          "sha256": "71daa2110f3414665315633d0f04da3cb70a085d6fbef062e6d2f71d10b132db",
-          "tris": 520
+          "sha256": "67e567874ed1ccf3a953379af3f6ff51fe3f4933c7a4cc16ab433d5ac79467a6",
+          "tris": 564
         },
         "spruce_c": {
           "bbox_max_m": [
-            1.9645862579345703,
-            5.199999809265137,
-            2.0193278789520264
+            2.1204073429107666,
+            5.049360752105713,
+            1.9387649297714233
           ],
           "bbox_min_m": [
-            -2.0231903791427612,
+            -1.9774577617645264,
             0.0,
-            -1.8062974214553833
+            -2.132045865058899
           ],
           "impostor": {
             "albedo": "kits/flora/spruce_c_impostor_albedo.png",
-            "albedo_sha256": "a445a5567f330055b59ba0db9116a6442c9b70a51cf0ad132ae737a485ddd0c2",
+            "albedo_sha256": "43501f88f6ccd47b3d8e32d79ae1264531990ec0919bde42f93fc46dc339e5ce",
             "centre": [
-              -0.0293,
-              2.6,
-              0.1065
+              0.0715,
+              2.5247,
+              -0.0966
             ],
             "frame_px": 128,
             "frames": 8,
             "layout": "hemi_octahedral",
             "normal": "kits/flora/spruce_c_impostor_normal.png",
-            "normal_sha256": "d2d068b53179440e78110a3f7cfb71bc1d1a6b9324d578a0d71584b556afc491",
-            "radius": 3.2576
+            "normal_sha256": "c982ba5d30b2c53a70f7712ac6fd37edb56be35ff72a7207c4fff22a18957e56",
+            "radius": 3.2052
           },
           "lod_distances_m": [
-            27.94,
-            69.86,
-            174.65
+            27.49,
+            68.74,
+            171.84
           ],
           "lod_tris": [
-            540,
-            192,
-            132
+            554,
+            222,
+            150
           ],
           "path": "kits/flora/spruce_c.glb",
           "recipe": "out/assets/flora_spruce_c/recipe.py",
-          "sha256": "6834ab7437dc85ab77304513feff566e179f3a6e2e1a1feef54dde454b7ad446",
-          "tris": 540
+          "sha256": "325f915db67d922787a0b7145486aa4fdb171c2712f01f45ea22977ae6a87ca8",
+          "tris": 554
         },
         "spruce_d": {
           "bbox_max_m": [
-            2.3126851320266724,
-            6.760000228881836,
-            2.126298189163208
+            2.4857091903686523,
+            6.564168930053711,
+            2.4141045808792114
           ],
           "bbox_min_m": [
-            -2.214208960533142,
+            -2.413255214691162,
             0.0,
-            -2.395754337310791
+            -2.2645334005355835
           ],
           "impostor": {
             "albedo": "kits/flora/spruce_d_impostor_albedo.png",
-            "albedo_sha256": "f4ec1ca0ac26e21eeebbcd2fc5f2a096cfd9a8a163ee31767f526ed5da39c40a",
+            "albedo_sha256": "5ab38d7fc1ee7563aa2967bf69b5e2c5ae4812e019c90e5ceb9eb475fc20b3ae",
             "centre": [
-              0.0492,
-              3.38,
-              -0.1347
+              0.0362,
+              3.2821,
+              0.0748
             ],
             "frame_px": 128,
             "frames": 8,
             "layout": "hemi_octahedral",
             "normal": "kits/flora/spruce_d_impostor_normal.png",
-            "normal_sha256": "ca2740d9d9ff819a4362c20732b2960ec519aa1dbad876673e6268870f63dbff",
-            "radius": 4.05
+            "normal_sha256": "37ac5a7bb5993e51c5e1e16af49806f56f9d7cadaa577343c277c8ecddc92413",
+            "radius": 3.8859
           },
           "lod_distances_m": [
-            34.74,
-            86.85,
-            217.13
+            33.33,
+            83.33,
+            208.34
           ],
           "lod_tris": [
-            520,
-            190,
-            130
+            564,
+            218,
+            150
           ],
           "path": "kits/flora/spruce_d.glb",
           "recipe": "out/assets/flora_spruce_d/recipe.py",
-          "sha256": "f06f8533c6e033c7e3050e0e6bfff4ea3878779fa18e1ee278b4b1abf3ee0ecc",
-          "tris": 520
+          "sha256": "c3ed34efcd0e15ae8e44cdc986e00f01ae15df2e67df50ca730ae35e13c1dbd7",
+          "tris": 564
         }
       },
       "slug": "flora",

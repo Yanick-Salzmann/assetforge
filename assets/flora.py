@@ -32,6 +32,12 @@ LOD_STRIDES: tuple[int, ...] = (1, 2, 3)
 LOD_WIDEN: tuple[float, ...] = (1.0, 1.4, 1.9)
 CROWN_WIDEN: tuple[float, ...] = (1.0, 1.25, 1.3)
 TUFT_STRIDES: tuple[int, ...] = (1, 1, 2)
+SPRUCE_MIN_REACH = 0.035
+SPRUCE_CARD_WIDTH = 1.1
+SPRUCE_ROLL = (0.55, 1.25)
+SPRUCE_SEGMENTED_BELOW = 0.3
+SPRUCE_LEADER_SPRAYS = 3
+SPRUCE_TRUNK_REACH = 0.9
 TUFT_WIDEN: tuple[float, ...] = (1.0, 1.0, 1.4)
 LODS = len(LOD_STRIDES)
 
@@ -234,24 +240,23 @@ def spruce(
     crown_radius: float,
     cell: str = "spruce",
     crown_base: float = 0.18,
-    tiers: int = 17,
+    tiers: int = 19,
     per_tier: int = 13,
     lod: int = 0,
 ) -> MeshData:
     """A spruce: a tapering trunk and whorls of needle-spray cards, long and drooping at the
-    bottom, short and lifted near the leader, with a crossed tuft on the tip."""
+    bottom, short and lifted near the leader, with a leader of upturned sprays hiding the tip."""
     rng = random.Random(seed)
     builder = Builder()
     rect = cell_rect(cell)
-    path = _trunk_path(rng, height, 4, 0.01)
+    path = _trunk_path(rng, height * SPRUCE_TRUNK_REACH, 4, 0.01)
     base_radius = 0.022 * height
-    builder.tube(path, [base_radius * 1.25, base_radius * 0.8, base_radius * 0.55, base_radius * 0.3, 0.015], sides_at(6, lod), bark_rect())
+    builder.tube(path, [base_radius * 1.25, base_radius * 0.75, base_radius * 0.42, base_radius * 0.16, 0.01], sides_at(6, lod), bark_rect())
     widen = LOD_WIDEN[lod]
-    card_index = 0
     for tier in range(tiers):
         f = tier / (tiers - 1)
         z = height * (crown_base + (0.93 - crown_base) * f)
-        reach = crown_radius * (1.0 - f) ** 0.85 * rng.uniform(0.85, 1.1) + 0.25
+        reach = crown_radius * (1.0 - f) ** 0.85 * rng.uniform(0.85, 1.1) + SPRUCE_MIN_REACH * height
         count = max(3, round(per_tier * (1.0 - 0.45 * f)))
         phase = rng.uniform(0.0, 2.0 * math.pi)
         centre = _point_on(path, z)
@@ -260,31 +265,33 @@ def spruce(
             horizontal = (math.cos(azimuth), math.sin(azimuth), 0.0)
             pitch = -0.2 + 0.55 * f + rng.uniform(-0.08, 0.08)
             up = unit(add(mul(horizontal, math.cos(pitch)), mul(Z, math.sin(pitch))))
-            side = rotate((-horizontal[1], horizontal[0], 0.0), up, rng.uniform(-1.15, 1.15))
-            card_index += 1
-            if not kept(card_index - 1, lod):
+            side = rotate((-horizontal[1], horizontal[0], 0.0), up, rng.choice((-1.0, 1.0)) * rng.uniform(*SPRUCE_ROLL))
+            if not kept(index + tier, lod):
                 continue
             builder.card(
                 add(centre, mul(horizontal, 0.04)),
                 up,
                 side,
                 reach,
-                reach * 0.85 * widen,
+                reach * SPRUCE_CARD_WIDTH * widen,
                 rect,
                 outward=unit(add(horizontal, mul(Z, 0.35))),
-                segments=segments_at(2 if f < 0.5 else 1, lod),
+                segments=segments_at(2 if f < SPRUCE_SEGMENTED_BELOW else 1, lod),
                 droop=0.45 * (1.0 - f),
             )
-    top = path[-1]
-    for index in range(3 if lod < 2 else 2):
-        angle = index * math.pi / 3.0
+    sprays = SPRUCE_LEADER_SPRAYS if lod < 2 else SPRUCE_LEADER_SPRAYS - 1
+    base = _point_on(path, height * 0.85)
+    phase = rng.uniform(0.0, math.pi)
+    for index in range(sprays):
+        angle = phase + math.pi * index / sprays
         side = (math.cos(angle), math.sin(angle), 0.0)
+        length = height * 0.16
         builder.card(
-            sub(top, mul(Z, height * 0.12)),
-            Z,
+            base,
+            unit(add(Z, mul(cross(side, Z), 0.04))),
             side,
-            height * 0.16,
-            height * 0.1,
+            length,
+            length * 0.32 * widen,
             rect,
             outward=cross(side, Z),
         )
@@ -427,9 +434,9 @@ def tuft(seed: int, height: float, cell: str, cards: int = 10, width: float = 1.
 
 MODELS: dict[str, tuple[str, Callable[..., MeshData]]] = {
     "spruce_a": ("conifer", lambda lod=0: spruce(101, 11.0, 2.6, lod=lod)),
-    "spruce_b": ("conifer", lambda lod=0: spruce(102, 8.5, 2.1, tiers=15, lod=lod)),
-    "spruce_c": ("conifer", lambda lod=0: spruce(103, 5.0, 1.6, cell="spruce_alpine", crown_base=0.08, tiers=14, per_tier=14, lod=lod)),
-    "spruce_d": ("conifer", lambda lod=0: spruce(104, 6.5, 1.7, cell="spruce_alpine", crown_base=0.1, tiers=15, lod=lod)),
+    "spruce_b": ("conifer", lambda lod=0: spruce(102, 8.5, 2.1, tiers=18, lod=lod)),
+    "spruce_c": ("conifer", lambda lod=0: spruce(103, 5.0, 1.6, cell="spruce_alpine", crown_base=0.08, tiers=17, per_tier=14, lod=lod)),
+    "spruce_d": ("conifer", lambda lod=0: spruce(104, 6.5, 1.7, cell="spruce_alpine", crown_base=0.1, tiers=18, lod=lod)),
     "oak_a": ("broadleaf", lambda lod=0: broadleaf(201, 2.6, (3.4, 3.2, 2.9), "oak", 210, 1.7, 0.3, lod=lod)),
     "oak_b": ("broadleaf", lambda lod=0: broadleaf(202, 3.0, (2.8, 2.6, 3.4), "oak", 210, 1.6, 0.27, lod=lod)),
     "mesquite_a": ("broadleaf", lambda lod=0: broadleaf(301, 1.2, (3.2, 3.0, 1.5), "mesquite", 200, 1.5, 0.2, branch_lift=0.35, lod=lod)),
