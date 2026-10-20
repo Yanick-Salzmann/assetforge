@@ -41,7 +41,7 @@ PORT = int(os.environ.get("IMAGE_NODE_PORT", "8189"))
 QUANTIZE = int(os.environ.get("IMAGE_NODE_QUANTIZE", "8"))
 DEFAULT_STEPS = int(os.environ.get("IMAGE_NODE_STEPS", "9"))
 TOKEN = os.environ.get("IMAGE_NODE_TOKEN", "").strip()
-MODEL_PATH = os.environ.get("IMAGE_NODE_MODEL_PATH", "").strip()
+MODEL_PATH = os.path.expanduser(os.environ.get("IMAGE_NODE_MODEL_PATH", "").strip())
 CACHE_LIMIT_GB = float(os.environ.get("IMAGE_NODE_CACHE_GB", "2"))
 
 
