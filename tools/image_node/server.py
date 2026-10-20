@@ -2,6 +2,7 @@
 # requires-python = ">=3.10,<3.14"
 # dependencies = [
 #     "mflux",
+#     "pillow<13",
 #     "fastapi>=0.115",
 #     "uvicorn>=0.30",
 # ]
