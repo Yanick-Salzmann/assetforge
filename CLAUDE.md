@@ -195,6 +195,15 @@ reproduce the same bytes — Phase 5 tests this, so do not break it earlier.
   `blender --background --python assets/blender_scripts/pottery_set_build.py` from the
   `assets/pottery.py` builders (lathe vessels with lean, oval and wobble baked in), then approved and
   pulled. `egypt_pottery_workshop` places it as `props[]`.
+- Creatures (kind `creature`, LOD0/1/2) are built from species specs in `assets/creature_specs/*.toml`
+  (`assets/creature_spec.py`, stdlib: tapered capsule bones in metres, +Y forward, `<part>.L` bones
+  mirrored to `.R`, a `stance`, region palette; `errors()` / `SPEC_SCHEMA` / `draft_prompt` check an
+  LLM draft before Blender sees it - every bone must start inside its parent and the feet must reach
+  z = 0). `assets/creature.py` skins them: capsules, voxel remesh, smoothing weighted by bone radius
+  (thin horns and ears survive), normal noise, flat soles via `ground_cut`, regions painted on the dense
+  surface, X-mirrored decimation. Rebuilt by
+  `blender --background --python assets/blender_scripts/creature_set_build.py [-- <species>...]`
+  as `out/assets/creature_<species>/`, one atlas per creature.
 - Vegetation (trees, shrubs, ferns, grass, flowers) is the `flora` pack, rebuilt by
   `blender --background --python assets/blender_scripts/flora_build.py`: bark tubes and
   alpha-cutout foliage cards from `assets/flora.py` (pure Python, `flora.MODELS` maps each model

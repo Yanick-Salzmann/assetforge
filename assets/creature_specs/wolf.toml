@@ -1,0 +1,194 @@
+name = "wolf"
+description = "Grey wolf, about 0.8 m at the shoulder, deep chest and tucked waist, ruff at the neck, bushy hanging tail."
+seed = 301
+stance = "quadruped"
+target_tris = 5000
+voxel_m = 0.01
+smooth = 8
+noise_m = 0.005
+noise_scale_m = 0.18
+
+[palette]
+hide = [0.28, 0.25, 0.21]
+underside = [0.55, 0.50, 0.42]
+mane = [0.40, 0.36, 0.30]
+dark = [0.03, 0.03, 0.03]
+eye = [0.35, 0.22, 0.05]
+
+[[bones]]
+name = "pelvis"
+head = [0, -0.42, 0.6]
+tail = [0, -0.18, 0.62]
+radius = [0.11, 0.12]
+
+[[bones]]
+name = "loin"
+parent = "pelvis"
+head = [0, -0.2, 0.61]
+tail = [0, 0.05, 0.6]
+radius = [0.12, 0.13]
+
+[[bones]]
+name = "chest"
+parent = "loin"
+head = [0, 0.05, 0.6]
+tail = [0, 0.32, 0.62]
+radius = [0.15, 0.15]
+
+[[bones]]
+name = "brisket"
+parent = "chest"
+head = [0, 0.15, 0.5]
+tail = [0, 0.34, 0.5]
+radius = [0.12, 0.1]
+
+[[bones]]
+name = "withers"
+parent = "chest"
+head = [0, 0.18, 0.68]
+tail = [0, 0.32, 0.68]
+radius = [0.08, 0.08]
+region = "mane"
+
+[[bones]]
+name = "neck"
+parent = "chest"
+head = [0, 0.33, 0.66]
+tail = [0, 0.47, 0.74]
+radius = [0.11, 0.085]
+region = "mane"
+
+[[bones]]
+name = "head"
+parent = "neck"
+head = [0, 0.47, 0.76]
+tail = [0, 0.57, 0.77]
+radius = [0.09, 0.08]
+
+[[bones]]
+name = "cheek.L"
+parent = "head"
+head = [0.05, 0.53, 0.73]
+tail = [0.04, 0.6, 0.72]
+radius = [0.045, 0.035]
+
+[[bones]]
+name = "muzzle"
+parent = "head"
+head = [0, 0.58, 0.74]
+tail = [0, 0.72, 0.71]
+radius = [0.055, 0.035]
+
+[[bones]]
+name = "jaw"
+parent = "head"
+head = [0, 0.56, 0.71]
+tail = [0, 0.69, 0.68]
+radius = [0.04, 0.025]
+
+[[bones]]
+name = "nose"
+parent = "muzzle"
+head = [0, 0.735, 0.72]
+tail = [0, 0.75, 0.72]
+radius = [0.022, 0.02]
+region = "dark"
+
+[[bones]]
+name = "eye.L"
+parent = "head"
+head = [0.075, 0.56, 0.795]
+tail = [0.076, 0.565, 0.795]
+radius = [0.016, 0.016]
+region = "eye"
+
+[[bones]]
+name = "ear.L"
+parent = "head"
+head = [0.045, 0.5, 0.82]
+tail = [0.06, 0.48, 0.92]
+radius = [0.035, 0.012]
+
+[[bones]]
+name = "scapula.L"
+parent = "chest"
+head = [0.07, 0.25, 0.72]
+tail = [0.1, 0.36, 0.5]
+radius = [0.06, 0.055]
+
+[[bones]]
+name = "upper_arm.L"
+parent = "scapula.L"
+head = [0.1, 0.36, 0.5]
+tail = [0.1, 0.24, 0.36]
+radius = [0.05, 0.04]
+
+[[bones]]
+name = "forearm.L"
+parent = "upper_arm.L"
+head = [0.1, 0.24, 0.36]
+tail = [0.095, 0.27, 0.1]
+radius = [0.035, 0.025]
+
+[[bones]]
+name = "pastern.L"
+parent = "forearm.L"
+head = [0.095, 0.27, 0.1]
+tail = [0.095, 0.31, 0.035]
+radius = [0.025, 0.022]
+
+[[bones]]
+name = "paw.L"
+parent = "pastern.L"
+head = [0.095, 0.3, 0.03]
+tail = [0.095, 0.36, 0.025]
+radius = [0.032, 0.028]
+
+[[bones]]
+name = "thigh.L"
+parent = "pelvis"
+head = [0.1, -0.33, 0.55]
+tail = [0.11, -0.22, 0.36]
+radius = [0.085, 0.05]
+
+[[bones]]
+name = "shin.L"
+parent = "thigh.L"
+head = [0.11, -0.22, 0.36]
+tail = [0.1, -0.37, 0.17]
+radius = [0.045, 0.028]
+
+[[bones]]
+name = "hock.L"
+parent = "shin.L"
+head = [0.1, -0.37, 0.17]
+tail = [0.1, -0.33, 0.04]
+radius = [0.026, 0.022]
+
+[[bones]]
+name = "hindpaw.L"
+parent = "hock.L"
+head = [0.1, -0.335, 0.03]
+tail = [0.1, -0.28, 0.025]
+radius = [0.032, 0.028]
+
+[[bones]]
+name = "tail"
+parent = "pelvis"
+head = [0, -0.45, 0.62]
+tail = [0, -0.58, 0.52]
+radius = [0.05, 0.055]
+
+[[bones]]
+name = "tail_mid"
+parent = "tail"
+head = [0, -0.58, 0.52]
+tail = [0, -0.66, 0.36]
+radius = [0.055, 0.045]
+
+[[bones]]
+name = "tail_tip"
+parent = "tail_mid"
+head = [0, -0.66, 0.36]
+tail = [0, -0.68, 0.26]
+radius = [0.045, 0.02]

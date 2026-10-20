@@ -1,0 +1,190 @@
+name = "deer"
+description = "Red deer stag, about 0.95 m at the shoulder, slender legs, raised neck and branching antlers."
+seed = 302
+stance = "quadruped"
+target_tris = 5500
+voxel_m = 0.008
+smooth = 8
+noise_m = 0.003
+noise_scale_m = 0.18
+
+[palette]
+hide = [0.36, 0.22, 0.12]
+underside = [0.70, 0.62, 0.50]
+dark = [0.04, 0.03, 0.03]
+horn = [0.50, 0.42, 0.30]
+eye = [0.03, 0.02, 0.02]
+
+[[bones]]
+name = "pelvis"
+head = [0, -0.4, 0.95]
+tail = [0, -0.18, 0.95]
+radius = [0.12, 0.13]
+
+[[bones]]
+name = "abdomen"
+parent = "pelvis"
+head = [0, -0.2, 0.92]
+tail = [0, 0.08, 0.9]
+radius = [0.14, 0.16]
+
+[[bones]]
+name = "chest"
+parent = "abdomen"
+head = [0, 0.05, 0.93]
+tail = [0, 0.32, 0.95]
+radius = [0.16, 0.15]
+
+[[bones]]
+name = "brisket"
+parent = "chest"
+head = [0, 0.15, 0.85]
+tail = [0, 0.36, 0.85]
+radius = [0.12, 0.1]
+
+[[bones]]
+name = "withers"
+parent = "chest"
+head = [0, 0.18, 1.03]
+tail = [0, 0.32, 1.03]
+radius = [0.08, 0.08]
+
+[[bones]]
+name = "neck"
+parent = "chest"
+head = [0, 0.34, 1.0]
+tail = [0, 0.5, 1.25]
+radius = [0.1, 0.065]
+
+[[bones]]
+name = "head"
+parent = "neck"
+head = [0, 0.5, 1.3]
+tail = [0, 0.6, 1.29]
+radius = [0.07, 0.06]
+
+[[bones]]
+name = "muzzle"
+parent = "head"
+head = [0, 0.6, 1.28]
+tail = [0, 0.73, 1.22]
+radius = [0.048, 0.03]
+
+[[bones]]
+name = "nose"
+parent = "muzzle"
+head = [0, 0.73, 1.225]
+tail = [0, 0.75, 1.22]
+radius = [0.026, 0.022]
+region = "dark"
+
+[[bones]]
+name = "eye.L"
+parent = "head"
+head = [0.06, 0.58, 1.31]
+tail = [0.061, 0.585, 1.31]
+radius = [0.015, 0.015]
+region = "eye"
+
+[[bones]]
+name = "ear.L"
+parent = "head"
+head = [0.04, 0.52, 1.35]
+tail = [0.13, 0.49, 1.42]
+radius = [0.03, 0.012]
+
+[[bones]]
+name = "antler.L"
+parent = "head"
+head = [0.03, 0.54, 1.35]
+tail = [0.1, 0.5, 1.58]
+radius = [0.018, 0.012]
+region = "horn"
+
+[[bones]]
+name = "tine_front.L"
+parent = "antler.L"
+head = [0.05, 0.53, 1.42]
+tail = [0.08, 0.64, 1.52]
+radius = [0.012, 0.01]
+region = "horn"
+
+[[bones]]
+name = "tine_top.L"
+parent = "antler.L"
+head = [0.085, 0.51, 1.53]
+tail = [0.16, 0.54, 1.64]
+radius = [0.011, 0.01]
+region = "horn"
+
+[[bones]]
+name = "scapula.L"
+parent = "chest"
+head = [0.08, 0.25, 1.0]
+tail = [0.1, 0.34, 0.8]
+radius = [0.07, 0.06]
+
+[[bones]]
+name = "upper_arm.L"
+parent = "scapula.L"
+head = [0.1, 0.34, 0.8]
+tail = [0.1, 0.24, 0.62]
+radius = [0.055, 0.04]
+
+[[bones]]
+name = "forearm.L"
+parent = "upper_arm.L"
+head = [0.1, 0.24, 0.62]
+tail = [0.095, 0.27, 0.26]
+radius = [0.036, 0.024]
+
+[[bones]]
+name = "cannon.L"
+parent = "forearm.L"
+head = [0.095, 0.27, 0.26]
+tail = [0.095, 0.29, 0.05]
+radius = [0.022, 0.019]
+
+[[bones]]
+name = "hoof.L"
+parent = "cannon.L"
+head = [0.095, 0.29, 0.04]
+tail = [0.095, 0.33, 0.022]
+radius = [0.025, 0.022]
+region = "dark"
+
+[[bones]]
+name = "thigh.L"
+parent = "pelvis"
+head = [0.1, -0.35, 0.9]
+tail = [0.12, -0.2, 0.62]
+radius = [0.1, 0.06]
+
+[[bones]]
+name = "shin.L"
+parent = "thigh.L"
+head = [0.12, -0.2, 0.62]
+tail = [0.11, -0.38, 0.34]
+radius = [0.05, 0.03]
+
+[[bones]]
+name = "hind_cannon.L"
+parent = "shin.L"
+head = [0.11, -0.38, 0.34]
+tail = [0.1, -0.34, 0.05]
+radius = [0.025, 0.02]
+
+[[bones]]
+name = "hind_hoof.L"
+parent = "hind_cannon.L"
+head = [0.1, -0.34, 0.04]
+tail = [0.1, -0.3, 0.022]
+radius = [0.025, 0.022]
+region = "dark"
+
+[[bones]]
+name = "tail"
+parent = "pelvis"
+head = [0, -0.48, 0.98]
+tail = [0, -0.56, 0.88]
+radius = [0.04, 0.025]

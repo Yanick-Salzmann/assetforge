@@ -1,0 +1,162 @@
+name = "goblin"
+description = "Goblin, about 1.25 m tall in a hunched crouch, pot belly, oversized head with heavy brow, long nose and swept-back ears, long bent arms with clawed fingers, splayed feet, leather belt."
+seed = 304
+stance = "biped"
+target_tris = 5000
+voxel_m = 0.008
+smooth = 8
+noise_m = 0.003
+noise_scale_m = 0.18
+
+[palette]
+hide = [0.25, 0.35, 0.15]
+dark = [0.18, 0.11, 0.06]
+eye = [0.60, 0.50, 0.05]
+
+[[bones]]
+name = "hips"
+head = [0, -0.03, 0.58]
+tail = [0, -0.02, 0.68]
+radius = [0.12, 0.12]
+
+[[bones]]
+name = "belly"
+parent = "hips"
+head = [0, -0.01, 0.68]
+tail = [0, 0.04, 0.8]
+radius = [0.13, 0.14]
+
+[[bones]]
+name = "belt"
+parent = "hips"
+head = [0, -0.01, 0.66]
+tail = [0, 0, 0.7]
+radius = [0.135, 0.135]
+region = "dark"
+
+[[bones]]
+name = "chest"
+parent = "belly"
+head = [0, 0.03, 0.8]
+tail = [0, 0.07, 0.94]
+radius = [0.14, 0.12]
+
+[[bones]]
+name = "clavicle.L"
+parent = "chest"
+head = [0.03, 0.06, 0.93]
+tail = [0.14, 0.05, 0.92]
+radius = [0.07, 0.055]
+
+[[bones]]
+name = "neck"
+parent = "chest"
+head = [0, 0.08, 0.95]
+tail = [0, 0.13, 1.0]
+radius = [0.055, 0.05]
+
+[[bones]]
+name = "head"
+parent = "neck"
+head = [0, 0.15, 1.05]
+tail = [0, 0.17, 1.12]
+radius = [0.11, 0.105]
+
+[[bones]]
+name = "brow"
+parent = "head"
+head = [-0.06, 0.25, 1.13]
+tail = [0.06, 0.25, 1.13]
+radius = [0.03, 0.03]
+
+[[bones]]
+name = "nose"
+parent = "head"
+head = [0, 0.26, 1.08]
+tail = [0, 0.34, 1.04]
+radius = [0.03, 0.018]
+
+[[bones]]
+name = "jaw"
+parent = "head"
+head = [0, 0.17, 1.0]
+tail = [0, 0.25, 0.99]
+radius = [0.07, 0.05]
+
+[[bones]]
+name = "eye.L"
+parent = "head"
+head = [0.045, 0.26, 1.1]
+tail = [0.046, 0.265, 1.1]
+radius = [0.018, 0.018]
+region = "eye"
+
+[[bones]]
+name = "ear.L"
+parent = "head"
+head = [0.09, 0.13, 1.12]
+tail = [0.27, 0.07, 1.19]
+radius = [0.035, 0.012]
+
+[[bones]]
+name = "upper_arm.L"
+parent = "clavicle.L"
+head = [0.15, 0.05, 0.9]
+tail = [0.2, 0.02, 0.7]
+radius = [0.045, 0.036]
+
+[[bones]]
+name = "forearm.L"
+parent = "upper_arm.L"
+head = [0.2, 0.02, 0.7]
+tail = [0.22, 0.14, 0.52]
+radius = [0.036, 0.03]
+
+[[bones]]
+name = "hand.L"
+parent = "forearm.L"
+head = [0.22, 0.14, 0.52]
+tail = [0.23, 0.18, 0.45]
+radius = [0.04, 0.032]
+
+[[bones]]
+name = "finger_a.L"
+parent = "hand.L"
+head = [0.21, 0.18, 0.46]
+tail = [0.2, 0.22, 0.4]
+radius = [0.014, 0.011]
+
+[[bones]]
+name = "finger_b.L"
+parent = "hand.L"
+head = [0.235, 0.19, 0.45]
+tail = [0.24, 0.22, 0.385]
+radius = [0.014, 0.011]
+
+[[bones]]
+name = "thumb.L"
+parent = "hand.L"
+head = [0.2, 0.16, 0.5]
+tail = [0.19, 0.21, 0.48]
+radius = [0.014, 0.011]
+
+[[bones]]
+name = "thigh.L"
+parent = "hips"
+head = [0.08, -0.02, 0.58]
+tail = [0.11, 0.1, 0.36]
+radius = [0.07, 0.05]
+
+[[bones]]
+name = "shin.L"
+parent = "thigh.L"
+head = [0.11, 0.1, 0.36]
+tail = [0.12, -0.01, 0.08]
+radius = [0.048, 0.036]
+
+[[bones]]
+name = "foot.L"
+parent = "shin.L"
+head = [0.12, -0.03, 0.05]
+tail = [0.15, 0.13, 0.03]
+radius = [0.048, 0.03]
