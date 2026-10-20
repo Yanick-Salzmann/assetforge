@@ -20,6 +20,7 @@ IMAGE_NODE_MODEL_PATH (a model pre-quantized with mflux-save), IMAGE_NODE_CACHE_
 from __future__ import annotations
 
 import base64
+import io
 import os
 import tempfile
 import threading
@@ -68,6 +69,16 @@ def parse_size(size: str) -> tuple[int, int]:
     return width, height
 
 
+def _strip_metadata(path: Path) -> bytes:
+    from PIL import Image
+
+    with Image.open(path) as source:
+        pixels = Image.frombytes(source.mode, source.size, source.tobytes())
+    buffer = io.BytesIO()
+    pixels.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 class Generator:
     def __init__(self) -> None:
         self._model = None
@@ -97,7 +108,7 @@ class Generator:
             with tempfile.TemporaryDirectory() as directory:
                 path = Path(directory) / "image.png"
                 image.save(str(path))
-                png = path.read_bytes()
+                png = _strip_metadata(path)
             import mlx.core as mx
 
             mx.clear_cache()
