@@ -15,9 +15,23 @@ uv run tools/image_node/server.py                   # first run fetches deps and
 
 `uv run` reads the inline dependency block in `server.py`, so no venv or `pip`. Weights go to the
 Hugging Face cache (`~/.cache/huggingface`); the first request is slow while the model loads.
+Anonymous Hugging Face downloads are heavily rate-limited, so export a read token first
+(`export HF_TOKEN=hf_...`, from huggingface.co/settings/tokens) or log in once with
+`uvx --from huggingface_hub hf auth login`.
 
 Optional settings: `IMAGE_NODE_PORT` (8189), `IMAGE_NODE_HOST` (0.0.0.0), `IMAGE_NODE_QUANTIZE`
-(8; 4 is smaller and faster), `IMAGE_NODE_STEPS` (9), `IMAGE_NODE_TOKEN` (require a bearer token).
+(8; 4 is smaller and faster), `IMAGE_NODE_STEPS` (9), `IMAGE_NODE_TOKEN` (require a bearer token),
+`IMAGE_NODE_MODEL_PATH` (a pre-quantized model), `IMAGE_NODE_CACHE_GB` (2, caps MLX's buffer cache).
+
+## 24 GB Macs
+
+Quantizing on load reads the full bf16 weights first, which peaks above 24 GB and pushes the Mac
+into swap (tens of seconds per step). Quantize once to disk and load that instead:
+
+```sh
+uvx --from mflux --with 'pillow<13' mflux-save --model z-image-turbo --quantize 4 --path ~/models/z-image-turbo-q4
+IMAGE_NODE_MODEL_PATH=~/models/z-image-turbo-q4 IMAGE_NODE_QUANTIZE=4 uv run tools/image_node/server.py
+```
 
 Smoke test on the Mac:
 

@@ -13,7 +13,8 @@ POST /v1/images/generations that assets/model_node.py calls.
     uv run tools/image_node/server.py
 
 Environment: IMAGE_NODE_HOST (0.0.0.0), IMAGE_NODE_PORT (8189), IMAGE_NODE_QUANTIZE (8),
-IMAGE_NODE_STEPS (9), IMAGE_NODE_TOKEN (optional bearer token the client must send).
+IMAGE_NODE_STEPS (9), IMAGE_NODE_TOKEN (optional bearer token the client must send),
+IMAGE_NODE_MODEL_PATH (a model pre-quantized with mflux-save), IMAGE_NODE_CACHE_GB (2, MLX cache cap).
 """
 
 from __future__ import annotations
@@ -40,6 +41,8 @@ PORT = int(os.environ.get("IMAGE_NODE_PORT", "8189"))
 QUANTIZE = int(os.environ.get("IMAGE_NODE_QUANTIZE", "8"))
 DEFAULT_STEPS = int(os.environ.get("IMAGE_NODE_STEPS", "9"))
 TOKEN = os.environ.get("IMAGE_NODE_TOKEN", "").strip()
+MODEL_PATH = os.environ.get("IMAGE_NODE_MODEL_PATH", "").strip()
+CACHE_LIMIT_GB = float(os.environ.get("IMAGE_NODE_CACHE_GB", "2"))
 
 
 class GenerationRequest(BaseModel):
@@ -72,9 +75,14 @@ class Generator:
 
     def _load(self):
         if self._model is None:
+            import mlx.core as mx
             from mflux.models.z_image import ZImageTurbo
 
-            self._model = ZImageTurbo(quantize=QUANTIZE)
+            mx.set_cache_limit(int(CACHE_LIMIT_GB * 1000**3))
+            if MODEL_PATH:
+                self._model = ZImageTurbo(quantize=QUANTIZE, model_path=MODEL_PATH)
+            else:
+                self._model = ZImageTurbo(quantize=QUANTIZE)
         return self._model
 
     def png(self, prompt: str, seed: int, width: int, height: int, steps: int) -> bytes:
@@ -89,7 +97,11 @@ class Generator:
             with tempfile.TemporaryDirectory() as directory:
                 path = Path(directory) / "image.png"
                 image.save(str(path))
-                return path.read_bytes()
+                png = path.read_bytes()
+            import mlx.core as mx
+
+            mx.clear_cache()
+            return png
 
 
 app = FastAPI(title="assetforge image node")
